@@ -6,7 +6,7 @@ use std::io::Write;
 use byteorder::{BigEndian, LittleEndian};
 
 use packet::{Packet, PacketHeader};
-use pcap_header::{Datalink, Endianness, PcapHeader};
+use pcap_header::{DataLink, Endianness, PcapHeader};
 use errors::*;
 
 /// This struct wraps another writer and enables it to write a Pcap formated stream.
@@ -52,7 +52,7 @@ impl<T: Write> PcapWriter<T> {
     ///     ts_correction : 0,
     ///     ts_accuracy : 0,
     ///     snaplen : 65535,
-    ///     datalink : Datalink::Ethernet
+    ///     datalink : DataLink::ETHERNET
     /// };
     /// ```
     ///
@@ -72,7 +72,7 @@ impl<T: Write> PcapWriter<T> {
     /// ```
     pub fn new(writer: T) -> ResultChain<PcapWriter<T>> {
 
-        let header = PcapHeader::with_datalink(Datalink::Ethernet);
+        let header = PcapHeader::with_datalink(DataLink::ETHERNET);
 
         PcapWriter::with_header(header, writer)
     }
@@ -90,7 +90,7 @@ impl<T: Write> PcapWriter<T> {
     ///     ts_correction : 0,
     ///     ts_accuracy : 0,
     ///     snaplen : 65535,
-    ///     datalink : Datalink::Ethernet
+    ///     datalink : DataLink::ETHERNET
     /// };
     /// ```
     ///
@@ -110,7 +110,7 @@ impl<T: Write> PcapWriter<T> {
     /// ```
     pub fn with_endianness(endianness: Endianness, writer: T) -> ResultChain<PcapWriter<T>> {
 
-        let mut header = PcapHeader::with_datalink(Datalink::Ethernet);
+        let mut header = PcapHeader::with_datalink(DataLink::ETHERNET);
 
         match endianness {
             Endianness::Big => header.magic_number = 0xa1b2c3d4,
@@ -134,7 +134,7 @@ impl<T: Write> PcapWriter<T> {
     /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapWriter;
-    /// use pcap_file::pcap_header::{PcapHeader, Datalink};
+    /// use pcap_file::pcap_header::{PcapHeader, DataLink};
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     ///
@@ -146,7 +146,7 @@ impl<T: Write> PcapWriter<T> {
     ///     ts_correction : 0,
     ///     ts_accuracy : 0,
     ///     snaplen : 65535,
-    ///     datalink : Datalink::Ethernet
+    ///     datalink : DataLink::ETHERNET
     /// };
     ///
     /// let mut pcap_writer = PcapWriter::with_header(header, file);
