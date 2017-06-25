@@ -15,7 +15,7 @@ use errors::*;
 ///
 /// ```no_run
 /// use std::fs::File;
-/// use pcap_rs::{PcapReader, PcapWriter};
+/// use pcap_file::{PcapReader, PcapWriter};
 ///
 ///
 /// let file_in = File::open("test.pcap").expect("Error opening file");
@@ -65,7 +65,7 @@ impl<T: Write> PcapWriter<T> {
     ///
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::PcapWriter;
+    /// use pcap_file::PcapWriter;
     ///
     /// let file_out = File::create("out.pcap").expect("Error creating file");
     /// let mut pcap_writer = PcapWriter::new(file_out);
@@ -98,8 +98,8 @@ impl<T: Write> PcapWriter<T> {
     ///
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::PcapWriter;
-    /// use pcap_rs::pcap_header::{PcapHeader, Datalink};
+    /// use pcap_file::PcapWriter;
+    /// use pcap_file::pcap_header::{PcapHeader, Datalink};
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     ///
@@ -138,7 +138,7 @@ impl<T: Write> PcapWriter<T> {
     /// # Exemple
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::PcapWriter;
+    /// use pcap_file::PcapWriter;
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     /// let pcap_writer = PcapWriter::new(file).unwrap();
@@ -154,7 +154,7 @@ impl<T: Write> PcapWriter<T> {
     /// # Exemple
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::PcapWriter;
+    /// use pcap_file::PcapWriter;
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     /// let pcap_writer = PcapWriter::new(file).unwrap();
@@ -172,7 +172,7 @@ impl<T: Write> PcapWriter<T> {
     /// # Exemple
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::PcapWriter;
+    /// use pcap_file::PcapWriter;
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     /// let mut pcap_writer = PcapWriter::new(file).unwrap();
@@ -188,7 +188,7 @@ impl<T: Write> PcapWriter<T> {
     /// # Exemple
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::PcapWriter;
+    /// use pcap_file::PcapWriter;
     ///
     /// let data = [0u8; 10];
     /// let file = File::create("out.pcap").expect("Error creating file");
@@ -217,7 +217,7 @@ impl<T: Write> PcapWriter<T> {
     /// # Exemple
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::{Packet, PcapWriter};
+    /// use pcap_file::{Packet, PcapWriter};
     ///
     /// let data = [0u8; 10];
     /// let packet = Packet::new(0, 0, 10, &data);

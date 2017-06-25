@@ -16,7 +16,7 @@ use errors::*;
 ///
 /// ```no_run
 /// use std::fs::File;
-/// use pcap_rs::{PcapReader, PcapWriter};
+/// use pcap_file::{PcapReader, PcapWriter};
 ///
 /// let file_in = File::open("test.pcap").expect("Error opening file");
 /// let pcap_reader = PcapReader::new(file_in).unwrap();
@@ -52,7 +52,7 @@ impl <T:Read> PcapReader<T>{
     /// # Exemple
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::PcapReader;
+    /// use pcap_file::PcapReader;
     ///
     /// let file_in = File::open("test.pcap").expect("Error opening file");
     /// let pcap_reader = PcapReader::new(file_in).unwrap();
@@ -73,7 +73,7 @@ impl <T:Read> PcapReader<T>{
     /// # Exemple
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::PcapReader;
+    /// use pcap_file::PcapReader;
     ///
     /// let file = File::open("test.pcap").expect("Error opening file");
     /// let pcap_reader = PcapReader::new(file).unwrap();
@@ -92,7 +92,7 @@ impl <T:Read> PcapReader<T>{
     /// # Exemple
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::PcapReader;
+    /// use pcap_file::PcapReader;
     ///
     /// let file = File::open("test.pcap").expect("Error opening file");
     /// let pcap_reader = PcapReader::new(file).unwrap();
@@ -110,7 +110,7 @@ impl <T:Read> PcapReader<T>{
     /// # Exemple
     /// ```no_run
     /// use std::fs::File;
-    /// use pcap_rs::PcapReader;
+    /// use pcap_file::PcapReader;
     ///
     /// let file = File::open("test.pcap").expect("Error opening file");
     /// let mut pcap_reader = PcapReader::new(file).unwrap();

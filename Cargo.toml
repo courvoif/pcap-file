@@ -1,9 +1,12 @@
 [package]
-name = "pcap_rs"
+name = "pcap-file"
 version = "0.5.0"
 authors = ["François Courvoisier f.courvoisier@protonmail.com"]
 description ="Read and write Pcap file"
+
 license = "MIT"
+repository = "https://github.com/courvoif/pcap_file"
+
 
 [dependencies]
 byteorder = "1.0.0"
