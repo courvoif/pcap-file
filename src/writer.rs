@@ -6,14 +6,14 @@ use std::io::Write;
 use byteorder::{BigEndian, LittleEndian};
 
 use packet::{Packet, PacketHeader};
-use pcap_header::{Datalink, PcapHeader};
+use pcap_header::{Datalink, Endianness, PcapHeader};
 use errors::*;
 
 /// This struct wraps another writer and enables it to write a Pcap formated stream.
 ///
-/// # Exemple
+/// # Examples
 ///
-/// ```no_run
+/// ```rust,no_run
 /// use std::fs::File;
 /// use pcap_file::{PcapReader, PcapWriter};
 ///
@@ -61,9 +61,9 @@ impl<T: Write> PcapWriter<T> {
     /// Return an error if the writer can't be written to.
     ///
     ///
-    /// # Exemple
+    /// # Examples
     ///
-    /// ```no_run
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapWriter;
     ///
@@ -72,15 +72,46 @@ impl<T: Write> PcapWriter<T> {
     /// ```
     pub fn new(writer: T) -> ResultChain<PcapWriter<T>> {
 
-        let header = PcapHeader {
-            magic_number: 0xa1b2c3d4,
-            version_major: 2,
-            version_minor: 4,
-            ts_correction: 0,
-            ts_accuracy: 0,
-            snaplen: 65535,
-            datalink: Datalink::Ethernet,
-        };
+        let header = PcapHeader::with_datalink(Datalink::Ethernet);
+
+        PcapWriter::with_header(header, writer)
+    }
+
+    /// Create a new `PcapWriter` from an existing writer.
+    ///
+    /// It Automatically writes this default global pcap header to the file:
+    ///
+    /// ```ignore
+    /// PcapHeader {
+    ///
+    ///     magic_number : 0xa1b2c3d4,
+    ///     version_major : 2,
+    ///     version_minor : 4,
+    ///     ts_correction : 0,
+    ///     ts_accuracy : 0,
+    ///     snaplen : 65535,
+    ///     datalink : Datalink::Ethernet
+    /// };
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Return an error if the writer can't be written to.
+    ///
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use std::fs::File;
+    /// use pcap_file::PcapWriter;
+    ///
+    /// let file_out = File::create("out.pcap").expect("Error creating file");
+    /// let mut pcap_writer = PcapWriter::new(file_out);
+    /// ```
+    pub fn with_endianness(endianness: Endianness, writer: T) -> ResultChain<PcapWriter<T>> {
+
+        let mut header = PcapHeader::with_datalink(Datalink::Ethernet);
+        header.magic_number = 0xd4c3b2a1;
 
         PcapWriter::with_header(header, writer)
     }
@@ -94,9 +125,9 @@ impl<T: Write> PcapWriter<T> {
     /// Return an error if the writer can't be written to.
     ///
     ///
-    /// # Exemple
+    /// # Examples
     ///
-    /// ```no_run
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapWriter;
     /// use pcap_file::pcap_header::{PcapHeader, Datalink};
@@ -118,11 +149,9 @@ impl<T: Write> PcapWriter<T> {
     /// ```
     pub fn with_header(header: PcapHeader, mut writer: T) -> ResultChain<PcapWriter<T>> {
 
-        match header.magic_number {
-
-            0xa1b2c3d4 => writer.write_all(&header.to_array::<BigEndian>()?)?,
-            0xd4c3b2a1 => writer.write_all(&header.to_array::<LittleEndian>()?)?,
-            _ => unreachable!("The magic number should always be valid here")
+        match header.endianness() {
+            Endianness::Big => writer.write_all(&header.to_array::<BigEndian>()?)?,
+            Endianness::Little => writer.write_all(&header.to_array::<LittleEndian>()?)?
         }
 
         Ok(
@@ -133,10 +162,12 @@ impl<T: Write> PcapWriter<T> {
         )
     }
 
+
+
     /// Consumes the `PcapWriter`, returning the wrapped writer.
     ///
-    /// # Exemple
-    /// ```no_run
+    /// # Examples
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapWriter;
     ///
@@ -149,10 +180,12 @@ impl<T: Write> PcapWriter<T> {
         self.writer
     }
 
+
+
     /// Gets a reference to the underlying writer.
     ///
-    /// # Exemple
-    /// ```no_run
+    /// # Examples
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapWriter;
     ///
@@ -169,8 +202,8 @@ impl<T: Write> PcapWriter<T> {
     ///
     /// It is inadvisable to directly write to the underlying writer.
     ///
-    /// # Exemple
-    /// ```no_run
+    /// # Examples
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapWriter;
     ///
@@ -185,8 +218,8 @@ impl<T: Write> PcapWriter<T> {
 
     /// Write some raw data, converting it to the pcap file format.
     ///
-    /// # Exemple
-    /// ```no_run
+    /// # Examples
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapWriter;
     ///
@@ -199,14 +232,9 @@ impl<T: Write> PcapWriter<T> {
     pub fn write(&mut self, ts_sec: u32, ts_usec: u32, data: &[u8]) -> ResultChain<()> {
 
         let packet = Packet {
-            header: PacketHeader {
-                ts_sec: ts_sec,
-                ts_usec: ts_usec,
-                incl_len: data.len() as u32,
-                orig_len: data.len() as u32,
-            },
 
-            data: Cow::Borrowed(data),
+            header: PacketHeader::new(ts_sec, ts_usec, data.len() as u32),
+            data: Cow::Borrowed(data)
         };
 
         self.write_packet(&packet)
@@ -214,8 +242,8 @@ impl<T: Write> PcapWriter<T> {
 
     /// Write a `Packet`.
     ///
-    /// # Exemple
-    /// ```no_run
+    /// # Examples
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::{Packet, PcapWriter};
     ///
@@ -229,11 +257,10 @@ impl<T: Write> PcapWriter<T> {
     /// ```
     pub fn write_packet(&mut self, packet: &Packet) -> ResultChain<()> {
 
-        match self.header.magic_number {
+        match self.header.endianness() {
 
-            0xa1b2c3d4 => self.writer.write_all(&packet.header.to_array::<BigEndian>()?)?,
-            0xd4c3b2a1 => self.writer.write_all(&packet.header.to_array::<LittleEndian>()?)?,
-            _ => unreachable!("The magic number should always be valid here")
+            Endianness::Big => self.writer.write_all(&packet.header.to_array::<BigEndian>()?)?,
+            Endianness::Little => self.writer.write_all(&packet.header.to_array::<LittleEndian>()?)?
         }
         self.writer.write_all(&packet.data)?;
 

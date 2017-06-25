@@ -14,10 +14,13 @@ pub struct PacketHeader {
 
     /// Timestamp seconds
     pub ts_sec: u32,
-    /// Timestamp microseconds
+
+    /// Timestamp microseconds/nanosecond
     pub ts_usec: u32,
+
     /// Number of octets of the packet saved in file
     pub incl_len: u32,
+
     /// Actual length of the packet
     pub orig_len: u32
 }
@@ -38,12 +41,8 @@ impl PacketHeader {
         }
     }
 
-    /// Create a new `PacketHeader` from a given slice.
-    pub fn from_slice<B: ByteOrder>(array: &[u8]) -> ResultChain<PacketHeader> {
-        PacketHeader::from_reader::<_, B>(&mut Cursor::new(array))
-    }
-
     /// Create a new `PacketHeader` from a given reader.
+    /// Don't forget that slices implement Read ;).
     pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R) -> ResultChain<PacketHeader> {
 
         Ok(
@@ -57,7 +56,7 @@ impl PacketHeader {
         )
     }
 
-    /// Convert the `PacketHeader` to a slice of bytes.
+    /// Convert the `PacketHeader` to a `Vec<u8>`.
     pub fn to_array<B: ByteOrder>(&self) -> ResultChain<Vec<u8>> {
 
         let mut out = Vec::with_capacity(16);
@@ -79,6 +78,7 @@ pub struct Packet<'a> {
 
     /// Header of the packet
     pub header: PacketHeader,
+
     /// Payload, owned or borrowed, of the packet
     pub data: Cow<'a, [u8]>
 }
@@ -86,9 +86,7 @@ pub struct Packet<'a> {
 
 impl<'a> Packet<'a> {
 
-    /// Create a new `Packet` with the given parameters.
-    ///
-    /// It borrows its payload
+    /// Create a new borrowed `Packet` with the given parameters.
     pub fn new(ts_sec: u32, ts_usec: u32, len:u32, data: &'a [u8]) -> Packet<'a> {
 
         let header = PacketHeader::new(ts_sec, ts_usec, len);
@@ -99,9 +97,7 @@ impl<'a> Packet<'a> {
         }
     }
 
-    /// Create a new `Packet` with the given parameters.
-    ///
-    /// It owns its payload
+    /// Create a new owned `Packet` with the given parameters.
     pub fn new_owned(ts_sec: u32, ts_usec: u32, len:u32, data: Vec<u8>) -> Packet<'static> {
 
         let header = PacketHeader::new(ts_sec, ts_usec, len);
@@ -112,9 +108,7 @@ impl<'a> Packet<'a> {
         }
     }
 
-    /// Create a new `Packet` from a reader.
-    ///
-    /// It owns its payload
+    /// Create a new owned `Packet` from a reader.
     pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R) -> ResultChain<Packet<'static>> {
 
         let header = PacketHeader::from_reader::<R, B>(reader)?;
@@ -139,9 +133,7 @@ impl<'a> Packet<'a> {
         )
     }
 
-    /// Create a new `Packet` from a slice.
-    ///
-    /// It borrows its payload
+    /// Create a new borrowed `Packet` from a slice.
     pub fn from_slice<B: ByteOrder>(slice: &[u8]) -> ResultChain<Packet> {
 
         let mut slice = &slice[..];

@@ -4,9 +4,9 @@
 //!
 //! Provides a `Packet` which contains all the data relative to one packet
 //!
-//! # Exemples
+//! # Examples
 //!
-//! ```no-run
+//! ```rust,no_run
 //! use std::fs::File;
 //! use pcap_file::{PcapReader, PcapWriter};
 //!
@@ -23,15 +23,10 @@
 //! }
 //!
 //! ```
-
-#![feature(test)]
-
 extern crate byteorder;
 
 #[macro_use]
 extern crate error_chain;
-
-extern crate test;
 
 pub mod errors;
 

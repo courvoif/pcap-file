@@ -5,16 +5,16 @@ use std::io::Read;
 use byteorder::{BigEndian, LittleEndian};
 
 use packet::Packet;
-use pcap_header::PcapHeader;
+use pcap_header::{PcapHeader, Endianness};
 use errors::*;
 
 /// This struct wraps another reader and enables it to read a Pcap formated stream.
 ///
 /// It implements the Iterator trait in order to read one packet at a time
 ///
-/// # Exemple
+/// # Examples
 ///
-/// ```no_run
+/// ```rust,no_run
 /// use std::fs::File;
 /// use pcap_file::{PcapReader, PcapWriter};
 ///
@@ -49,8 +49,8 @@ impl <T:Read> PcapReader<T>{
     /// Return an error if the data stream is not in a valid pcap file format.
     /// Or if the underlying data are not readable.
     ///
-    /// # Exemple
-    /// ```no_run
+    /// # Examples
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapReader;
     ///
@@ -70,8 +70,8 @@ impl <T:Read> PcapReader<T>{
 
     /// Consumes the `PcapReader`, returning the wrapped reader.
     ///
-    /// # Exemple
-    /// ```no_run
+    /// # Examples
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapReader;
     ///
@@ -87,10 +87,10 @@ impl <T:Read> PcapReader<T>{
 
     /// Gets a reference to the underlying reader.
     ///
-    /// It is inadvisable to directly read from the underlying reader.
+    /// It is not advised to directly read from the underlying reader.
     ///
-    /// # Exemple
-    /// ```no_run
+    /// # Examples
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapReader;
     ///
@@ -105,10 +105,10 @@ impl <T:Read> PcapReader<T>{
 
     /// Gets a mutable reference to the underlying reader.
     ///
-    /// It is inadvisable to directly read from the underlying reader.
+    /// It is not advised to directly read from the underlying reader.
     ///
-    /// # Exemple
-    /// ```no_run
+    /// # Examples
+    /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::PcapReader;
     ///
@@ -127,11 +127,10 @@ impl <T:Read> Iterator for PcapReader<T> {
     type Item = Packet<'static>;
 
     fn next(&mut self) -> Option<Packet<'static>> {
-        match self.header.magic_number {
 
-            0xa1b2c3d4 => Packet::from_reader::<T, BigEndian>(&mut self.reader).ok(),
-            0xd4c3b2a1 => Packet::from_reader::<T, LittleEndian>(&mut self.reader).ok(),
-            _ => unreachable!("The magic number should always be valid here")
+        match self.header.endianness() {
+            Endianness::Big => Packet::from_reader::<T, BigEndian>(&mut self.reader).ok(),
+            Endianness::Little => Packet::from_reader::<T, LittleEndian>(&mut self.reader).ok()
         }
     }
 
