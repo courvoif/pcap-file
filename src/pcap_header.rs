@@ -19,13 +19,13 @@ pub struct PcapHeader {
     /// Minor version number
     pub version_minor: u16,
 
-    /// GMT to local timezone correction
+    /// GMT to local timezone correction, should always be 0
     pub ts_correction: i32,
 
-    /// Timestamp accuracy
+    /// Timestamp accuracy, should always be 0
     pub ts_accuracy: u32,
 
-    /// Max length of captured packet
+    /// Max length of captured packet, typically 65535
     pub snaplen: u32,
 
     /// Datalink type (first layer in the packet (u32))
@@ -35,19 +35,47 @@ pub struct PcapHeader {
 
 impl PcapHeader {
 
+    /// Creates a new `PcapHeader` with the following parameters:
+    ///
+    /// ```rust,ignore
+    /// PcapHeader {
+    ///
+    ///     magic_number : 0xa1b2c3d4,
+    ///     version_major : 2,
+    ///     version_minor : 4,
+    ///     ts_correction : 0,
+    ///     ts_accuracy : 0,
+    ///     snaplen : 65535,
+    ///     datalink : datalink
+    /// };
+    /// ```
+    pub fn with_datalink(datalink: Datalink) -> PcapHeader {
+
+        PcapHeader {
+            magic_number: 0xa1b2c3d4,
+            version_major: 2,
+            version_minor: 4,
+            ts_correction: 0,
+            ts_accuracy: 0,
+            snaplen: 65535,
+            datalink: datalink
+        }
+    }
+
+    /// Parse a `Reader` and create a new PcapHeader from it if possible
     pub fn from_reader<R: Read>(reader: &mut R) -> ResultChain<PcapHeader> {
 
         let magic_number = reader.read_u32::<BigEndian>()?;
 
         match magic_number {
 
-            0xa1b2c3d4 => return init_pcap_header::<_, BigEndian>(reader, magic_number),
-            0xd4c3b2a1 => return init_pcap_header::<_, LittleEndian>(reader, magic_number),
+            0xa1b2c3d4 | 0xa1b23c4d => return init_pcap_header::<_, BigEndian>(reader, magic_number),
+            0xd4c3b2a1 | 0x4d3cb2a1 => return init_pcap_header::<_, LittleEndian>(reader, magic_number),
             _ => bail!(ErrorKind::BadMagicNumber(magic_number))
         };
 
         // Inner function used for the initialisation of the `PcapHeader`
-        fn init_pcap_header<R: ReadBytesExt, B: ByteOrder>(reader: &mut R, magic_number:u32) -> Result<PcapHeader, Error>{
+        fn init_pcap_header<R: ReadBytesExt, B: ByteOrder>(reader: &mut R, magic_number:u32) -> Result<PcapHeader, Error> {
 
             Ok(
                 PcapHeader {
@@ -80,6 +108,50 @@ impl PcapHeader {
 
         Ok(out)
     }
+
+    /// Return the endianness of the global header
+    ///
+    /// # Panics
+    ///
+    /// Panics if the magic number is invalid
+    pub fn endianness(&self) -> Endianness {
+
+        match self.magic_number {
+
+            0xa1b2c3d4 | 0xa1b23c4d => Endianness::Big,
+            0xd4c3b2a1 | 0x4d3cb2a1 => Endianness::Little,
+            _ => unreachable!("Wrong magic number, can't get the header's endianness")
+        }
+    }
+
+    /// Return the timestamp resolution of the global header
+    ///
+    /// # Panics
+    ///
+    /// Panics if the magic number is invalid
+    pub fn ts_resolution(&self) -> TsResolution {
+
+        match self.magic_number {
+
+            0xa1b2c3d4 | 0xd4c3b2a1 => TsResolution::MicroSecond,
+            0xa1b23c4d | 0x4d3cb2a1 => TsResolution::NanoSecond,
+            _ => unreachable!("Wrong magic number, can't get the header's timestamp resolution")
+        }
+    }
+}
+
+/// Represents the endianness of the global header
+#[derive(Copy, Clone, Debug)]
+pub enum Endianness {
+    Big,
+    Little
+}
+
+/// Represents each possible timestamp resolution
+#[derive(Copy, Clone, Debug)]
+pub enum TsResolution {
+    MicroSecond,
+    NanoSecond
 }
 
 /// Represents each possible Pcap datalink

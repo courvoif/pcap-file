@@ -1,6 +1,6 @@
 [package]
 name = "pcap-file"
-version = "0.5.1"
+version = "0.6.0"
 authors = ["François Courvoisier f.courvoisier@protonmail.com"]
 description ="Read and write Pcap file"
 
