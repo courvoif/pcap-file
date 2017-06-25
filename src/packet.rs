@@ -2,7 +2,7 @@
 //! and its header.
 
 use std::borrow::Cow;
-use std::io::{Cursor, Read};
+use std::io::Read;
 
 use byteorder::*;
 
@@ -165,7 +165,7 @@ impl<'a> Packet<'a> {
     /// Convert a borrowed `Packet` to an owned one.
     pub fn into_owned(self) -> Packet<'static> {
         Packet {
-            header: self.header.clone(),
+            header: self.header,
             data: Cow::Owned(self.data.into_owned())
         }
     }

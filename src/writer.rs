@@ -111,7 +111,11 @@ impl<T: Write> PcapWriter<T> {
     pub fn with_endianness(endianness: Endianness, writer: T) -> ResultChain<PcapWriter<T>> {
 
         let mut header = PcapHeader::with_datalink(Datalink::Ethernet);
-        header.magic_number = 0xd4c3b2a1;
+
+        match endianness {
+            Endianness::Big => header.magic_number = 0xa1b2c3d4,
+            Endianness::Little => header.magic_number = 0xd4c3b2a1
+        }
 
         PcapWriter::with_header(header, writer)
     }

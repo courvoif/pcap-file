@@ -1,10 +1,5 @@
 extern crate pcap_file;
 
-use std::fs;
-use std::fs::File;
-use std::io::{BufReader, Read};
-use std::path::Path;
-
 use pcap_file::{PcapReader, PcapWriter};
 
 static DATA: &'static[u8; 1455] = include_bytes!("test_in.pcap");
