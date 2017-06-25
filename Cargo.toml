@@ -6,6 +6,9 @@ description ="Read and write Pcap file"
 
 license = "MIT"
 repository = "https://github.com/courvoif/pcap_file"
+readme = "README.md"
+keywords = ["pcap", "file", "read", "write"]
+categories = ["Encoding", "Parsing"]
 
 
 [dependencies]
