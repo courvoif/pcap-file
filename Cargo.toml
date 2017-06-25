@@ -5,6 +5,7 @@ authors = ["François Courvoisier f.courvoisier@protonmail.com"]
 description ="Read and write Pcap file"
 
 license = "MIT"
+documentation = "https://docs.rs/pcap-file/"
 repository = "https://github.com/courvoif/pcap-file"
 readme = "README.md"
 keywords = ["pcap", "file", "read", "write"]
