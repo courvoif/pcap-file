@@ -1,7 +1,7 @@
 [package]
 name = "pcap-file"
 version = "0.7.0"
-authors = ["François Courvoisier f.courvoisier@protonmail.com"]
+authors = ["François Courvoisier <f.courvoisier@protonmail.com>"]
 description ="Read and write Pcap file"
 
 license = "MIT"
