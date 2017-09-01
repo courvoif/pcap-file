@@ -1,4 +1,4 @@
-//! This module contains informations relative to the global Pcap header.
+//! This module contains the `PcapHeader` struct which represents a global pcap header.
 
 use std::io::Read;
 
@@ -6,7 +6,7 @@ use byteorder::*;
 
 use errors::*;
 
-/// Struct that represent the global Pcap header of a Pcap file
+/// Struct that represents the global Pcap header of a Pcap file
 #[derive(Copy, Clone, Debug)]
 pub struct PcapHeader {
 
@@ -52,7 +52,7 @@ impl PcapHeader {
     pub fn with_datalink(datalink: DataLink) -> PcapHeader {
 
         PcapHeader {
-            magic_number: 0xa1b2c3d4,
+            magic_number: 0xA1B2C3D4,
             version_major: 2,
             version_minor: 4,
             ts_correction: 0,
@@ -62,7 +62,7 @@ impl PcapHeader {
         }
     }
 
-    /// Parse a `Reader` and create a new PcapHeader from it if possible
+    /// Parses a `Reader` and creates a new `PcapHeader` from it if possible
     pub fn from_reader<R: Read>(reader: &mut R) -> ResultChain<PcapHeader> {
 
         let magic_number = reader.read_u32::<BigEndian>()?;
@@ -75,7 +75,7 @@ impl PcapHeader {
         };
 
         // Inner function used for the initialisation of the `PcapHeader`
-        fn init_pcap_header<R: ReadBytesExt, B: ByteOrder>(reader: &mut R, magic_number:u32) -> Result<PcapHeader, Error> {
+        fn init_pcap_header<R: Read, B: ByteOrder>(reader: &mut R, magic_number:u32) -> Result<PcapHeader, Error> {
 
             Ok(
                 PcapHeader {
@@ -92,7 +92,7 @@ impl PcapHeader {
         }
     }
 
-    /// Convert the `PcapHeader` to a slice of bytes.
+    /// Convert a `PcapHeader` to a `Vec<u8>`.
     pub fn to_array<B: ByteOrder>(&self) -> ResultChain<Vec<u8>> {
 
         let mut out = Vec::with_capacity(24);
@@ -147,7 +147,7 @@ pub enum Endianness {
     Little
 }
 
-/// Represents each possible timestamp resolution
+/// Represents each possible timestamp resolution of the global header
 #[derive(Copy, Clone, Debug)]
 pub enum TsResolution {
     MicroSecond,

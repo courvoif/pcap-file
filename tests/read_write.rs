@@ -10,7 +10,7 @@ fn read() {
     let pcap_reader = PcapReader::new(&DATA[..]).unwrap();
 
     //Global header len
-    let mut data_len = 24_usize;
+    let mut data_len = 24;
     for pcap in pcap_reader {
 
         //Packet header len

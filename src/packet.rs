@@ -1,4 +1,4 @@
-//! This module contains the `Packet` and the `PacketHeader` structs which represents a packet
+//! This module contains the `Packet` and the `PacketHeader` structs which represent a packet
 //! and its header.
 
 use std::borrow::Cow;
@@ -12,16 +12,16 @@ use errors::*;
 #[derive(Copy, Clone, Default, Debug)]
 pub struct PacketHeader {
 
-    /// Timestamp seconds
+    /// Timestamp in seconds
     pub ts_sec: u32,
 
-    /// Timestamp microseconds/nanosecond
+    /// Microseconds/nanosecond part of the timestamp
     pub ts_usec: u32,
 
     /// Number of octets of the packet saved in file
     pub incl_len: u32,
 
-    /// Actual length of the packet
+    /// Original length of the packet on the wire
     pub orig_len: u32
 }
 
@@ -42,7 +42,6 @@ impl PacketHeader {
     }
 
     /// Create a new `PacketHeader` from a given reader.
-    /// Don't forget that slices implement Read ;).
     pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R) -> ResultChain<PacketHeader> {
 
         Ok(
@@ -70,7 +69,7 @@ impl PacketHeader {
     }
 }
 
-/// Describes a pcap packet.
+/// Represents a pcap packet.
 ///
 /// The payload can be owned or borrowed.
 #[derive(Clone, Debug)]
@@ -157,7 +156,7 @@ impl<'a> Packet<'a> {
             Packet {
 
                 header : header,
-                data : Cow::Borrowed(&slice[0..len as usize])
+                data : Cow::Borrowed(&slice[0..len])
             }
         )
     }

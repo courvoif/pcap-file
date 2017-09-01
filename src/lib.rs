@@ -1,8 +1,6 @@
-//! Contains all the materials needed to read and write a pcap file format.
-//!
 //! Provides two structs, `PcapReader` and `PcapWriter`, to read and write Pcap.
 //!
-//! Provides a `Packet` which contains all the data relative to one packet
+//! Also provides a `Packet` struct which represents a pcap packet with its header.
 //!
 //! # Examples
 //!
@@ -30,13 +28,14 @@ extern crate error_chain;
 
 pub mod errors;
 
-pub mod packet;
-pub use packet::Packet;
+mod packet;
+pub use packet::{Packet, PacketHeader};
 
-pub mod pcap_header;
+mod pcap_header;
+pub use pcap_header::{DataLink, PcapHeader};
 
-pub mod reader;
+mod reader;
 pub use reader::PcapReader;
 
-pub mod writer;
+mod writer;
 pub use writer::PcapWriter;

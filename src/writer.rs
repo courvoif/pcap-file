@@ -39,7 +39,8 @@ pub struct PcapWriter<T: Write> {
 
 
 impl<T: Write> PcapWriter<T> {
-    /// Create a new `PcapWriter` from an existing writer.
+
+    /// Create a new `PcapWriter` from an existing writer in BigEndian.
     ///
     /// It Automatically writes this default global pcap header to the file:
     ///
@@ -77,7 +78,7 @@ impl<T: Write> PcapWriter<T> {
         PcapWriter::with_header(header, writer)
     }
 
-    /// Create a new `PcapWriter` from an existing writer.
+    /// Create a new `PcapWriter` from an existing writer with the given endianness.
     ///
     /// It Automatically writes this default global pcap header to the file:
     ///
@@ -121,6 +122,7 @@ impl<T: Write> PcapWriter<T> {
     }
 
     /// Create a new `PcapWriter` from an existing writer with a user defined global pcap header.
+    /// The endianness is chosen by the magic number of the header.
     ///
     /// Automatically write the global pcap header to the file.
     ///
@@ -220,7 +222,7 @@ impl<T: Write> PcapWriter<T> {
         &mut self.writer
     }
 
-    /// Write some raw data, converting it to the pcap file format.
+    /// Writes some raw data, converting it to the pcap file format.
     ///
     /// # Examples
     /// ```rust,no_run
@@ -244,7 +246,7 @@ impl<T: Write> PcapWriter<T> {
         self.write_packet(&packet)
     }
 
-    /// Write a `Packet`.
+    /// Writes a `Packet`.
     ///
     /// # Examples
     /// ```rust,no_run

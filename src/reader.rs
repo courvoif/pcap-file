@@ -1,12 +1,14 @@
 //! This module contains the `PcapReader` struct which is used to read from a pcap file
 
-use std::io::Read;
-
 use byteorder::{BigEndian, LittleEndian};
+
+use errors::*;
 
 use packet::Packet;
 use pcap_header::{PcapHeader, Endianness};
-use errors::*;
+
+use std::io::Read;
+
 
 /// This struct wraps another reader and enables it to read a Pcap formated stream.
 ///
