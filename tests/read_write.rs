@@ -13,6 +13,8 @@ fn read() {
     let mut data_len = 24;
     for pcap in pcap_reader {
 
+        let pcap = pcap.unwrap();
+
         //Packet header len
         data_len += 16;
         data_len += pcap.data.len();
@@ -31,7 +33,7 @@ fn read_write() {
     let mut pcap_writer = PcapWriter::with_header(header, out).unwrap();
 
     for pcap in pcap_reader {
-        pcap_writer.write_packet(&pcap).unwrap();
+        pcap_writer.write_packet(&pcap.unwrap()).unwrap();
     }
 
     out = pcap_writer.into_writer();

@@ -71,7 +71,7 @@ impl PcapHeader {
 
             0xa1b2c3d4 | 0xa1b23c4d => return init_pcap_header::<_, BigEndian>(reader, magic_number),
             0xd4c3b2a1 | 0x4d3cb2a1 => return init_pcap_header::<_, LittleEndian>(reader, magic_number),
-            _ => bail!(ErrorKind::BadMagicNumber(magic_number))
+            _ => bail!(ErrorKind::WrongField(format!("Wrong PacketHeader.magic_number: {}", magic_number)))
         };
 
         // Inner function used for the initialisation of the `PcapHeader`

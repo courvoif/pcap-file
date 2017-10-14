@@ -44,13 +44,30 @@ impl PacketHeader {
     /// Create a new `PacketHeader` from a given reader.
     pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R) -> ResultChain<PacketHeader> {
 
+        let ts_sec = reader.read_u32::<B>()?;
+        let ts_usec = reader.read_u32::<B>()?;
+        let incl_len = reader.read_u32::<B>()?;
+        let orig_len = reader.read_u32::<B>()?;
+
+        if incl_len > 0xFFFF {
+            bail!(ErrorKind::WrongField(format!("PacketHeader.incl_len = {} > 0xFFFF", incl_len)));
+        }
+
+        if orig_len > 0xFFFF {
+            bail!(ErrorKind::WrongField(format!("PacketHeader.orig_len = {} > 0xFFFF", orig_len)));
+        }
+
+        if incl_len > orig_len {
+            bail!(ErrorKind::WrongField(format!("PacketHeader.incl_len ({}) > PacketHeader.orig_len ({})", incl_len, orig_len)));
+        }
+
         Ok(
             PacketHeader {
 
-                ts_sec : reader.read_u32::<B>()?,
-                ts_usec : reader.read_u32::<B>()?,
-                incl_len : reader.read_u32::<B>()?,
-                orig_len : reader.read_u32::<B>()?
+                ts_sec,
+                ts_usec,
+                incl_len,
+                orig_len
             }
         )
     }
@@ -112,21 +129,13 @@ impl<'a> Packet<'a> {
 
         let header = PacketHeader::from_reader::<R, B>(reader)?;
 
-        if header.incl_len > 0xFFFF {
-            bail!(ErrorKind::BadLength(header.incl_len));
-        }
-
-        if header.orig_len > 0xFFFF {
-            bail!(ErrorKind::BadLength(header.orig_len));
-        }
-
         let mut bytes = vec![0u8; header.incl_len as usize];
         reader.read_exact(&mut bytes)?;
 
         Ok(
             Packet {
 
-                header : header,
+                header,
                 data : Cow::Owned(bytes)
             }
         )
@@ -138,14 +147,6 @@ impl<'a> Packet<'a> {
         let mut slice = &slice[..];
 
         let header = PacketHeader::from_reader::<_, B>(&mut slice)?;
-
-        if header.incl_len > 0xFFFF {
-            bail!(ErrorKind::BadLength(header.incl_len));
-        }
-
-        if header.orig_len > 0xFFFF {
-            bail!(ErrorKind::BadLength(header.orig_len));
-        }
 
         if header.incl_len > slice.len() as u32 {
             bail!(ErrorKind::BufferUnderflow(header.incl_len as u64, slice.len() as u64))

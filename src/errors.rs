@@ -7,16 +7,10 @@ error_chain! {
 
     errors {
 
-        /// Invalid magic number for the global Pcap header
-        BadMagicNumber(magic: u32) {
-            description("Bad magic number")
-            display("Bad magic number : {:X}", magic)
-        }
-
-        /// Bad header length value
-        BadLength(length: u32) {
-            description("Bad length")
-            display("Bad length : {}", length)
+        /// Invalid header field value
+        WrongField(cause: String) {
+            description("Wrong field value in a header")
+            display("{}", cause)
         }
 
         /// Not enough space in the buffer to read the requested bytes

@@ -16,6 +16,10 @@
 //!
 //! // Read test.pcap
 //! for pcap in pcap_reader {
+//!
+//!     //Check if there is no error
+//!     let pcap = pcap.unwrap();
+//!
 //!     //Write each packet of test.pcap in out.pcap
 //!     pcap_writer.write_packet(&pcap).unwrap();
 //! }
@@ -33,6 +37,8 @@ pub use packet::{Packet, PacketHeader};
 
 mod pcap_header;
 pub use pcap_header::{DataLink, PcapHeader};
+
+pub mod peek_reader;
 
 mod reader;
 pub use reader::PcapReader;

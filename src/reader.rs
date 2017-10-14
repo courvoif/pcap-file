@@ -7,6 +7,8 @@ use errors::*;
 use packet::Packet;
 use pcap_header::{PcapHeader, Endianness};
 
+use peek_reader::PeekReader;
+
 use std::io::Read;
 
 
@@ -29,15 +31,18 @@ use std::io::Read;
 /// // Read test.pcap
 /// for pcap in pcap_reader {
 ///
+///     //Check if there is no error
+///     let pcap = pcap.unwrap();
+///
 ///     //Write each packet of test.pcap in out.pcap
-///     pcap_writer.write_packet(&pcap);
+///     pcap_writer.write_packet(&pcap).unwrap();
 /// }
 /// ```
 #[derive(Debug)]
 pub struct PcapReader<T: Read> {
 
     pub header: PcapHeader,
-    reader: T
+    reader: PeekReader<T>
 }
 
 impl <T:Read> PcapReader<T>{
@@ -65,7 +70,7 @@ impl <T:Read> PcapReader<T>{
             PcapReader {
 
                 header : PcapHeader::from_reader(&mut reader)?,
-                reader : reader
+                reader : PeekReader::new(reader)
             }
         )
     }
@@ -83,7 +88,7 @@ impl <T:Read> PcapReader<T>{
     /// let file2 = pcap_reader.into_reader();
     /// ```
     pub fn into_reader(self) -> T{
-        self.reader
+        self.reader.inner
     }
 
 
@@ -102,7 +107,7 @@ impl <T:Read> PcapReader<T>{
     /// let file_ref = pcap_reader.get_ref();
     /// ```
     pub fn get_ref(&self) -> &T{
-        &self.reader
+        &self.reader.inner
     }
 
     /// Gets a mutable reference to the underlying reader.
@@ -120,20 +125,30 @@ impl <T:Read> PcapReader<T>{
     /// let file_mut = pcap_reader.get_mut();
     /// ```
     pub fn get_mut(&mut self) -> &mut T{
-        &mut self.reader
+        &mut self.reader.inner
     }
 }
 
 impl <T:Read> Iterator for PcapReader<T> {
 
-    type Item = Packet<'static>;
+    type Item = ResultChain<Packet<'static>>;
 
-    fn next(&mut self) -> Option<Packet<'static>> {
+    fn next(&mut self) -> Option<ResultChain<Packet<'static>>> {
 
-        match self.header.endianness() {
-            Endianness::Big => Packet::from_reader::<T, BigEndian>(&mut self.reader).ok(),
-            Endianness::Little => Packet::from_reader::<T, LittleEndian>(&mut self.reader).ok()
+        match self.reader.is_empty() {
+            Ok(is_empty) if is_empty => {
+                return None;
+            },
+            Err(err) => return Some(Err(err.into())),
+            _ => {}
         }
+
+        Some(
+            match self.header.endianness() {
+                Endianness::Big => Packet::from_reader::<_, BigEndian>(&mut self.reader),
+                Endianness::Little => Packet::from_reader::<_, LittleEndian>(&mut self.reader)
+            }
+        )
     }
 
 }

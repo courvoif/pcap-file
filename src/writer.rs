@@ -27,8 +27,11 @@ use errors::*;
 /// // Read test.pcap
 /// for pcap in pcap_reader {
 ///
+///     //Check if there is no error
+///     let pcap = pcap.unwrap();
+///
 ///     //Write each packet of test.pcap in out.pcap
-///     pcap_writer.write_packet(&pcap);
+///     pcap_writer.write_packet(&pcap).unwrap();
 /// }
 /// ```
 #[derive(Debug)]
@@ -135,8 +138,7 @@ impl<T: Write> PcapWriter<T> {
     ///
     /// ```rust,no_run
     /// use std::fs::File;
-    /// use pcap_file::PcapWriter;
-    /// use pcap_file::pcap_header::{PcapHeader, DataLink};
+    /// use pcap_file::{DataLink, PcapHeader, PcapWriter};
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     ///
@@ -268,8 +270,6 @@ impl<T: Write> PcapWriter<T> {
             Endianness::Big => self.writer.write_all(&packet.header.to_array::<BigEndian>()?)?,
             Endianness::Little => self.writer.write_all(&packet.header.to_array::<LittleEndian>()?)?
         }
-        self.writer.write_all(&packet.data)?;
-
-        Ok(())
+        self.writer.write_all(&packet.data).map_err(|err| err.into())
     }
 }
