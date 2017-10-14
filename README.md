@@ -1,3 +1,7 @@
+[![Crates.io](https://img.shields.io/crates/v/pcap-file.svg)]()
+[![rustdoc](https://img.shields.io/badge/Doc-pcap--file-green.svg)](https://docs.rs/pcap-file/)
+[![Crates.io](https://img.shields.io/crates/l/pcap-file.svg)]()
+
 # pcap-file
 A small crate providing everything you need to read and write pcap files in RUST.
 
