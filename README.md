@@ -39,6 +39,9 @@ let mut pcap_writer = PcapWriter::new(file_out).unwrap();
 // Read test.pcap
 for pcap in pcap_reader {
 
+    //Check if there is no error
+    let pcap = pcap.unwrap();
+
     //Write each packet of test.pcap in out.pcap
     pcap_writer.write_packet(&pcap).unwrap();
 }
