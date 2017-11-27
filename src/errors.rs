@@ -9,7 +9,7 @@ error_chain! {
 
         /// Invalid header field value
         WrongField(cause: String) {
-            description("Wrong field value in a header")
+            description("Wrong value in a header")
             display("{}", cause)
         }
 

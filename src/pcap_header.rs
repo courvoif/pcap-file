@@ -32,6 +32,21 @@ pub struct PcapHeader {
     pub datalink: DataLink
 }
 
+impl Default for PcapHeader {
+
+    fn default() -> Self {
+        PcapHeader {
+            magic_number: 0xa1b2c3d4,
+            version_major: 2,
+            version_minor: 4,
+            ts_correction: 0,
+            ts_accuracy: 0,
+            snaplen: 65535,
+            datalink: DataLink::ETHERNET,
+        }
+    }
+}
+
 
 impl PcapHeader {
 
@@ -52,13 +67,8 @@ impl PcapHeader {
     pub fn with_datalink(datalink: DataLink) -> PcapHeader {
 
         PcapHeader {
-            magic_number: 0xA1B2C3D4,
-            version_major: 2,
-            version_minor: 4,
-            ts_correction: 0,
-            ts_accuracy: 0,
-            snaplen: 65535,
-            datalink: datalink
+            datalink,
+            ..Default::default()
         }
     }
 
