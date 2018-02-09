@@ -1,4 +1,6 @@
 use std::io::{Read, Result as IoResult};
+use std::io::Seek;
+use std::io::SeekFrom;
 
 #[derive(Debug)]
 pub struct PeekReader<R: Read> {
@@ -23,6 +25,16 @@ impl<R: Read> Read for PeekReader<R> {
         else {
             self.inner.read(buf)
         }
+    }
+}
+
+impl<R: Read + Seek> Seek for PeekReader<R> {
+    fn seek(&mut self, pos: SeekFrom) -> ::std::io::Result<u64> {
+        if let Some(_) = self.peeked {
+            self.inner.seek(SeekFrom::Current(-1))?;
+            self.peeked = None;
+        }
+        self.inner.seek(pos)
     }
 }
 
