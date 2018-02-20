@@ -31,6 +31,7 @@ extern crate byteorder;
 extern crate error_chain;
 
 pub mod errors;
+pub use errors::*;
 
 mod packet;
 pub use packet::{Packet, PacketHeader};
