@@ -20,7 +20,7 @@ Add it to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-pcap-file = "0.9.0"
+pcap-file = "0.10.0"
 ```
 
 
