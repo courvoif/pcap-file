@@ -7,7 +7,7 @@ use byteorder::*;
 use errors::*;
 
 /// Struct that represents the global Pcap header of a Pcap file
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PcapHeader {
 
     /// Magic number
@@ -151,14 +151,14 @@ impl PcapHeader {
 }
 
 /// Represents the endianness of the global header
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Endianness {
     Big,
     Little
 }
 
 /// Represents each possible timestamp resolution of the global header
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum TsResolution {
     MicroSecond,
     NanoSecond
@@ -166,7 +166,7 @@ pub enum TsResolution {
 
 /// Represents each possible Pcap datalink
 #[allow(non_camel_case_types)]
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DataLink {
 
     NULL,
