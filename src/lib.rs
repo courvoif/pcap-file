@@ -37,7 +37,7 @@ mod packet;
 pub use packet::{Packet, PacketHeader};
 
 mod pcap_header;
-pub use pcap_header::{DataLink, PcapHeader};
+pub use pcap_header::{DataLink, PcapHeader, Endianness};
 
 pub mod peek_reader;
 

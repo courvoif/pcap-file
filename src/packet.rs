@@ -9,7 +9,7 @@ use byteorder::*;
 use errors::*;
 
 /// Describes a pcap packet header.
-#[derive(Copy, Clone, Default, Debug)]
+#[derive(Copy, Clone, Default, Debug, Eq, PartialEq)]
 pub struct PacketHeader {
 
     /// Timestamp in seconds
