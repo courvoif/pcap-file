@@ -1,8 +1,9 @@
 [package]
 name = "pcap-file"
-version = "0.10.0"
-authors = ["François Courvoisier <f.courvoisier@protonmail.com>"]
-description ="Read and write Pcap file"
+edition = "2018"
+version = "1.0.0-rc1"
+authors = ["Courvoif <courvoif@pm.me>"]
+description = "Read and write Pcap file"
 
 license = "MIT"
 documentation = "https://docs.rs/pcap-file/"
@@ -11,7 +12,6 @@ readme = "README.md"
 keywords = ["pcap", "file", "read", "write"]
 categories = ["encoding", "parsing"]
 
-
 [dependencies]
-byteorder = "1.0"
-error-chain = "0.11"
+byteorder = "1.3.2"
+failure = "0.1.5"

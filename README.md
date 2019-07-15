@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/l/pcap-file.svg)](https://github.com/courvoif/pcap-file/blob/master/LICENSE)
 
 # pcap-file
-A small crate providing everything you need to read and write pcap files in RUST.
+A small crate to read and write pcap files in RUST.
 
 Licensed under MIT.
 
@@ -20,15 +20,14 @@ Add it to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-pcap-file = "0.10.0"
+pcap-file = "1.0.0-rc.1"
 ```
 
-
-### Example
+### Examples
 
 ```rust
 use std::fs::File;
-use pcap_file::{PcapReader, PcapWriter};
+use pcap_file::pcap::{PcapReader, PcapWriter};
 
 let file_in = File::open("test.pcap").expect("Error opening file");
 let pcap_reader = PcapReader::new(file_in).unwrap();
