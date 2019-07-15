@@ -13,7 +13,7 @@ use crate::{
 use std::io::Read;
 
 
-/// This struct wraps another reader and enables it to read a Pcap formated stream.
+/// This struct wraps another reader and uses it to read a Pcap formated stream.
 ///
 /// It implements the Iterator trait in order to read one packet at a time
 ///
