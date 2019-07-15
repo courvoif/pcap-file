@@ -1,9 +1,7 @@
-use std::io::{Read, Result as IoResult};
-use std::io::Seek;
-use std::io::SeekFrom;
+use std::io::{Read, Result as IoResult, Seek, SeekFrom};
 
 #[derive(Debug)]
-pub struct PeekReader<R: Read> {
+pub(crate) struct PeekReader<R: Read> {
     pub inner: R,
     pub peeked: Option<u8>,
 }
@@ -20,6 +18,8 @@ impl<R: Read> Read for PeekReader<R> {
 
             buf[0] = b;
             self.peeked = None;
+
+            //Read the input and add one to the number of byte read
             self.inner.read(&mut buf[1..]).map(|x| x+1)
         }
         else {
@@ -30,7 +30,7 @@ impl<R: Read> Read for PeekReader<R> {
 
 impl<R: Read + Seek> Seek for PeekReader<R> {
     fn seek(&mut self, pos: SeekFrom) -> ::std::io::Result<u64> {
-        if let Some(_) = self.peeked {
+        if self.peeked.is_some() {
             self.inner.seek(SeekFrom::Current(-1))?;
             self.peeked = None;
         }

@@ -2,12 +2,13 @@
 
 use byteorder::{BigEndian, LittleEndian};
 
-use errors::*;
-
-use packet::Packet;
-use pcap_header::{PcapHeader, Endianness};
-
-use peek_reader::PeekReader;
+use crate::{
+    Endianness,
+    errors::*,
+    packet::Packet,
+    pcap::PcapHeader,
+    peek_reader::PeekReader
+};
 
 use std::io::Read;
 
@@ -20,7 +21,7 @@ use std::io::Read;
 ///
 /// ```rust,no_run
 /// use std::fs::File;
-/// use pcap_file::{PcapReader, PcapWriter};
+/// use pcap_file::pcap::{PcapReader, PcapWriter};
 ///
 /// let file_in = File::open("test.pcap").expect("Error opening file");
 /// let pcap_reader = PcapReader::new(file_in).unwrap();
@@ -59,12 +60,12 @@ impl <T:Read> PcapReader<T>{
     /// # Examples
     /// ```rust,no_run
     /// use std::fs::File;
-    /// use pcap_file::PcapReader;
+    /// use pcap_file::pcap::PcapReader;
     ///
     /// let file_in = File::open("test.pcap").expect("Error opening file");
     /// let pcap_reader = PcapReader::new(file_in).unwrap();
     /// ```
-    pub fn new(mut reader:T) -> ResultChain<PcapReader<T>> {
+    pub fn new(mut reader:T) -> ResultParsing<PcapReader<T>> {
 
         Ok(
             PcapReader {
@@ -76,36 +77,13 @@ impl <T:Read> PcapReader<T>{
     }
 
     /// Consumes the `PcapReader`, returning the wrapped reader.
-    ///
-    /// # Examples
-    /// ```rust,no_run
-    /// use std::fs::File;
-    /// use pcap_file::PcapReader;
-    ///
-    /// let file = File::open("test.pcap").expect("Error opening file");
-    /// let pcap_reader = PcapReader::new(file).unwrap();
-    ///
-    /// let file2 = pcap_reader.into_reader();
-    /// ```
     pub fn into_reader(self) -> T{
         self.reader.inner
     }
 
-
     /// Gets a reference to the underlying reader.
     ///
     /// It is not advised to directly read from the underlying reader.
-    ///
-    /// # Examples
-    /// ```rust,no_run
-    /// use std::fs::File;
-    /// use pcap_file::PcapReader;
-    ///
-    /// let file = File::open("test.pcap").expect("Error opening file");
-    /// let pcap_reader = PcapReader::new(file).unwrap();
-    ///
-    /// let file_ref = pcap_reader.get_ref();
-    /// ```
     pub fn get_ref(&self) -> &T{
         &self.reader.inner
     }
@@ -113,17 +91,6 @@ impl <T:Read> PcapReader<T>{
     /// Gets a mutable reference to the underlying reader.
     ///
     /// It is not advised to directly read from the underlying reader.
-    ///
-    /// # Examples
-    /// ```rust,no_run
-    /// use std::fs::File;
-    /// use pcap_file::PcapReader;
-    ///
-    /// let file = File::open("test.pcap").expect("Error opening file");
-    /// let mut pcap_reader = PcapReader::new(file).unwrap();
-    ///
-    /// let file_mut = pcap_reader.get_mut();
-    /// ```
     pub fn get_mut(&mut self) -> &mut T{
         &mut self.reader.inner
     }
@@ -131,9 +98,9 @@ impl <T:Read> PcapReader<T>{
 
 impl <T:Read> Iterator for PcapReader<T> {
 
-    type Item = ResultChain<Packet<'static>>;
+    type Item = ResultParsing<Packet<'static>>;
 
-    fn next(&mut self) -> Option<ResultChain<Packet<'static>>> {
+    fn next(&mut self) -> Option<ResultParsing<Packet<'static>>> {
 
         match self.reader.is_empty() {
             Ok(is_empty) if is_empty => {
@@ -143,10 +110,12 @@ impl <T:Read> Iterator for PcapReader<T> {
             _ => {}
         }
 
+        let ts_resolution = self.header.ts_resolution();
+
         Some(
             match self.header.endianness() {
-                Endianness::Big => Packet::from_reader::<_, BigEndian>(&mut self.reader),
-                Endianness::Little => Packet::from_reader::<_, LittleEndian>(&mut self.reader)
+                Endianness::Big => Packet::from_reader::<_, BigEndian>(&mut self.reader, ts_resolution),
+                Endianness::Little => Packet::from_reader::<_, LittleEndian>(&mut self.reader, ts_resolution)
             }
         )
     }

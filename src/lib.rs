@@ -4,9 +4,9 @@
 //!
 //! # Examples
 //!
-//! ```rust,no_run
+//! ```no_run
 //! use std::fs::File;
-//! use pcap_file::{PcapReader, PcapWriter};
+//! use pcap_file::pcap::{PcapReader, PcapWriter};
 //!
 //! let file_in = File::open("test.pcap").expect("Error opening file");
 //! let pcap_reader = PcapReader::new(file_in).unwrap();
@@ -27,22 +27,12 @@
 //! ```
 extern crate byteorder;
 
-#[macro_use]
-extern crate error_chain;
-
 pub mod errors;
-pub use errors::*;
-
+mod peek_reader;
+pub mod pcap;
 mod packet;
+mod common;
+
+pub use common::*;
 pub use packet::{Packet, PacketHeader};
 
-mod pcap_header;
-pub use pcap_header::{DataLink, PcapHeader, Endianness};
-
-pub mod peek_reader;
-
-mod reader;
-pub use reader::PcapReader;
-
-mod writer;
-pub use writer::PcapWriter;
