@@ -204,10 +204,10 @@ impl<'a> Packet<'a> {
     }
 
     /// Convert a borrowed `Packet` to an owned one.
-    pub fn into_owned(self) -> Packet<'static> {
+    pub fn to_owned(&self) -> Packet<'static> {
         Packet {
             header: self.header,
-            data: Cow::Owned(self.data.into_owned())
+            data: Cow::Owned(self.data.as_ref().to_owned())
         }
     }
 }
