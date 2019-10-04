@@ -207,7 +207,7 @@ impl<'a> Packet<'a> {
     pub fn to_owned(& self) -> Packet<'static> {
         Packet {
             header: self.header,
-            data: Cow::Owned(self.data.to_owned())
+            data: Cow::Owned(self.data.as_ref().to_owned())
         }
     }
 }

@@ -30,6 +30,7 @@ extern crate byteorder;
 pub mod errors;
 mod peek_reader;
 pub mod pcap;
+mod pcapng;
 mod packet;
 mod common;
 
