@@ -8,28 +8,29 @@ use std::borrow::Cow;
 
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
+#[derive(Clone, Debug)]
 pub struct EnhancedPacketBlock<'a> {
 
     /// It specifies the interface this packet comes from.
     /// The correct interface will be the one whose Interface Description Block
     /// (within the current Section of the file) is identified by the same number of this field.
-    interface_id: u32,
+    pub interface_id: u32,
 
     /// The timestamp is a single 64-bit unsigned integer that represents the number of units of time
     /// that have elapsed since 1970-01-01 00:00:00 UTC.
-    timestamp: u64,
+    pub timestamp: u64,
 
     /// Number of octets captured from the packet (i.e. the length of the Packet Data field).
-    captured_len: u32,
+    pub captured_len: u32,
 
     /// Actual length of the packet when it was transmitted on the network.
-    original_len: u32,
+    pub original_len: u32,
 
     /// The data coming from the network, including link-layer headers.
-    data:&'a [u8],
+    pub data:&'a [u8],
 
     /// Options
-    options: Vec<EnhancedPacketOption<'a>>
+    pub options: Vec<EnhancedPacketOption<'a>>
 }
 
 impl<'a> EnhancedPacketBlock<'a> {

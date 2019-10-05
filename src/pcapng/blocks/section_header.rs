@@ -4,7 +4,7 @@ use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use crate::Endianness;
 use crate::pcapng::blocks::section_header::SectionHeaderOption::Comment;
 use crate::peek_reader::PeekReader;
-use crate::pcapng::blocks::opts_from_slice;
+use crate::pcapng::blocks::common::opts_from_slice;
 use std::borrow::Cow;
 
 ///Section Header Block: it defines the most important characteristics of the capture file.
@@ -69,7 +69,7 @@ impl<'a> SectionHeaderBlock<'a> {
         }
     }
 
-    fn endianness(&self) -> Endianness {
+    pub fn endianness(&self) -> Endianness {
 
         match self.magic {
 

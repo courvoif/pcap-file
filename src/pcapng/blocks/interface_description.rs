@@ -1,4 +1,4 @@
-use crate::pcapng::blocks::{opts_from_slice, read_to_string, read_to_vec};
+use crate::pcapng::blocks::common::{opts_from_slice, read_to_string, read_to_vec};
 use crate::errors::PcapError;
 use crate::DataLink;
 use std::io::Read;
@@ -8,20 +8,21 @@ use std::borrow::Cow;
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.
+#[derive(Clone, Debug)]
 pub struct InterfaceDescriptionBlock<'a> {
 
     /// A value that defines the link layer type of this interface.
     /// The list of Standardized Link Layer Type codes is available in the
     /// [tcpdump.org link-layer header types registry.](http://www.tcpdump.org/linktypes.html).
-    linktype: DataLink,
+    pub linktype: DataLink,
 
     /// Maximum number of octets captured from each packet.
     /// The portion of each packet that exceeds this value will not be stored in the file.
     /// A value of zero indicates no limit.
-    snaplen: u32,
+    pub snaplen: u32,
 
     /// Options
-    options: Vec<InterfaceDescriptionOption<'a>>
+    pub options: Vec<InterfaceDescriptionOption<'a>>
 }
 
 impl<'a> InterfaceDescriptionBlock<'a> {
@@ -47,6 +48,7 @@ impl<'a> InterfaceDescriptionBlock<'a> {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum InterfaceDescriptionOption<'a> {
 
     Comment(&'a str),
