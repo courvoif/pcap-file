@@ -28,15 +28,10 @@ impl<'a> NameResolutionBlock<'a> {
             let (mut record, slice_tmp) = Record::from_slice::<B>(slice)?;
             slice = slice_tmp;
 
-            if record.type_ == 0 {
-                if record.length != 0 {
-                    return Err(PcapError::InvalidField("NameResolutionBlock: nrb_record_end length != 0"));
-                }
-
-                break;
+            match record {
+                Record::End => break,
+                _ => records.push(record)
             }
-
-            records.push(record);
         }
 
         let (options, slice) = NameResolutionOption::from_slice::<B>(slice)?;
@@ -51,10 +46,11 @@ impl<'a> NameResolutionBlock<'a> {
 }
 
 #[derive(Clone, Debug)]
-pub struct Record<'a> {
-    pub type_: u16,
-    pub length: u16,
-    pub value: &'a[u8]
+pub enum Record<'a> {
+    End,
+    Ipv4(Ipv4Record<'a>),
+    Ipv6(Ipv6Record<'a>),
+    Unknown(UnknownRecord<'a>)
 }
 
 impl<'a> Record<'a> {
@@ -63,19 +59,121 @@ impl<'a> Record<'a> {
 
         let type_ = slice.read_u16::<B>()?;
         let length = slice.read_u16::<B>()?;
+        let pad_len = (4 - length % 4) % 4;
 
         if slice.len() < length as usize {
             return Err(PcapError::IncompleteBuffer(length as usize - slice.len()));
         }
         let value = &slice[..length as usize];
 
-        let record = Record {
+        let record = match type_ {
+            0 => {
+                if length != 0 {
+                    return Err(PcapError::InvalidField("NameResolutionBlock: nrb_record_end length != 0"));
+                }
+                Record::End
+            },
+            1 => {
+                let record = Ipv4Record::from_slice(value)?;
+                Record::Ipv4(record)
+            },
+            2 => {
+                let record = Ipv6Record::from_slice(value)?;
+                Record::Ipv6(record)
+            },
+            _=> {
+                let record = UnknownRecord::new(type_, length, value);
+                Record::Unknown(record)
+            }
+        };
+
+        let len = length as usize + pad_len as usize;
+
+        Ok((record, &slice[len..]))
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Ipv4Record<'a> {
+    pub ip_addr: &'a [u8],
+    pub names: Vec<&'a str>
+}
+
+impl<'a> Ipv4Record<'a> {
+
+    pub fn from_slice(mut slice: &'a[u8]) -> Result<Self, PcapError> {
+
+        if slice.len() < 6 as usize {
+            return Err(PcapError::InvalidField("NameResolutionBlock: Ipv4Record len < 6"));
+        }
+
+        let ip_addr = &slice[..4];
+        slice = &slice[4..];
+
+        let mut names = vec![];
+        while slice.len() != 0 {
+            let (name, slice_tmp) = str_from_u8_null_terminated(slice)?;
+            slice = slice_tmp;
+            names.push(name);
+        }
+
+        let record = Ipv4Record {
+            ip_addr,
+            names
+        };
+
+        Ok(record)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Ipv6Record<'a> {
+    pub ip_addr: &'a [u8],
+    pub names: Vec<&'a str>
+}
+
+impl<'a> Ipv6Record<'a> {
+
+    pub fn from_slice(mut slice: &'a[u8]) -> Result<Self, PcapError> {
+
+        if slice.len() < 18 as usize {
+            return Err(PcapError::InvalidField("NameResolutionBlock: Ipv6Record len < 18"));
+        }
+
+        let ip_addr = &slice[..18];
+        slice = &slice[18..];
+
+        let mut names = vec![];
+        while slice.len() != 0 {
+            let (name, slice_tmp) = str_from_u8_null_terminated(slice)?;
+            slice = slice_tmp;
+            names.push(name);
+        }
+
+        let record = Ipv6Record {
+            ip_addr,
+            names
+        };
+
+        Ok(record)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct UnknownRecord<'a> {
+    pub type_: u16,
+    pub length: u16,
+    pub value: &'a [u8]
+}
+
+impl<'a> UnknownRecord<'a> {
+
+    fn new(type_: u16, length: u16, value: &'a[u8]) -> Self {
+        UnknownRecord {
             type_,
             length,
             value
-        };
-
-        Ok((record, &slice[length as usize..]))
+        }
     }
 }
 
@@ -126,3 +224,15 @@ impl<'a> NameResolutionOption<'a> {
         })
     }
 }
+
+pub fn str_from_u8_null_terminated(src: &[u8]) -> Result<(&str, &[u8]), PcapError> {
+    let nul_range_end = src.iter()
+        .position(|&c| c == b'\0')
+        .ok_or(PcapError::InvalidField("Non null terminated string"))?;
+
+    let s = std::str::from_utf8(&src[0..nul_range_end])?;
+    let end = &src[nul_range_end..];
+
+    Ok((s, end))
+}
+
