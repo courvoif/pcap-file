@@ -4,7 +4,7 @@ use crate::errors::PcapError;
 use crate::peek_reader::PeekReader;
 use std::borrow::Cow;
 use byteorder::WriteBytesExt;
-use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock, NameResolutionBlock, InterfaceStatisticsBlock};
+use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock, NameResolutionBlock, InterfaceStatisticsBlock, SystemdJournalExportBlock};
 
 #[derive(Clone, Debug)]
 pub struct Block<'a> {
@@ -54,6 +54,27 @@ impl<'a> Block<'a> {
         }
     }
 
+    pub fn simple_packet(&self) -> Option<&SimplePacketBlock<'a>> {
+        match &self.parsed {
+            ParsedBlock::SimplePacket(inner) => Some(inner),
+            _ => None
+        }
+    }
+
+    pub fn name_resolution(&self) -> Option<&NameResolutionBlock<'a>> {
+        match &self.parsed {
+            ParsedBlock::NameResolution(inner) => Some(inner),
+            _ => None
+        }
+    }
+
+    pub fn interface_statistics(&self) -> Option<&InterfaceStatisticsBlock<'a>> {
+        match &self.parsed {
+            ParsedBlock::InterfaceStatistics(inner) => Some(inner),
+            _ => None
+        }
+    }
+
     pub fn enhanced_packet(&self) -> Option<&EnhancedPacketBlock<'a>> {
         match &self.parsed {
             ParsedBlock::EnhancedPacket(inner) => Some(inner),
@@ -61,9 +82,9 @@ impl<'a> Block<'a> {
         }
     }
 
-    pub fn simple_packet(&self) -> Option<&SimplePacketBlock<'a>> {
+    pub fn systemd_journal_export(&self) -> Option<&SystemdJournalExportBlock<'a>> {
         match &self.parsed {
-            ParsedBlock::SimplePacket(inner) => Some(inner),
+            ParsedBlock::SystemdJournalExport(inner) => Some(inner),
             _ => None
         }
     }
@@ -223,6 +244,7 @@ pub enum ParsedBlock<'a> {
     NameResolution(NameResolutionBlock<'a>),
     InterfaceStatistics(InterfaceStatisticsBlock<'a>),
     EnhancedPacket(EnhancedPacketBlock<'a>),
+    SystemdJournalExport(SystemdJournalExportBlock<'a>),
     Unknown
 }
 
@@ -255,6 +277,10 @@ impl<'a> ParsedBlock<'a> {
             0x00000006 => {
                 let (block, slice) = EnhancedPacketBlock::from_slice::<B>(slice)?;
                 Ok((ParsedBlock::EnhancedPacket(block), slice))
+            },
+            0x00000009 => {
+                let (block, slice) = SystemdJournalExportBlock::from_slice::<B>(slice)?;
+                Ok((ParsedBlock::SystemdJournalExport(block), slice))
             }
             _ => Ok((ParsedBlock::Unknown, slice))
         }
