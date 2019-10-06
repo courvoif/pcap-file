@@ -4,7 +4,7 @@ use crate::errors::PcapError;
 use crate::peek_reader::PeekReader;
 use std::borrow::Cow;
 use byteorder::WriteBytesExt;
-use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock};
+use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock, NameResolutionBlock, InterfaceStatisticsBlock};
 
 #[derive(Clone, Debug)]
 pub struct Block<'a> {
@@ -219,8 +219,10 @@ impl<'a> RawBlock<'a> {
 pub enum ParsedBlock<'a> {
     SectionHeader(SectionHeaderBlock<'a>),
     InterfaceDescription(InterfaceDescriptionBlock<'a>),
-    EnhancedPacket(EnhancedPacketBlock<'a>),
     SimplePacket(SimplePacketBlock<'a>),
+    NameResolution(NameResolutionBlock<'a>),
+    InterfaceStatistics(InterfaceStatisticsBlock<'a>),
+    EnhancedPacket(EnhancedPacketBlock<'a>),
     Unknown
 }
 
@@ -237,6 +239,18 @@ impl<'a> ParsedBlock<'a> {
             0x00000001 => {
                 let (block, slice) = InterfaceDescriptionBlock::from_slice::<B>(slice)?;
                 Ok((ParsedBlock::InterfaceDescription(block), slice))
+            },
+            0x00000003 => {
+                let (block, slice) = SimplePacketBlock::from_slice::<B>(slice)?;
+                Ok((ParsedBlock::SimplePacket(block), slice))
+            },
+            0x00000004 => {
+                let (block, slice) = NameResolutionBlock::from_slice::<B>(slice)?;
+                Ok((ParsedBlock::NameResolution(block), slice))
+            },
+            0x00000005 => {
+                let (block, slice) = InterfaceStatisticsBlock::from_slice::<B>(slice)?;
+                Ok((ParsedBlock::InterfaceStatistics(block), slice))
             },
             0x00000006 => {
                 let (block, slice) = EnhancedPacketBlock::from_slice::<B>(slice)?;

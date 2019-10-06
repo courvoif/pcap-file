@@ -15,3 +15,6 @@ pub use common::*;
 
 pub(crate) mod name_resolution;
 pub use name_resolution::*;
+
+pub(crate) mod interface_statistics;
+pub use interface_statistics::*;
