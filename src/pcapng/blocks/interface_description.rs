@@ -1,10 +1,7 @@
-use crate::pcapng::blocks::common::{opts_from_slice, read_to_string, read_to_vec};
+use crate::pcapng::blocks::common::opts_from_slice;
 use crate::errors::PcapError;
 use crate::DataLink;
-use std::io::Read;
 use byteorder::{ByteOrder, ReadBytesExt};
-use crate::peek_reader::PeekReader;
-use std::borrow::Cow;
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.
@@ -27,16 +24,16 @@ pub struct InterfaceDescriptionBlock<'a> {
 
 impl<'a> InterfaceDescriptionBlock<'a> {
 
-    pub fn from_slice<B:ByteOrder>(mut slice: &'a[u8]) -> Result<(Self, &'a[u8]), PcapError> {
+    pub fn from_slice<B:ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         if slice.len() < 6 {
-            return Err(PcapError::IncompleteBuffer(6 - slice.len()));
+            return Err(PcapError::InvalidField("InterfaceDescriptionBlock: block length < 6"));
         }
 
         let linktype = slice.read_u16::<B>()? as u32;
         let linktype = linktype.into();
         let snaplen = slice.read_u32::<B>()?;
-        let (options, slice) = InterfaceDescriptionOption::from_slice::<B>(slice)?;
+        let (slice, options) = InterfaceDescriptionOption::from_slice::<B>(slice)?;
 
         let block = InterfaceDescriptionBlock {
             linktype,
@@ -44,7 +41,7 @@ impl<'a> InterfaceDescriptionBlock<'a> {
             options
         };
 
-        Ok((block, slice))
+        Ok((slice, block))
     }
 }
 
@@ -102,9 +99,9 @@ pub enum InterfaceDescriptionOption<'a> {
 
 impl<'a> InterfaceDescriptionOption<'a> {
 
-    fn from_slice<B:ByteOrder>(slice: &'a[u8]) -> Result<(Vec<Self>, &'a[u8]), PcapError> {
+    fn from_slice<B:ByteOrder>(slice: &'a[u8]) -> Result<(&'a[u8], Vec<Self>), PcapError> {
 
-        opts_from_slice::<B, _, _>(slice, |mut slice, type_, len| {
+        opts_from_slice::<B, _, _>(slice, |mut slice, type_, _len| {
 
             let opt = match type_ {
 

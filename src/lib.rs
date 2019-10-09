@@ -25,15 +25,13 @@
 //! }
 //!
 //! ```
-extern crate byteorder;
 
-pub mod errors;
-mod peek_reader;
-pub mod pcap;
-mod pcapng;
-mod packet;
-mod common;
-
+pub(crate) mod common;
 pub use common::*;
-pub use packet::{Packet, PacketHeader};
 
+pub(crate) mod errors;
+pub use errors::*;
+
+pub mod pcap;
+pub mod pcapng;
+pub(crate) mod peek_reader;

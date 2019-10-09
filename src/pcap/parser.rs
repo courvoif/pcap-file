@@ -5,7 +5,7 @@ use byteorder::{BigEndian, LittleEndian};
 use crate::{
     Endianness,
     errors::*,
-    packet::Packet,
+    pcap::Packet,
     pcap::PcapHeader
 };
 

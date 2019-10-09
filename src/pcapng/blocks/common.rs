@@ -1,7 +1,6 @@
 use byteorder::{ByteOrder, LittleEndian, BigEndian, ReadBytesExt};
-use std::io::{Read, Take, Error as IoError};
+use std::io::Read;
 use crate::errors::PcapError;
-use crate::peek_reader::PeekReader;
 use std::borrow::Cow;
 use byteorder::WriteBytesExt;
 use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock, NameResolutionBlock, InterfaceStatisticsBlock, SystemdJournalExportBlock};
@@ -19,7 +18,7 @@ impl Block<'static> {
 
         let raw = RawBlock::from_reader::<R, B>(reader)?;
         let slice: &'static [u8] = unsafe {std::mem::transmute(&raw.body[..])};
-        let (parsed, _) = ParsedBlock::from_slice::<B>(raw.type_, slice)?;
+        let (_, parsed) = ParsedBlock::from_slice::<B>(raw.type_, slice)?;
 
         let block = Block {
             raw,
@@ -36,53 +35,53 @@ impl<'a> Block<'a> {
         &self.raw
     }
 
-    pub fn parsed(&self) -> &ParsedBlock<'a> {
+    pub fn parsed<'b>(&'b self) -> &ParsedBlock<'b> {
         &self.parsed
     }
 
-    pub fn section_header(&self) -> Option<&SectionHeaderBlock<'a>> {
+    pub fn section_header<'b>(&'b self) -> Option<&SectionHeaderBlock<'b>> {
         match &self.parsed {
             ParsedBlock::SectionHeader(inner) => Some(inner),
             _ => None
         }
     }
 
-    pub fn interface_description(&self) -> Option<&InterfaceDescriptionBlock<'a>> {
+    pub fn interface_description<'b>(&'b self) -> Option<&InterfaceDescriptionBlock<'b>> {
         match &self.parsed {
             ParsedBlock::InterfaceDescription(inner) => Some(inner),
             _ => None
         }
     }
 
-    pub fn simple_packet(&self) -> Option<&SimplePacketBlock<'a>> {
+    pub fn simple_packet<'b>(&'b self) -> Option<&SimplePacketBlock<'b>> {
         match &self.parsed {
             ParsedBlock::SimplePacket(inner) => Some(inner),
             _ => None
         }
     }
 
-    pub fn name_resolution(&self) -> Option<&NameResolutionBlock<'a>> {
+    pub fn name_resolution<'b>(&'b self) -> Option<&NameResolutionBlock<'b>> {
         match &self.parsed {
             ParsedBlock::NameResolution(inner) => Some(inner),
             _ => None
         }
     }
 
-    pub fn interface_statistics(&self) -> Option<&InterfaceStatisticsBlock<'a>> {
+    pub fn interface_statistics<'b>(&'b self) -> Option<&InterfaceStatisticsBlock<'b>> {
         match &self.parsed {
             ParsedBlock::InterfaceStatistics(inner) => Some(inner),
             _ => None
         }
     }
 
-    pub fn enhanced_packet(&self) -> Option<&EnhancedPacketBlock<'a>> {
+    pub fn enhanced_packet<'b>(&'b self) -> Option<&EnhancedPacketBlock<'b>> {
         match &self.parsed {
             ParsedBlock::EnhancedPacket(inner) => Some(inner),
             _ => None
         }
     }
 
-    pub fn systemd_journal_export(&self) -> Option<&SystemdJournalExportBlock<'a>> {
+    pub fn systemd_journal_export<'b>(&'b self) -> Option<&SystemdJournalExportBlock<'b>> {
         match &self.parsed {
             ParsedBlock::SystemdJournalExport(inner) => Some(inner),
             _ => None
@@ -169,7 +168,7 @@ impl<'a> RawBlock<'a> {
         )
     }
 
-    fn from_slice<B: ByteOrder>(mut slice: &'a[u8]) -> Result<(Self, &[u8]), PcapError> {
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a[u8]) -> Result<(Self, &[u8]), PcapError> {
 
         if slice.len() < 12 {
             return Err(PcapError::IncompleteBuffer(12 - slice.len()));
@@ -216,7 +215,7 @@ impl<'a> RawBlock<'a> {
         //Common case
         let initial_len = slice.read_u32::<B>()?;
 
-        let mut body = &slice[..initial_len as usize];
+        let body = &slice[..initial_len as usize];
         slice = &slice[initial_len as usize ..];
 
         let trailer_len = slice.read_u32::<B>()?;
@@ -250,44 +249,44 @@ pub enum ParsedBlock<'a> {
 
 impl<'a> ParsedBlock<'a> {
 
-    pub fn from_slice<B: ByteOrder>(type_: u32, slice: &'a[u8]) -> Result<(Self, &'a[u8]), PcapError> {
+    pub fn from_slice<B: ByteOrder>(type_: u32, slice: &'a[u8]) -> Result<(&'a[u8], Self), PcapError> {
 
         match type_ {
 
             0x0A0D0D0A => {
-                let (block, slice) = SectionHeaderBlock::from_slice(slice)?;
-                Ok((ParsedBlock::SectionHeader(block), slice))
+                let (rem, block) = SectionHeaderBlock::from_slice(slice)?;
+                Ok((rem, ParsedBlock::SectionHeader(block)))
             },
             0x00000001 => {
-                let (block, slice) = InterfaceDescriptionBlock::from_slice::<B>(slice)?;
-                Ok((ParsedBlock::InterfaceDescription(block), slice))
+                let (rem, block) = InterfaceDescriptionBlock::from_slice::<B>(slice)?;
+                Ok((rem, ParsedBlock::InterfaceDescription(block)))
             },
             0x00000003 => {
-                let (block, slice) = SimplePacketBlock::from_slice::<B>(slice)?;
-                Ok((ParsedBlock::SimplePacket(block), slice))
+                let (rem, block) = SimplePacketBlock::from_slice::<B>(slice)?;
+                Ok((rem, ParsedBlock::SimplePacket(block)))
             },
             0x00000004 => {
-                let (block, slice) = NameResolutionBlock::from_slice::<B>(slice)?;
-                Ok((ParsedBlock::NameResolution(block), slice))
+                let (rem, block) = NameResolutionBlock::from_slice::<B>(slice)?;
+                Ok((rem, ParsedBlock::NameResolution(block)))
             },
             0x00000005 => {
-                let (block, slice) = InterfaceStatisticsBlock::from_slice::<B>(slice)?;
-                Ok((ParsedBlock::InterfaceStatistics(block), slice))
+                let (rem, block) = InterfaceStatisticsBlock::from_slice::<B>(slice)?;
+                Ok((rem, ParsedBlock::InterfaceStatistics(block)))
             },
             0x00000006 => {
-                let (block, slice) = EnhancedPacketBlock::from_slice::<B>(slice)?;
-                Ok((ParsedBlock::EnhancedPacket(block), slice))
+                let (rem, block) = EnhancedPacketBlock::from_slice::<B>(slice)?;
+                Ok((rem, ParsedBlock::EnhancedPacket(block)))
             },
             0x00000009 => {
-                let (block, slice) = SystemdJournalExportBlock::from_slice::<B>(slice)?;
-                Ok((ParsedBlock::SystemdJournalExport(block), slice))
+                let (rem, block) = SystemdJournalExportBlock::from_slice::<B>(slice)?;
+                Ok((rem, ParsedBlock::SystemdJournalExport(block)))
             }
-            _ => Ok((ParsedBlock::Unknown, slice))
+            _ => Ok((slice, ParsedBlock::Unknown))
         }
     }
 }
 
-pub(crate) fn opts_from_slice<'a, B, F, O>(mut slice: &'a [u8], func: F) -> Result<(Vec<O>, &'a [u8]), PcapError>
+pub(crate) fn opts_from_slice<'a, B, F, O>(mut slice: &'a [u8], func: F) -> Result<(&'a [u8], Vec<O>), PcapError>
     where B: ByteOrder,
           F: Fn(&'a [u8], u8, usize) -> Result<O, PcapError>
 
@@ -296,26 +295,25 @@ pub(crate) fn opts_from_slice<'a, B, F, O>(mut slice: &'a [u8], func: F) -> Resu
 
     // If there is nothing left in the slice, it means that there is no more options
     if slice.is_empty() {
-        return Ok((options, slice))
+        return Ok((slice, options))
     }
 
-    let mut type_ = 1;
-    while type_ != 0 {
+    loop {
 
         if slice.len() < 3 {
-            return Err(PcapError::IncompleteBuffer(3 - slice.len()));
+            return Err(PcapError::InvalidField("Option: slice.len() < 3"));
         }
 
         let type_ = slice.read_u8()?;
         let length = slice.read_u16::<B>()? as usize;
-        let pad_len = (4 - length % 4) % 4;
+        let pad_len = (4 - (length % 4)) % 4;
 
         if type_ == 0 {
-            return Ok((options, slice));
+            return Ok((slice, options));
         }
 
         if slice.len() < length + pad_len {
-            return Err(PcapError::IncompleteBuffer(length + pad_len - slice.len()));
+            return Err(PcapError::InvalidField("Option: length + pad.len() < slice.len()"));
         }
 
         let mut tmp_slice = &slice[..length];
@@ -326,23 +324,4 @@ pub(crate) fn opts_from_slice<'a, B, F, O>(mut slice: &'a [u8], func: F) -> Resu
 
         options.push(opt);
     }
-
-    Ok((options, slice))
-}
-
-
-pub(crate) fn read_to_string(reader: &mut impl Read, length: usize)-> Result<String, IoError> {
-
-    let mut string = String::with_capacity(length);
-    reader.read_to_string(&mut string)?;
-
-    Ok(string)
-}
-
-pub(crate) fn read_to_vec(reader: &mut impl Read, length: usize)-> Result<Vec<u8>, IoError> {
-
-    let mut vec = Vec::with_capacity(length);
-    reader.read_to_end(&mut vec)?;
-
-    Ok(vec)
 }

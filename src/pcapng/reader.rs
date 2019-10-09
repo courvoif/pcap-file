@@ -1,10 +1,10 @@
 use std::io::Read;
-use byteorder::{ByteOrder, BigEndian, LittleEndian};
-use crate::errors::{ResultParsing, PcapError};
+use byteorder::{BigEndian, LittleEndian};
+use crate::errors::PcapError;
 use crate::pcapng::blocks::{Block, ParsedBlock, EnhancedPacketBlock, SectionHeaderBlock, InterfaceDescriptionBlock};
 use crate::Endianness;
 
-struct PcapngReader<R: Read> {
+pub struct PcapngReader<R: Read> {
     reader: R,
     section: Block<'static>,
     interfaces: Vec<Block<'static>>
@@ -49,7 +49,7 @@ impl<R: Read> Iterator for PcapngReader<R> {
 
         let endianess = self.section.section_header().unwrap().endianness();
 
-        let mut block = if endianess == Endianness::Big {
+        let block = if endianess == Endianness::Big {
             Block::from_reader::<_, BigEndian>(&mut self.reader).ok()?
         }
         else {

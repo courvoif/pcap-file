@@ -1,11 +1,7 @@
-use std::io::{Read, BufRead};
 use crate::errors::PcapError;
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use crate::Endianness;
-use crate::pcapng::blocks::section_header::SectionHeaderOption::Comment;
-use crate::peek_reader::PeekReader;
 use crate::pcapng::blocks::common::opts_from_slice;
-use std::borrow::Cow;
 
 ///Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug)]
@@ -36,16 +32,20 @@ pub struct SectionHeaderBlock<'a> {
 
 impl<'a> SectionHeaderBlock<'a> {
 
-    pub fn from_slice(mut slice: &'a [u8]) -> Result<(Self, &'a [u8]), PcapError> {
+    pub fn from_slice(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+
+        if slice.len() < 16 {
+            return Err(PcapError::InvalidField("SectionHeaderBlock: block length < 16"));
+        }
 
         let magic = slice.read_u32::<BigEndian>()?;
 
-        let (major_version, minor_version, section_length, options, slice) = match magic {
+        let (rem, major_version, minor_version, section_length, options) = match magic {
 
             0x1A2B3C4D => parse_inner::<BigEndian>(slice)?,
             0x4D3C2B1A => parse_inner::<LittleEndian>(slice)?,
 
-            _ => return Err(PcapError::InvalidField("SectionHeaderBlock invalid magic number"))
+            _ => unreachable!()
         };
 
         let block = SectionHeaderBlock {
@@ -56,16 +56,16 @@ impl<'a> SectionHeaderBlock<'a> {
             options
         };
 
-        return Ok((block, slice));
+        return Ok((rem, block));
 
-        fn parse_inner<B: ByteOrder>(mut slice: &[u8]) -> Result<(u16, u16, i64, Vec<SectionHeaderOption<'_>>, &[u8]), PcapError> {
+        fn parse_inner<B: ByteOrder>(mut slice: &[u8]) -> Result<(&[u8], u16, u16, i64, Vec<SectionHeaderOption>), PcapError> {
 
             let maj_ver = slice.read_u16::<B>()?;
             let min_ver = slice.read_u16::<B>()?;
             let sec_len = slice.read_i64::<B>()?;
-            let (opts, slice) = SectionHeaderOption::from_slice::<B>(slice)?;
+            let (rem, opts) = SectionHeaderOption::from_slice::<B>(slice)?;
 
-            Ok((maj_ver, min_ver, sec_len, opts, slice))
+            Ok((rem, maj_ver, min_ver, sec_len, opts))
         }
     }
 
@@ -100,18 +100,16 @@ pub enum SectionHeaderOption<'a> {
 
 impl<'a> SectionHeaderOption<'a> {
 
-    fn from_slice<B:ByteOrder>(slice: &'a [u8]) -> Result<(Vec<Self>, &'a [u8]), PcapError> {
+    fn from_slice<B:ByteOrder>(slice: &'a [u8]) -> Result<(&'a [u8], Vec<Self>), PcapError> {
 
-        opts_from_slice::<B, _, _>(slice, |slice, type_, len| {
-
-            let mut string = std::str::from_utf8(slice)?;
+        opts_from_slice::<B, _, _>(slice, |slice, type_, _len| {
 
             let opt = match type_ {
 
-                1 => SectionHeaderOption::Comment(string),
-                2 => SectionHeaderOption::Hardware(string),
-                3 => SectionHeaderOption::OS(string),
-                4 => SectionHeaderOption::UserApplication(string),
+                1 => SectionHeaderOption::Comment(std::str::from_utf8(slice)?),
+                2 => SectionHeaderOption::Hardware(std::str::from_utf8(slice)?),
+                3 => SectionHeaderOption::OS(std::str::from_utf8(slice)?),
+                4 => SectionHeaderOption::UserApplication(std::str::from_utf8(slice)?),
 
                 _ => return Err(PcapError::InvalidField("SectionHeaderOption type invalid"))
             };

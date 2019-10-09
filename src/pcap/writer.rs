@@ -4,7 +4,7 @@ use crate::{
     Endianness,
     errors::*,
     pcap::PcapHeader,
-    packet::{Packet, PacketHeader}
+    pcap::{Packet, PacketHeader}
 };
 
 use std::{

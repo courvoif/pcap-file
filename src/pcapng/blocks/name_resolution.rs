@@ -1,10 +1,7 @@
-use crate::pcapng::blocks::common::{opts_from_slice, read_to_string, read_to_vec};
+use crate::pcapng::blocks::common::opts_from_slice;
 use crate::errors::PcapError;
-use crate::DataLink;
-use std::io::Read;
 use byteorder::{ByteOrder, ReadBytesExt};
-use crate::peek_reader::PeekReader;
-use std::borrow::Cow;
+
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
 /// (present in the captured packets) and their corresponding canonical names and it is optional.
@@ -20,12 +17,12 @@ pub struct NameResolutionBlock<'a> {
 
 impl<'a> NameResolutionBlock<'a> {
 
-    pub fn from_slice<B:ByteOrder>(mut slice: &'a[u8]) -> Result<(Self, &'a[u8]), PcapError> {
+    pub fn from_slice<B:ByteOrder>(mut slice: &'a[u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         let mut records = Vec::new();
 
         loop {
-            let (mut record, slice_tmp) = Record::from_slice::<B>(slice)?;
+            let (slice_tmp, record) = Record::from_slice::<B>(slice)?;
             slice = slice_tmp;
 
             match record {
@@ -34,14 +31,14 @@ impl<'a> NameResolutionBlock<'a> {
             }
         }
 
-        let (options, slice) = NameResolutionOption::from_slice::<B>(slice)?;
+        let (rem, options) = NameResolutionOption::from_slice::<B>(slice)?;
 
         let block = NameResolutionBlock {
             records,
             options
         };
 
-        Ok((block, slice))
+        Ok((rem, block))
     }
 }
 
@@ -55,14 +52,14 @@ pub enum Record<'a> {
 
 impl<'a> Record<'a> {
 
-    pub fn from_slice<B:ByteOrder>(mut slice: &'a[u8]) -> Result<(Self, &'a[u8]), PcapError> {
+    pub fn from_slice<B:ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a[u8], Self), PcapError> {
 
         let type_ = slice.read_u16::<B>()?;
         let length = slice.read_u16::<B>()?;
         let pad_len = (4 - length % 4) % 4;
 
         if slice.len() < length as usize {
-            return Err(PcapError::IncompleteBuffer(length as usize - slice.len()));
+            return Err(PcapError::InvalidField("NameResolutionBlock: Record length > slice.len()"));
         }
         let value = &slice[..length as usize];
 
@@ -89,7 +86,7 @@ impl<'a> Record<'a> {
 
         let len = length as usize + pad_len as usize;
 
-        Ok((record, &slice[len..]))
+        Ok((&slice[len..], record))
     }
 }
 
@@ -101,7 +98,7 @@ pub struct Ipv4Record<'a> {
 
 impl<'a> Ipv4Record<'a> {
 
-    pub fn from_slice(mut slice: &'a[u8]) -> Result<Self, PcapError> {
+    pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, PcapError> {
 
         if slice.len() < 6 as usize {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv4Record len < 6"));
@@ -112,7 +109,7 @@ impl<'a> Ipv4Record<'a> {
 
         let mut names = vec![];
         while slice.len() != 0 {
-            let (name, slice_tmp) = str_from_u8_null_terminated(slice)?;
+            let (slice_tmp, name) = str_from_u8_null_terminated(slice)?;
             slice = slice_tmp;
             names.push(name);
         }
@@ -145,7 +142,7 @@ impl<'a> Ipv6Record<'a> {
 
         let mut names = vec![];
         while slice.len() != 0 {
-            let (name, slice_tmp) = str_from_u8_null_terminated(slice)?;
+            let (slice_tmp, name) = str_from_u8_null_terminated(slice)?;
             slice = slice_tmp;
             names.push(name);
         }
@@ -196,9 +193,9 @@ pub enum NameResolutionOption<'a> {
 
 impl<'a> NameResolutionOption<'a> {
 
-    fn from_slice<B:ByteOrder>(slice: &'a[u8]) -> Result<(Vec<Self>, &'a[u8]), PcapError> {
+    fn from_slice<B:ByteOrder>(slice: &'a[u8]) -> Result<(&'a[u8], Vec<Self>), PcapError> {
 
-        opts_from_slice::<B, _, _>(slice, |mut slice, type_, len| {
+        opts_from_slice::<B, _, _>(slice, |slice, type_, _len| {
 
             let opt = match type_ {
 
@@ -225,7 +222,7 @@ impl<'a> NameResolutionOption<'a> {
     }
 }
 
-pub fn str_from_u8_null_terminated(src: &[u8]) -> Result<(&str, &[u8]), PcapError> {
+pub fn str_from_u8_null_terminated(src: &[u8]) -> Result<(&[u8], &str), PcapError> {
     let nul_range_end = src.iter()
         .position(|&c| c == b'\0')
         .ok_or(PcapError::InvalidField("Non null terminated string"))?;
@@ -233,6 +230,6 @@ pub fn str_from_u8_null_terminated(src: &[u8]) -> Result<(&str, &[u8]), PcapErro
     let s = std::str::from_utf8(&src[0..nul_range_end])?;
     let end = &src[nul_range_end..];
 
-    Ok((s, end))
+    Ok((end, s))
 }
 

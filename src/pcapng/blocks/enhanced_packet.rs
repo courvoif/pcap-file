@@ -1,10 +1,6 @@
-use crate::pcapng::blocks::{opts_from_slice, read_to_string, read_to_vec};
+use crate::pcapng::blocks::opts_from_slice;
 use crate::errors::PcapError;
-use crate::DataLink;
-use std::io::Read;
 use byteorder::{ByteOrder, ReadBytesExt};
-use crate::peek_reader::PeekReader;
-use std::borrow::Cow;
 
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
@@ -27,7 +23,7 @@ pub struct EnhancedPacketBlock<'a> {
     pub original_len: u32,
 
     /// The data coming from the network, including link-layer headers.
-    pub data:&'a [u8],
+    pub data: &'a [u8],
 
     /// Options
     pub options: Vec<EnhancedPacketOption<'a>>
@@ -35,10 +31,10 @@ pub struct EnhancedPacketBlock<'a> {
 
 impl<'a> EnhancedPacketBlock<'a> {
 
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(Self, &'a [u8]), PcapError> {
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         if slice.len() < 20 {
-            return Err(PcapError::IncompleteBuffer(20 - slice.len()));
+            return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
         }
 
         let interface_id = slice.read_u32::<B>()?;
@@ -46,17 +42,17 @@ impl<'a> EnhancedPacketBlock<'a> {
         let captured_len = slice.read_u32::<B>()?;
         let original_len = slice.read_u32::<B>()?;
 
-        let pad_len = (4 - captured_len as usize % 4) % 4;
+        let pad_len = (4 - (captured_len as usize % 4)) % 4;
         let tot_len = captured_len as usize + pad_len;
 
         if slice.len() < tot_len {
-            return Err(PcapError::IncompleteBuffer(tot_len - slice.len()));
+            return Err(PcapError::InvalidField("EnhancedPacketBlock: captured_len + padding > block length"));
         }
 
-        let mut data = &slice[..captured_len as usize];
+        let data = &slice[..captured_len as usize];
         slice = &slice[tot_len..];
 
-        let (options, slice) = EnhancedPacketOption::from_slice::<B>(slice)?;
+        let (slice, options) = EnhancedPacketOption::from_slice::<B>(slice)?;
         let block = EnhancedPacketBlock {
             interface_id,
             timestamp,
@@ -66,7 +62,7 @@ impl<'a> EnhancedPacketBlock<'a> {
             options
         };
 
-        Ok((block, slice))
+        Ok((slice, block))
     }
 }
 
@@ -92,9 +88,9 @@ pub enum EnhancedPacketOption<'a> {
 
 impl<'a> EnhancedPacketOption<'a> {
 
-    pub fn from_slice<B:ByteOrder>(slice: &'a [u8]) -> Result<(Vec<Self>, &'a[u8]), PcapError> {
+    pub fn from_slice<B:ByteOrder>(slice: &'a [u8]) -> Result<(&'a[u8], Vec<Self>), PcapError> {
 
-        opts_from_slice::<B, _, _>(slice, |mut slice, type_, len| {
+        opts_from_slice::<B, _, _>(slice, |mut slice, type_, _len| {
 
             let opt = match type_ {
 

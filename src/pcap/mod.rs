@@ -1,9 +1,11 @@
-mod pcap_header;
-mod pcap_parser;
+mod header;
+mod packet;
+mod parser;
 mod reader;
 mod writer;
 
-pub use pcap_header::PcapHeader;
-pub use pcap_parser::PcapParser;
-pub use reader::PcapReader;
-pub use writer::PcapWriter;
+pub use header::*;
+pub use packet::*;
+pub use parser::*;
+pub use reader::*;
+pub use writer::*;

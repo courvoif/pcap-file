@@ -1,9 +1,5 @@
 use crate::errors::PcapError;
-use crate::DataLink;
-use std::io::Read;
-use byteorder::{ByteOrder, ReadBytesExt};
-use crate::peek_reader::PeekReader;
-use std::borrow::Cow;
+use byteorder::ByteOrder;
 
 
 /// The systemd Journal Export Block is a lightweight containter for systemd Journal Export Format entry data.
@@ -16,12 +12,12 @@ pub struct SystemdJournalExportBlock<'a> {
 
 impl<'a> SystemdJournalExportBlock<'a> {
 
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(Self, &'a[u8]), PcapError> {
+    pub fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&'a[u8], Self), PcapError> {
 
         let packet = SystemdJournalExportBlock {
             journal_entry: slice,
         };
 
-        Ok((packet, &[]))
+        Ok((&[], packet))
     }
 }
