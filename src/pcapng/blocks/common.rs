@@ -5,6 +5,8 @@ use std::borrow::Cow;
 use byteorder::WriteBytesExt;
 use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock, NameResolutionBlock, InterfaceStatisticsBlock, SystemdJournalExportBlock};
 
+
+/// PcapNg Block
 #[derive(Clone, Debug)]
 pub struct Block<'a> {
 
@@ -14,6 +16,7 @@ pub struct Block<'a> {
 
 impl Block<'static> {
 
+    /// Create an "owned" `Block` from a reader
     pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R) -> Result<Block<'static>, PcapError> {
 
         let raw = RawBlock::from_reader::<R, B>(reader)?;
@@ -31,10 +34,12 @@ impl Block<'static> {
 
 impl<'a> Block<'a> {
 
+    /// Get a reference to the raw block data
     pub fn raw(&self) -> &RawBlock<'a> {
         &self.raw
     }
 
+    /// Get a reference to the parsed block data
     pub fn parsed<'b>(&'b self) -> &ParsedBlock<'b> {
         &self.parsed
     }
@@ -101,6 +106,7 @@ impl<'a> Block<'a> {
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //  |                      Block Total Length                       |
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+/// PcapNg Raw Block
 #[derive(Clone, Debug)]
 pub struct RawBlock<'a> {
     pub type_: u32,
@@ -111,6 +117,7 @@ pub struct RawBlock<'a> {
 
 impl<'a> RawBlock<'a> {
 
+    /// Create an "owned" `RawBlock` from a reader
     fn from_reader<R:Read, B: ByteOrder>(reader: &mut R) -> Result<RawBlock<'static>, PcapError> {
 
         let type_ = reader.read_u32::<B>()?;
@@ -123,20 +130,29 @@ impl<'a> RawBlock<'a> {
             let initial_len = match magic {
                 0x1A2B3C4D => initial_len,
                 0x4D3C2B1A => initial_len.swap_bytes(),
-                _ => return Err(PcapError::InvalidField("SectionHeaderBlock invalid magic number"))
+                _ => return Err(PcapError::InvalidField("SectionHeaderBlock: invalid magic number"))
             };
 
-            let mut body = vec![0_u8; initial_len as usize];
-            body.write_u32::<BigEndian>(magic)?;
-            reader.read_exact(&mut body[2..])?;
+            if initial_len < 12 {
+                return Err(PcapError::InvalidField("Block: initial_len < 12"))
+            }
+
+            let body_len = initial_len - 12;
+            let mut body = vec![0_u8; body_len as usize];
+            // Rewrite the magic in the body
+            (&mut body[..]).write_u32::<BigEndian>(magic)?;
+            reader.read_exact(&mut body[4..])?;
 
             let trailer_len = match magic {
                 0x1A2B3C4D => reader.read_u32::<BigEndian>()?,
                 0x4D3C2B1A => reader.read_u32::<LittleEndian>()?,
                 _ => unreachable!()
             };
+            if initial_len != trailer_len {
+                return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
+            }
 
-            return Ok(
+            Ok(
                 RawBlock {
                     type_,
                     initial_len,
@@ -145,29 +161,35 @@ impl<'a> RawBlock<'a> {
                 }
             )
         }
+        else {
 
-        //Common case
-        let initial_len = reader.read_u32::<B>()?;
-
-        let mut body = vec![0_u8; initial_len as usize];
-        reader.read_exact(&mut body[2..])?;
-
-        let trailer_len = reader.read_u32::<B>()?;
-
-        if initial_len != trailer_len {
-            return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
-        }
-
-        Ok(
-            RawBlock {
-                type_,
-                initial_len,
-                body: Cow::Owned(body),
-                trailer_len
+            //Common case
+            let initial_len = reader.read_u32::<B>()?;
+            if initial_len < 12 {
+                return Err(PcapError::InvalidField("Block: initial_len < 12"))
             }
-        )
+
+            let body_len = initial_len - 12;
+            let mut body = vec![0_u8; body_len as usize];
+            reader.read_exact(&mut body[..])?;
+
+            let trailer_len = reader.read_u32::<B>()?;
+            if initial_len != trailer_len {
+                return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
+            }
+
+            Ok(
+                RawBlock {
+                    type_,
+                    initial_len,
+                    body: Cow::Owned(body),
+                    trailer_len
+                }
+            )
+        }
     }
 
+    /// Create an "borrowed" `RawBlock` from a slice
     pub fn from_slice<B: ByteOrder>(mut slice: &'a[u8]) -> Result<(Self, &[u8]), PcapError> {
 
         if slice.len() < 12 {
@@ -180,9 +202,9 @@ impl<'a> RawBlock<'a> {
         if type_ == 0x0A0D0D0A {
             let initial_len = slice.read_u32::<BigEndian>()?;
 
-            let body_to_end = slice;
+            let mut tmp_slice = slice;
 
-            let magic = slice.read_u32::<BigEndian>()?;
+            let magic = tmp_slice.read_u32::<BigEndian>()?;
 
             let initial_len = match magic {
                 0x1A2B3C4D => initial_len,
@@ -190,11 +212,11 @@ impl<'a> RawBlock<'a> {
                 _ => return Err(PcapError::InvalidField("SectionHeaderBlock invalid magic number"))
             };
 
-            if body_to_end.len() < initial_len as usize {
-                return Err(PcapError::IncompleteBuffer(initial_len as usize - body_to_end.len()));
+            if slice.len() < initial_len as usize {
+                return Err(PcapError::IncompleteBuffer(initial_len as usize - slice.len()));
             }
-            let body = &body_to_end[..initial_len as usize];
-            let mut end = &body_to_end[initial_len as usize ..];
+            let body = &slice[..initial_len as usize];
+            let mut end = &slice[initial_len as usize ..];
 
             let trailer_len = match magic {
                 0x1A2B3C4D => end.read_u32::<BigEndian>()?,
@@ -235,6 +257,8 @@ impl<'a> RawBlock<'a> {
     }
 }
 
+
+/// PcapNg parsed blocks
 #[derive(Clone, Debug)]
 pub enum ParsedBlock<'a> {
     SectionHeader(SectionHeaderBlock<'a>),
@@ -249,6 +273,7 @@ pub enum ParsedBlock<'a> {
 
 impl<'a> ParsedBlock<'a> {
 
+    /// Create a `ParsedBlock` from a slice
     pub fn from_slice<B: ByteOrder>(type_: u32, slice: &'a[u8]) -> Result<(&'a[u8], Self), PcapError> {
 
         match type_ {
@@ -286,14 +311,15 @@ impl<'a> ParsedBlock<'a> {
     }
 }
 
+/// Parse all options in a block
 pub(crate) fn opts_from_slice<'a, B, F, O>(mut slice: &'a [u8], func: F) -> Result<(&'a [u8], Vec<O>), PcapError>
     where B: ByteOrder,
-          F: Fn(&'a [u8], u8, usize) -> Result<O, PcapError>
+          F: Fn(&'a [u8], u16, u16) -> Result<O, PcapError>
 
 {
     let mut options = vec![];
 
-    // If there is nothing left in the slice, it means that there is no more options
+    // If there is nothing left in the slice, it means that there is no option
     if slice.is_empty() {
         return Ok((slice, options))
     }
@@ -304,7 +330,7 @@ pub(crate) fn opts_from_slice<'a, B, F, O>(mut slice: &'a [u8], func: F) -> Resu
             return Err(PcapError::InvalidField("Option: slice.len() < 3"));
         }
 
-        let type_ = slice.read_u8()?;
+        let type_ = slice.read_u16::<B>()?;
         let length = slice.read_u16::<B>()? as usize;
         let pad_len = (4 - (length % 4)) % 4;
 
@@ -313,11 +339,11 @@ pub(crate) fn opts_from_slice<'a, B, F, O>(mut slice: &'a [u8], func: F) -> Resu
         }
 
         if slice.len() < length + pad_len {
-            return Err(PcapError::InvalidField("Option: length + pad.len() < slice.len()"));
+            return Err(PcapError::InvalidField("Option: length + pad.len() > slice.len()"));
         }
 
         let mut tmp_slice = &slice[..length];
-        let opt = func(&mut tmp_slice, type_, length)?;
+        let opt = func(&mut tmp_slice, type_, length as u16)?;
 
         // Jump over the padding
         slice = &slice[length+pad_len..];

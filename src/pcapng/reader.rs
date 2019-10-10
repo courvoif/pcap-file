@@ -3,9 +3,10 @@ use byteorder::{BigEndian, LittleEndian};
 use crate::errors::PcapError;
 use crate::pcapng::blocks::{Block, ParsedBlock, EnhancedPacketBlock, SectionHeaderBlock, InterfaceDescriptionBlock};
 use crate::Endianness;
+use crate::peek_reader::PeekReader;
 
 pub struct PcapngReader<R: Read> {
-    reader: R,
+    reader: PeekReader<R>,
     section: Block<'static>,
     interfaces: Vec<Block<'static>>
 }
@@ -22,7 +23,7 @@ impl<R: Read> PcapngReader<R> {
 
         Ok(
             PcapngReader {
-                reader,
+                reader: PeekReader::new(reader),
                 section,
                 interfaces: vec![]
             }
@@ -43,23 +44,39 @@ impl<R: Read> PcapngReader<R> {
 }
 
 impl<R: Read> Iterator for PcapngReader<R> {
-    type Item = Block<'static>;
+    type Item = Result<Block<'static>, PcapError>;
 
     fn next(&mut self) -> Option<Self::Item> {
 
+        match self.reader.is_empty() {
+            Ok(is_empty) if is_empty => return None,
+            Err(err) => return Some(Err(err.into())),
+            _ => {}
+        }
+
         let endianess = self.section.section_header().unwrap().endianness();
 
-        let block = if endianess == Endianness::Big {
-            Block::from_reader::<_, BigEndian>(&mut self.reader).ok()?
+        let block_res = if endianess == Endianness::Big {
+            Block::from_reader::<_, BigEndian>(&mut self.reader)
         }
         else {
-            Block::from_reader::<_, LittleEndian>(&mut self.reader).ok()?
+            Block::from_reader::<_, LittleEndian>(&mut self.reader)
         };
 
-        if block.interface_description().is_some() {
-            self.interfaces.push(block.clone());
-        }
+        if let Ok(block) = block_res {
 
-        Some(block)
+            if block.section_header().is_some() {
+                self.section = block.clone();
+                self.interfaces.clear();
+            }
+            else if block.interface_description().is_some() {
+                self.interfaces.push(block.clone());
+            }
+
+            Some(Ok(block))
+        }
+        else {
+            Some(block_res)
+        }
     }
 }

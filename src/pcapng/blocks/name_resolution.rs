@@ -214,7 +214,7 @@ impl<'a> NameResolutionOption<'a> {
                     NameResolutionOption::NsDnsIpv6Addr(slice)
                 },
 
-                _ => return Err(PcapError::InvalidField("InterfaceDescriptionOption type invalid"))
+                _ => return Err(PcapError::InvalidField("NameResolutionOption: type invalid"))
             };
 
             Ok(opt)
@@ -223,13 +223,20 @@ impl<'a> NameResolutionOption<'a> {
 }
 
 pub fn str_from_u8_null_terminated(src: &[u8]) -> Result<(&[u8], &str), PcapError> {
-    let nul_range_end = src.iter()
+    let nul_pos = src.iter()
         .position(|&c| c == b'\0')
         .ok_or(PcapError::InvalidField("Non null terminated string"))?;
 
-    let s = std::str::from_utf8(&src[0..nul_range_end])?;
-    let end = &src[nul_range_end..];
+    let s = std::str::from_utf8(&src[0..nul_pos])?;
 
-    Ok((end, s))
+    let rem = &src[nul_pos..];
+    let rem = if rem.len() == 1 {
+        &[]
+    }
+    else {
+        &rem[1..]
+    };
+
+    Ok((rem, s))
 }
 

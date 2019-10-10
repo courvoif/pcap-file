@@ -13,6 +13,9 @@ pub struct InterfaceDescriptionBlock<'a> {
     /// [tcpdump.org link-layer header types registry.](http://www.tcpdump.org/linktypes.html).
     pub linktype: DataLink,
 
+    /// Not used - MUST be filled with 0 by pcap file writers, and MUST be ignored by pcapng file readers.
+    pub reserved: u16,
+
     /// Maximum number of octets captured from each packet.
     /// The portion of each packet that exceeds this value will not be stored in the file.
     /// A value of zero indicates no limit.
@@ -26,17 +29,18 @@ impl<'a> InterfaceDescriptionBlock<'a> {
 
     pub fn from_slice<B:ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
 
-        if slice.len() < 6 {
-            return Err(PcapError::InvalidField("InterfaceDescriptionBlock: block length < 6"));
+        if slice.len() < 12 {
+            return Err(PcapError::InvalidField("InterfaceDescriptionBlock: block length < 8"));
         }
 
-        let linktype = slice.read_u16::<B>()? as u32;
-        let linktype = linktype.into();
+        let linktype = (slice.read_u16::<B>()? as u32).into();
+        let reserved = slice.read_u16::<B>()?;
         let snaplen = slice.read_u32::<B>()?;
         let (slice, options) = InterfaceDescriptionOption::from_slice::<B>(slice)?;
 
         let block = InterfaceDescriptionBlock {
             linktype,
+            reserved,
             snaplen,
             options
         };
@@ -121,7 +125,7 @@ impl<'a> InterfaceDescriptionOption<'a> {
                 14 => InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>()?),
                 15 => InterfaceDescriptionOption::IfHardware(std::str::from_utf8(slice)?),
 
-                _ => return Err(PcapError::InvalidField("InterfaceDescriptionOption type invalid"))
+                _ => return Err(PcapError::InvalidField("InterfaceDescriptionOption: type invalid"))
             };
 
             Ok(opt)

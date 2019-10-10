@@ -26,8 +26,8 @@ impl<'a> InterfaceStatisticsBlock<'a> {
 
     pub fn from_slice<B:ByteOrder>(mut slice: &'a[u8]) -> Result<(&'a[u8], Self), PcapError> {
 
-        if slice.len() < 16 {
-            return Err(PcapError::InvalidField("InterfaceStatisticsBlock: block length < 16"));
+        if slice.len() < 12 {
+            return Err(PcapError::InvalidField("InterfaceStatisticsBlock: block length < 12"));
         }
 
         let interface_id = slice.read_u32::<B>()? as u32;
