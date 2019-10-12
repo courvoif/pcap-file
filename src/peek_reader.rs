@@ -47,6 +47,7 @@ impl<R: Read> PeekReader<R> {
         }
     }
 
+    #[allow(clippy::wrong_self_convention)]
     pub fn is_empty(&mut self) -> IoResult<bool> {
 
         if self.peeked.is_some() {

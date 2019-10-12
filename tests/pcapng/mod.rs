@@ -9,12 +9,12 @@ fn test() {
         let entry = entry.unwrap();
         //println!("Testing: {:?}", entry);
 
-        let mut file = File::open(entry).unwrap();
-        let mut pcapng_reader = PcapNgReader::new(file).unwrap();
+        let file = File::open(entry).unwrap();
+        let pcapng_reader = PcapNgReader::new(file).unwrap();
 
         //println!("{:?}", pcapng_reader.section());
         for block in pcapng_reader {
-            let block = block.unwrap();
+            let _block = block.unwrap();
             //println!("{:?}", block.parsed());
         }
 

@@ -109,7 +109,7 @@ impl<'a> Ipv4Record<'a> {
         slice = &slice[4..];
 
         let mut names = vec![];
-        while slice.len() != 0 {
+        while !slice.is_empty() {
             let (slice_tmp, name) = str_from_u8_null_terminated(slice)?;
             slice = slice_tmp;
             names.push(name);
@@ -142,7 +142,7 @@ impl<'a> Ipv6Record<'a> {
         slice = &slice[16..];
 
         let mut names = vec![];
-        while slice.len() != 0 {
+        while !slice.is_empty() {
             let (slice_tmp, name) = str_from_u8_null_terminated(slice)?;
             slice = slice_tmp;
             names.push(name);

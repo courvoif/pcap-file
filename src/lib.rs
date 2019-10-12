@@ -1,3 +1,5 @@
+#![allow(clippy::unreadable_literal)]
+
 //! Provides two structs, `PcapReader` and `PcapWriter`, to read and write Pcap.
 //!
 //! Also provides a `Packet` struct which represents a pcap packet with its header.

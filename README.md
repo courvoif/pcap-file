@@ -3,7 +3,7 @@
 [![Crates.io](https://img.shields.io/crates/l/pcap-file.svg)](https://github.com/courvoif/pcap-file/blob/master/LICENSE)
 
 # pcap-file
-A small crate to read and write pcap files in RUST.
+A small crate to read and write Pcap and read PcapNg in RUST.
 
 Licensed under MIT.
 

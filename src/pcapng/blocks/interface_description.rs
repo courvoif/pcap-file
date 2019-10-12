@@ -1,3 +1,5 @@
+#![allow(clippy::cast_lossless)]
+
 use crate::pcapng::blocks::common::opts_from_slice;
 use crate::errors::PcapError;
 use crate::DataLink;
@@ -165,8 +167,8 @@ impl<'a> InterfaceDescriptionOption<'a> {
                     InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>()?)
                 },
                 11 => {
-                    if slice.len() < 1 {
-                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFilter length < 1"))
+                    if slice.is_empty() {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFilter is empty"))
                     }
                     InterfaceDescriptionOption::IfFilter(slice)
                 },

@@ -1,7 +1,7 @@
 use std::io::Read;
 use byteorder::{BigEndian, LittleEndian};
 use crate::errors::PcapError;
-use crate::pcapng::blocks::{Block, ParsedBlock, EnhancedPacketBlock, SectionHeaderBlock, InterfaceDescriptionBlock};
+use crate::pcapng::blocks::{Block, ParsedBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
 use crate::Endianness;
 use crate::peek_reader::PeekReader;
 
@@ -35,6 +35,8 @@ pub struct PcapNgReader<R: Read> {
 
 impl<R: Read> PcapNgReader<R> {
 
+    /// Creates a new `PcapNgReader` from a reader.
+    /// Parses the first block which must be a valid SectionHeaderBlock
     pub fn new(mut reader: R) -> Result<PcapNgReader<R>, PcapError> {
 
         let section = Block::from_reader::<_, BigEndian>(&mut reader)?;
@@ -52,14 +54,17 @@ impl<R: Read> PcapNgReader<R> {
         )
     }
 
-    pub fn section(&self) -> &SectionHeaderBlock {
-        self.section.section_header().unwrap()
+    /// Returns the current SectionHeaderBlock
+    pub fn section(&self) -> &Block<'static> {
+        &self.section
     }
 
+    /// Returns the current interfaces
     pub fn interfaces(&self) -> &[Block] {
         &self.interfaces[..]
     }
 
+    /// Returns the InterfaceDescriptionBlock corresponding to the given packet
     pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock> {
         self.interfaces.get(packet.interface_id as usize).map(|block| block.interface_description().unwrap())
     }

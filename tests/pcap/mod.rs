@@ -2,7 +2,7 @@ extern crate pcap_file;
 
 use pcap_file::pcap::{PacketHeader, PcapHeader, PcapReader, PcapWriter};
 
-static DATA: &'static[u8; 1455] = include_bytes!("little_endian.pcap");
+static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
 
 #[test]
 fn read() {
