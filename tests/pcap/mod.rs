@@ -1,8 +1,8 @@
 extern crate pcap_file;
 
-use pcap_file::{PcapReader, PcapWriter};
+use pcap_file::pcap::{PacketHeader, PcapHeader, PcapReader, PcapWriter};
 
-static DATA: &'static[u8; 1455] = include_bytes!("little_endian.pcap");
+static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
 
 #[test]
 fn read() {
@@ -48,7 +48,7 @@ fn big_endian() {
 
     //Global header test
     let mut pcap_reader = PcapReader::new(&data[..]).unwrap();
-    let header = pcap_file::PcapHeader {
+    let header = PcapHeader {
         magic_number: 0xa1b2c3d4,
         version_major: 2,
         version_minor: 4,
@@ -63,9 +63,9 @@ fn big_endian() {
 
     //Packet header test
     let packet = pcap_reader.next().unwrap().unwrap();
-    let pkt_hdr = pcap_file::PacketHeader {
+    let pkt_hdr = PacketHeader {
         ts_sec: 0x4fa11b29,
-        ts_usec: 0x00025436,
+        ts_nsec: 152630000,
         incl_len: 0x62,
         orig_len: 0x62,
     };
@@ -80,7 +80,7 @@ fn little_endian() {
 
     //Global header test
     let mut pcap_reader = PcapReader::new(&data[..]).unwrap();
-    let header = pcap_file::PcapHeader {
+    let header = pcap_file::pcap::PcapHeader {
         magic_number: 0xd4c3b2a1,
         version_major: 2,
         version_minor: 4,
@@ -95,9 +95,9 @@ fn little_endian() {
 
     //Packet header test
     let packet = pcap_reader.next().unwrap().unwrap();
-    let pkt_hdr = pcap_file::PacketHeader {
+    let pkt_hdr = PacketHeader {
         ts_sec: 0x4f633248,
-        ts_usec: 0x0,
+        ts_nsec: 0x0,
         incl_len: 0x75,
         orig_len: 0x75,
     };
