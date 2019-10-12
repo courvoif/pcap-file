@@ -9,13 +9,12 @@ license = "MIT"
 documentation = "https://docs.rs/pcap-file/"
 repository = "https://github.com/courvoif/pcap-file"
 readme = "README.md"
-keywords = ["pcap", "file", "read", "write"]
+keywords = ["pcap", "pcapng", "pcap-ng", "file", "parse", "read", "write"]
 categories = ["encoding", "parsing"]
 
 [dependencies]
 byteorder = "1.3.2"
-derive-into-owned = "0.1.0"
-failure = "0.1.5"
+thiserror = "1.0"
 
 [dev-dependencies]
 glob = "0.3.0"

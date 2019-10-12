@@ -8,25 +8,38 @@ use crate::{
 };
 
 
-/// Helper struct to parse a file
+/// Parser for a Pcap formated stream.
 ///
 /// # Examples
 ///
 /// ```no_run
 /// use pcap_file::pcap::PcapParser;
+/// use pcap_file::PcapError;
 ///
 /// let pcap = vec![0_u8; 0];
-///
-/// // Parse all the packets
 /// let mut src = &pcap[..];
+///
+/// // Creates a new parser and parse the pcap header
 /// let (rem, pcap_parser) = PcapParser::new(&pcap[..]).unwrap();
 /// src = rem;
 ///
-/// while !src.is_empty() {
+/// loop {
 ///
-///     let (rem, packet) = pcap_parser.next_packet(src).unwrap();
-///     println!("{:?}", packet);
-///     src = rem;
+///     match pcap_parser.next_packet(src) {
+///         Ok((rem, packet)) => {
+///             // Do something
+///
+///             // Don't forget to update src
+///             src = rem;
+///
+///             // No more data, if no more incoming either then this is the end of the file
+///             if rem.is_empty() {
+///                 break;
+///             }
+///         },
+///         Err(PcapError::IncompleteBuffer(needed)) => {},// Load more data into src
+///         Err(_) => {}// Parsing error
+///     }
 /// }
 /// ```
 #[derive(Debug)]

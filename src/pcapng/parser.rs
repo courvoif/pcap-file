@@ -26,6 +26,9 @@ use crate::Endianness;
 ///         Ok((rem, block)) => {
 ///             // Do something
 ///
+///             // Don't forget to update src
+///             src = rem;
+///
 ///             // No more data, if no more incoming either then this is the end of the file
 ///             if rem.is_empty() {
 ///                 break;
@@ -43,7 +46,8 @@ pub struct PcapNgParser {
 
 impl PcapNgParser {
 
-    /// Creates a new `PcapNgParser` and return the remainder too.
+    /// Creates a new `PcapNgParser`.
+    ///
     /// Parses the first block which must be a valid SectionHeaderBlock
     pub fn new(src: &[u8]) -> Result<(&[u8], Self), PcapError> {
 

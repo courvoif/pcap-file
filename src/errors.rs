@@ -1,24 +1,24 @@
-use failure::Fail;
+use thiserror::Error;
 
 pub(crate) type ResultParsing<T> = Result<T, PcapError>;
 
-#[derive(Fail, Debug)]
+#[derive(Error, Debug)]
 pub enum PcapError {
 
-    #[fail(display = "Need at least {} more bytes", _0)]
+    #[error("Need at least {0} more bytes")]
     IncompleteBuffer(usize),
 
-    #[fail(display = "Io error: {}", _0)]
-    IoError(std::io::Error),
+    #[error("Error reading bytes")]
+    IoError(#[source] std::io::Error),
 
-    #[fail(display = "Invalid field value: {}", _0)]
+    #[error("Invalid field value: {0}")]
     InvalidField(&'static str),
 
-    #[fail(display = "UTF8 error: {}", _0)]
-    Utf8Error(std::str::Utf8Error),
+    #[error("UTF8 error")]
+    Utf8Error(#[source] std::str::Utf8Error),
 
-    #[fail(display = "UTF8 error: {}", _0)]
-    FromUtf8Error(std::string::FromUtf8Error),
+    #[error("UTF8 error")]
+    FromUtf8Error(#[source] std::string::FromUtf8Error),
 }
 
 impl From<std::io::Error> for PcapError {

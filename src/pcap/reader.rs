@@ -11,7 +11,7 @@ use crate::{
 use std::io::Read;
 
 
-/// This struct wraps another reader and uses it to read a Pcap formated stream.
+/// Wraps another reader and uses it to read a Pcap formated stream.
 ///
 /// It implements the Iterator trait in order to read one packet at a time
 ///
@@ -19,13 +19,10 @@ use std::io::Read;
 ///
 /// ```rust,no_run
 /// use std::fs::File;
-/// use pcap_file::pcap::{PcapReader, PcapWriter};
+/// use pcap_file::pcap::PcapReader;
 ///
 /// let file_in = File::open("test.pcap").expect("Error opening file");
 /// let pcap_reader = PcapReader::new(file_in).unwrap();
-///
-/// let file_out = File::create("out.pcap").expect("Error creating file");
-/// let mut pcap_writer = PcapWriter::new(file_out).unwrap();
 ///
 /// // Read test.pcap
 /// for pcap in pcap_reader {
@@ -33,8 +30,7 @@ use std::io::Read;
 ///     //Check if there is no error
 ///     let pcap = pcap.unwrap();
 ///
-///     //Write each packet of test.pcap in out.pcap
-///     pcap_writer.write_packet(&pcap).unwrap();
+///     //Do something
 /// }
 /// ```
 #[derive(Debug)]
