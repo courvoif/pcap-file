@@ -5,15 +5,37 @@ use crate::pcapng::blocks::{Block, ParsedBlock, EnhancedPacketBlock, SectionHead
 use crate::Endianness;
 use crate::peek_reader::PeekReader;
 
-pub struct PcapngReader<R: Read> {
+/// Wraps another reader and uses it to read a PcapNg formated stream.
+///
+/// It implements the Iterator trait in order to read one block at a time except the first SectionHeaderBlock
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use std::fs::File;
+/// use pcap_file::pcapng::PcapNgReader;
+///
+/// let file_in = File::open("test.pcapng").expect("Error opening file");
+/// let pcapng_reader = PcapNgReader::new(file_in).unwrap();
+///
+/// // Read test.pcapng
+/// for pcapng in pcapng_reader {
+///
+///     //Check if there is no error
+///     let pcapng = pcapng.unwrap();
+///
+///     //Do something
+/// }
+/// ```
+pub struct PcapNgReader<R: Read> {
     reader: PeekReader<R>,
     section: Block<'static>,
     interfaces: Vec<Block<'static>>
 }
 
-impl<R: Read> PcapngReader<R> {
+impl<R: Read> PcapNgReader<R> {
 
-    pub fn new(mut reader: R) -> Result<PcapngReader<R>, PcapError> {
+    pub fn new(mut reader: R) -> Result<PcapNgReader<R>, PcapError> {
 
         let section = Block::from_reader::<_, BigEndian>(&mut reader)?;
         match section.parsed {
@@ -22,7 +44,7 @@ impl<R: Read> PcapngReader<R> {
         }
 
         Ok(
-            PcapngReader {
+            PcapNgReader {
                 reader: PeekReader::new(reader),
                 section,
                 interfaces: vec![]
@@ -43,7 +65,7 @@ impl<R: Read> PcapngReader<R> {
     }
 }
 
-impl<R: Read> Iterator for PcapngReader<R> {
+impl<R: Read> Iterator for PcapNgReader<R> {
     type Item = Result<Block<'static>, PcapError>;
 
     fn next(&mut self) -> Option<Self::Item> {

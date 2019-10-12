@@ -1,4 +1,4 @@
-use pcap_file::pcapng::PcapngReader;
+use pcap_file::pcapng::PcapNgReader;
 use std::fs::File;
 use glob::glob;
 
@@ -10,7 +10,7 @@ fn test() {
         //println!("Testing: {:?}", entry);
 
         let mut file = File::open(entry).unwrap();
-        let mut pcapng_reader = PcapngReader::new(file).unwrap();
+        let mut pcapng_reader = PcapNgReader::new(file).unwrap();
 
         //println!("{:?}", pcapng_reader.section());
         for block in pcapng_reader {

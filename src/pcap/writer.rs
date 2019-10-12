@@ -190,9 +190,9 @@ impl<W: Write> PcapWriter<W> {
     /// # Examples
     /// ```rust,no_run
     /// use std::fs::File;
-    /// use pcap_file::{
+    /// use pcap_file::pcap::{
     ///     Packet,
-    ///     pcap::PcapWriter
+    ///     PcapWriter
     /// };
     ///
     /// let data = [0u8; 10];
