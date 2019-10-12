@@ -133,6 +133,10 @@ impl<'a> RawBlock<'a> {
                 _ => return Err(PcapError::InvalidField("SectionHeaderBlock: invalid magic number"))
             };
 
+            if (initial_len % 4) != 0 {
+                return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
+            }
+
             if initial_len < 12 {
                 return Err(PcapError::InvalidField("Block: initial_len < 12"))
             }
@@ -165,6 +169,10 @@ impl<'a> RawBlock<'a> {
 
             //Common case
             let initial_len = reader.read_u32::<B>()?;
+            if (initial_len % 4) != 0 {
+                return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
+            }
+
             if initial_len < 12 {
                 return Err(PcapError::InvalidField("Block: initial_len < 12"))
             }
@@ -268,7 +276,7 @@ pub enum ParsedBlock<'a> {
     InterfaceStatistics(InterfaceStatisticsBlock<'a>),
     EnhancedPacket(EnhancedPacketBlock<'a>),
     SystemdJournalExport(SystemdJournalExportBlock<'a>),
-    Unknown
+    Unknown(UnknownBlock<'a>)
 }
 
 impl<'a> ParsedBlock<'a> {
@@ -306,7 +314,23 @@ impl<'a> ParsedBlock<'a> {
                 let (rem, block) = SystemdJournalExportBlock::from_slice::<B>(slice)?;
                 Ok((rem, ParsedBlock::SystemdJournalExport(block)))
             }
-            _ => Ok((slice, ParsedBlock::Unknown))
+            _ => Ok((slice, ParsedBlock::Unknown(UnknownBlock::new(type_, slice.len() as u32, slice))))
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct UnknownBlock<'a> {
+    pub type_: u32,
+    pub length: u32,
+    pub value: &'a [u8]
+}
+impl<'a> UnknownBlock<'a> {
+    pub fn new(type_: u32, length: u32, value: &'a [u8]) -> Self {
+        UnknownBlock {
+            type_,
+            length,
+            value
         }
     }
 }
@@ -326,15 +350,15 @@ pub(crate) fn opts_from_slice<'a, B, F, O>(mut slice: &'a [u8], func: F) -> Resu
 
     loop {
 
-        if slice.len() < 3 {
-            return Err(PcapError::InvalidField("Option: slice.len() < 3"));
+        if slice.len() < 4 {
+            return Err(PcapError::InvalidField("Option: slice.len() < 4"));
         }
 
-        let type_ = slice.read_u16::<B>()?;
+        let code = slice.read_u16::<B>()?;
         let length = slice.read_u16::<B>()? as usize;
         let pad_len = (4 - (length % 4)) % 4;
 
-        if type_ == 0 {
+        if code == 0 {
             return Ok((slice, options));
         }
 
@@ -343,11 +367,67 @@ pub(crate) fn opts_from_slice<'a, B, F, O>(mut slice: &'a [u8], func: F) -> Resu
         }
 
         let mut tmp_slice = &slice[..length];
-        let opt = func(&mut tmp_slice, type_, length as u16)?;
+        let opt = func(&mut tmp_slice, code, length as u16)?;
 
         // Jump over the padding
         slice = &slice[length+pad_len..];
 
         options.push(opt);
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct UnknownOption<'a> {
+    code: u16,
+    length: u16,
+    value: &'a [u8]
+}
+impl<'a> UnknownOption<'a> {
+    pub fn new(code: u16, length: u16, value: &'a[u8]) -> Self {
+        UnknownOption {
+            code,
+            length,
+            value
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomBinaryOption<'a> {
+    code: u16,
+    pen: u32,
+    value: &'a [u8]
+}
+impl<'a> CustomBinaryOption<'a> {
+    pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
+        let pen = src.read_u32::<B>()?;
+
+        let opt = CustomBinaryOption {
+            code,
+            pen,
+            value: src
+        };
+
+        Ok(opt)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomUtf8Option<'a> {
+    code: u16,
+    pen: u32,
+    value: &'a str
+}
+impl<'a> CustomUtf8Option<'a> {
+    pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
+        let pen = src.read_u32::<B>()?;
+
+        let opt = CustomUtf8Option {
+            code,
+            pen,
+            value: std::str::from_utf8(src)?
+        };
+
+        Ok(opt)
     }
 }

@@ -1,6 +1,7 @@
 use crate::pcapng::blocks::common::opts_from_slice;
 use crate::errors::PcapError;
 use byteorder::{ByteOrder, ReadBytesExt};
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, UnknownOption};
 
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
@@ -137,8 +138,8 @@ impl<'a> Ipv6Record<'a> {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv6Record len < 18"));
         }
 
-        let ip_addr = &slice[..18];
-        slice = &slice[18..];
+        let ip_addr = &slice[..16];
+        slice = &slice[16..];
 
         let mut names = vec![];
         while slice.len() != 0 {
@@ -187,7 +188,16 @@ pub enum NameResolutionOption<'a> {
     NsDnsIpv4Addr(&'a [u8]),
 
     /// The ns_dnsIP6addr option specifies the IPv6 address of the DNS server.
-    NsDnsIpv6Addr(&'a [u8])
+    NsDnsIpv6Addr(&'a [u8]),
+
+    /// Custom option containing binary octets in the Custom Data portion
+    CustomBinary(CustomBinaryOption<'a>),
+
+    /// Custom option containing a UTF-8 string in the Custom Data portion
+    CustomUtf8(CustomUtf8Option<'a>),
+
+    /// Unknown option
+    Unknown(UnknownOption<'a>)
 }
 
 
@@ -195,9 +205,9 @@ impl<'a> NameResolutionOption<'a> {
 
     fn from_slice<B:ByteOrder>(slice: &'a[u8]) -> Result<(&'a[u8], Vec<Self>), PcapError> {
 
-        opts_from_slice::<B, _, _>(slice, |slice, type_, _len| {
+        opts_from_slice::<B, _, _>(slice, |slice, code, length| {
 
-            let opt = match type_ {
+            let opt = match code {
 
                 1 => NameResolutionOption::Comment(std::str::from_utf8(slice)?),
                 2 => NameResolutionOption::NsDnsName(std::str::from_utf8(slice)?),
@@ -214,7 +224,10 @@ impl<'a> NameResolutionOption<'a> {
                     NameResolutionOption::NsDnsIpv6Addr(slice)
                 },
 
-                _ => return Err(PcapError::InvalidField("NameResolutionOption: type invalid"))
+                2988 | 19372 => NameResolutionOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
+                2989 | 19373 => NameResolutionOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
+
+                _ => NameResolutionOption::Unknown(UnknownOption::new(code, length, slice))
             };
 
             Ok(opt)

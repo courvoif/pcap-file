@@ -1,6 +1,7 @@
 use crate::pcapng::blocks::opts_from_slice;
 use crate::errors::PcapError;
 use byteorder::{ByteOrder, ReadBytesExt};
+use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption};
 
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
@@ -82,7 +83,16 @@ pub enum EnhancedPacketOption<'a> {
     /// (by the interface and the operating system) between this packet and the preceding one for
     /// the same interface or, for the first packet for an interface, between this packet
     /// and the start of the capture process.
-    DropCount(u64)
+    DropCount(u64),
+
+    /// Custom option containing binary octets in the Custom Data portion
+    CustomBinary(CustomBinaryOption<'a>),
+
+    /// Custom option containing a UTF-8 string in the Custom Data portion
+    CustomUtf8(CustomUtf8Option<'a>),
+
+    /// Unknown option
+    Unknown(UnknownOption<'a>)
 }
 
 
@@ -90,16 +100,29 @@ impl<'a> EnhancedPacketOption<'a> {
 
     pub fn from_slice<B:ByteOrder>(slice: &'a [u8]) -> Result<(&'a[u8], Vec<Self>), PcapError> {
 
-        opts_from_slice::<B, _, _>(slice, |mut slice, type_, _len| {
+        opts_from_slice::<B, _, _>(slice, |mut slice, code, length| {
 
-            let opt = match type_ {
+            let opt = match code {
 
                 1 => EnhancedPacketOption::Comment(std::str::from_utf8(slice)?),
-                2 => EnhancedPacketOption::Flags(slice.read_u32::<B>()?),
+                2 => {
+                    if slice.len() != 4 {
+                        return Err(PcapError::InvalidField("EnhancedPacketOption: Flags length != 4"))
+                    }
+                    EnhancedPacketOption::Flags(slice.read_u32::<B>()?)
+                },
                 3 => EnhancedPacketOption::Hash(slice),
-                4 => EnhancedPacketOption::DropCount(slice.read_u64::<B>()?),
+                4 => {
+                    if slice.len() != 8 {
+                        return Err(PcapError::InvalidField("EnhancedPacketOption: DropCount length != 8"))
+                    }
+                    EnhancedPacketOption::DropCount(slice.read_u64::<B>()?)
+                },
 
-                _ => return Err(PcapError::InvalidField("EnhancedPacketOption type invalid"))
+                2988 | 19372 => EnhancedPacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
+                2989 | 19373 => EnhancedPacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
+
+                _ => EnhancedPacketOption::Unknown(UnknownOption::new(code, length, slice))
             };
 
             Ok(opt)

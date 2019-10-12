@@ -1,6 +1,7 @@
 use crate::pcapng::blocks::common::opts_from_slice;
 use crate::errors::PcapError;
 use byteorder::{ByteOrder, ReadBytesExt};
+use crate::pcapng::{UnknownOption, CustomUtf8Option, CustomBinaryOption};
 
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
@@ -76,15 +77,24 @@ pub enum InterfaceStatisticsOption<'a> {
     /// The isb_usrdeliv option specifies the 64-bit unsigned integer number of packets delivered
     /// to the user starting from the beginning of the capture.
     IsbUsrDeliv(u64),
+
+    /// Custom option containing binary octets in the Custom Data portion
+    CustomBinary(CustomBinaryOption<'a>),
+
+    /// Custom option containing a UTF-8 string in the Custom Data portion
+    CustomUtf8(CustomUtf8Option<'a>),
+
+    /// Unknown option
+    Unknown(UnknownOption<'a>)
 }
 
 impl<'a> InterfaceStatisticsOption<'a> {
 
     fn from_slice<B:ByteOrder>(slice: &'a[u8]) -> Result<(&'a [u8], Vec<Self>), PcapError> {
 
-        opts_from_slice::<B, _, _>(slice, |mut slice, type_, _len| {
+        opts_from_slice::<B, _, _>(slice, |mut slice, code, length| {
 
-            let opt = match type_ {
+            let opt = match code {
 
                 1 => InterfaceStatisticsOption::Comment(std::str::from_utf8(slice)?),
                 2 => InterfaceStatisticsOption::IsbStartTime(slice.read_u64::<B>()?),
@@ -95,7 +105,10 @@ impl<'a> InterfaceStatisticsOption<'a> {
                 7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>()?),
                 8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>()?),
 
-                _ => return Err(PcapError::InvalidField("InterfaceStatisticsOption type invalid"))
+                2988 | 19372 => InterfaceStatisticsOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
+                2989 | 19373 => InterfaceStatisticsOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
+
+                _ => InterfaceStatisticsOption::Unknown(UnknownOption::new(code, length, slice))
             };
 
             Ok(opt)

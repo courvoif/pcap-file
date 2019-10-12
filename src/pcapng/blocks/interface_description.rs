@@ -2,6 +2,7 @@ use crate::pcapng::blocks::common::opts_from_slice;
 use crate::errors::PcapError;
 use crate::DataLink;
 use byteorder::{ByteOrder, ReadBytesExt};
+use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption};
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.
@@ -29,7 +30,7 @@ impl<'a> InterfaceDescriptionBlock<'a> {
 
     pub fn from_slice<B:ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
 
-        if slice.len() < 12 {
+        if slice.len() < 8 {
             return Err(PcapError::InvalidField("InterfaceDescriptionBlock: block length < 8"));
         }
 
@@ -70,7 +71,7 @@ pub enum InterfaceDescriptionOption<'a> {
     IfMacAddr(&'a [u8]),
 
     /// The if_EUIaddr option is the Interface Hardware EUI address (64 bits), if available.
-    IfEulAddr(u64),
+    IfEuIAddr(u64),
 
     /// The if_speed option is a 64-bit number for the Interface speed (in bits per second).
     IfSpeed(u64),
@@ -97,7 +98,16 @@ pub enum InterfaceDescriptionOption<'a> {
     IfTsOffset(u64),
 
     /// The if_hardware option is a UTF-8 string containing the description of the interface hardware.
-    IfHardware(&'a str)
+    IfHardware(&'a str),
+
+    /// Custom option containing binary octets in the Custom Data portion
+    CustomBinary(CustomBinaryOption<'a>),
+
+    /// Custom option containing a UTF-8 string in the Custom Data portion
+    CustomUtf8(CustomUtf8Option<'a>),
+
+    /// Unknown option
+    Unknown(UnknownOption<'a>)
 }
 
 
@@ -105,27 +115,80 @@ impl<'a> InterfaceDescriptionOption<'a> {
 
     fn from_slice<B:ByteOrder>(slice: &'a[u8]) -> Result<(&'a[u8], Vec<Self>), PcapError> {
 
-        opts_from_slice::<B, _, _>(slice, |mut slice, type_, _len| {
+        opts_from_slice::<B, _, _>(slice, |mut slice, code, length| {
 
-            let opt = match type_ {
+            let opt = match code {
 
                 1 => InterfaceDescriptionOption::Comment(std::str::from_utf8(slice)?),
                 2 => InterfaceDescriptionOption::IfName(std::str::from_utf8(slice)?),
                 3 => InterfaceDescriptionOption::IfDescription(std::str::from_utf8(slice)?),
-                4 => InterfaceDescriptionOption::IfIpv4Addr(slice),
-                5 => InterfaceDescriptionOption::IfIpv6Addr(slice),
-                6 => InterfaceDescriptionOption::IfMacAddr(slice),
-                7 => InterfaceDescriptionOption::IfEulAddr(slice.read_u64::<B>()?),
-                8 => InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>()?),
-                9 => InterfaceDescriptionOption::IfTsResol(slice.read_u8()?),
-                10 => InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>()?),
-                11 => InterfaceDescriptionOption::IfFilter(slice),
+                4 => {
+                    if slice.len() != 8 {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfIpv4Addr length != 8"))
+                    }
+                    InterfaceDescriptionOption::IfIpv4Addr(slice)
+                },
+                5 => {
+                    if slice.len() != 17 {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfIpv6Addr length != 17"))
+                    }
+                    InterfaceDescriptionOption::IfIpv6Addr(slice)
+                },
+                6 => {
+                    if slice.len() != 6 {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfMacAddr length != 6"))
+                    }
+                    InterfaceDescriptionOption::IfMacAddr(slice)
+                },
+                7 => {
+                    if slice.len() != 8 {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfEuIAddr length != 8"))
+                    }
+                    InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>()?)
+                },
+                8 => {
+                    if slice.len() != 8 {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfSpeed length != 8"))
+                    }
+                    InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>()?)
+                },
+                9 => {
+                    if slice.len() != 1 {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsResol length != 1"))
+                    }
+                    InterfaceDescriptionOption::IfTsResol(slice.read_u8()?)
+                },
+                10 => {
+                    if slice.len() != 1 {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTzone length != 1"))
+                    }
+                    InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>()?)
+                },
+                11 => {
+                    if slice.len() < 1 {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFilter length < 1"))
+                    }
+                    InterfaceDescriptionOption::IfFilter(slice)
+                },
                 12 => InterfaceDescriptionOption::IfOs(std::str::from_utf8(slice)?),
-                13 => InterfaceDescriptionOption::IfFcsLen(slice.read_u8()?),
-                14 => InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>()?),
+                13 => {
+                    if slice.len() != 1 {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFcsLen length != 1"))
+                    }
+                    InterfaceDescriptionOption::IfFcsLen(slice.read_u8()?)
+                },
+                14 => {
+                    if slice.len() != 8 {
+                        return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsOffset length != 8"))
+                    }
+                    InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>()?)
+                },
                 15 => InterfaceDescriptionOption::IfHardware(std::str::from_utf8(slice)?),
 
-                _ => return Err(PcapError::InvalidField("InterfaceDescriptionOption: type invalid"))
+                2988 | 19372 => InterfaceDescriptionOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
+                2989 | 19373 => InterfaceDescriptionOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
+
+                _ => InterfaceDescriptionOption::Unknown(UnknownOption::new(code, length, slice))
             };
 
             Ok(opt)
