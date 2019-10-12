@@ -9,7 +9,7 @@ license = "MIT"
 documentation = "https://docs.rs/pcap-file/"
 repository = "https://github.com/courvoif/pcap-file"
 readme = "README.md"
-keywords = ["pcap", "pcapng", "pcap-ng", "file", "parse", "read", "write"]
+keywords = ["pcap", "pcapng", "parse", "read", "write"]
 categories = ["encoding", "parsing"]
 
 [dependencies]
