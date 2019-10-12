@@ -72,3 +72,10 @@ pcap-file = "1.0.0-rc.1"
 ## License
 
 Licensed under MIT.
+
+
+## Disclaimer
+
+To test the library I used the excellent PcapNg testing suite provided by [hadrielk](https://github.com/hadrielk/pcapng-test-generator). 
+
+
