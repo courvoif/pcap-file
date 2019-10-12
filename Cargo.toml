@@ -3,7 +3,7 @@ name = "pcap-file"
 edition = "2018"
 version = "1.0.0-rc1"
 authors = ["Courvoif <courvoif@pm.me>"]
-description = "Read and write Pcap file"
+description = "A crate to read and write Pcap and read PcapNg"
 
 license = "MIT"
 documentation = "https://docs.rs/pcap-file/"
