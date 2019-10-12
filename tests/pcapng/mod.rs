@@ -7,18 +7,18 @@ fn test() {
 
     for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
         let entry = entry.unwrap();
-        println!("Testing: {:?}", entry);
+        //println!("Testing: {:?}", entry);
 
         let mut file = File::open(entry).unwrap();
         let mut pcapng_reader = PcapngReader::new(file).unwrap();
 
-        println!("{:?}", pcapng_reader.section());
+        //println!("{:?}", pcapng_reader.section());
         for block in pcapng_reader {
             let block = block.unwrap();
-            println!("{:?}", block.parsed());
+            //println!("{:?}", block.parsed());
         }
 
-        println!("\n\n");
+        //println!("\n\n");
     }
 }
 

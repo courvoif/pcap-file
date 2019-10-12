@@ -4,6 +4,7 @@ use crate::errors::PcapError;
 use std::borrow::Cow;
 use byteorder::WriteBytesExt;
 use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock, NameResolutionBlock, InterfaceStatisticsBlock, SystemdJournalExportBlock};
+use crate::pcapng::PacketBlock;
 
 
 /// PcapNg Block
@@ -271,6 +272,7 @@ impl<'a> RawBlock<'a> {
 pub enum ParsedBlock<'a> {
     SectionHeader(SectionHeaderBlock<'a>),
     InterfaceDescription(InterfaceDescriptionBlock<'a>),
+    Packet(PacketBlock<'a>),
     SimplePacket(SimplePacketBlock<'a>),
     NameResolution(NameResolutionBlock<'a>),
     InterfaceStatistics(InterfaceStatisticsBlock<'a>),
@@ -293,6 +295,10 @@ impl<'a> ParsedBlock<'a> {
             0x00000001 => {
                 let (rem, block) = InterfaceDescriptionBlock::from_slice::<B>(slice)?;
                 Ok((rem, ParsedBlock::InterfaceDescription(block)))
+            },
+            0x00000002 => {
+                let (rem, block) = PacketBlock::from_slice::<B>(slice)?;
+                Ok((rem, ParsedBlock::Packet(block)))
             },
             0x00000003 => {
                 let (rem, block) = SimplePacketBlock::from_slice::<B>(slice)?;

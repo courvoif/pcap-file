@@ -21,3 +21,6 @@ pub use interface_statistics::*;
 
 pub(crate) mod systemd_journal_export;
 pub use systemd_journal_export::*;
+
+pub(crate) mod packet;
+pub use packet::*;
