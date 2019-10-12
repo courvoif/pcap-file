@@ -1,5 +1,3 @@
-//! This module contains the `PcapReader` struct which is used to read from a pcap file
-
 use byteorder::{BigEndian, LittleEndian};
 
 use crate::{

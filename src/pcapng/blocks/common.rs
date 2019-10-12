@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use byteorder::WriteBytesExt;
 use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock, NameResolutionBlock, InterfaceStatisticsBlock, SystemdJournalExportBlock};
 use crate::pcapng::PacketBlock;
+use crate::Endianness;
 
 
 /// PcapNg Block
@@ -35,6 +36,21 @@ impl Block<'static> {
 
 impl<'a> Block<'a> {
 
+    /// Create an "borrowed" `Block` from a slice
+    pub fn from_slice<B: ByteOrder>(src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
+
+        let (rem, raw) = RawBlock::from_slice::<B>(src)?;
+        let slice: &'static [u8] = unsafe {std::mem::transmute(&raw.body[..])};
+        let (_, parsed) = ParsedBlock::from_slice::<B>(raw.type_, slice)?;
+
+        let block = Block {
+            raw,
+            parsed
+        };
+
+        Ok((rem, block))
+    }
+
     /// Get a reference to the raw block data
     pub fn raw(&self) -> &RawBlock<'a> {
         &self.raw
@@ -43,6 +59,24 @@ impl<'a> Block<'a> {
     /// Get a reference to the parsed block data
     pub fn parsed<'b>(&'b self) -> &ParsedBlock<'b> {
         &self.parsed
+    }
+
+    pub fn to_owned(&self, endianness: Endianness) -> Block<'static> {
+
+        let raw = self.raw.to_owned();
+        let slice: &'static [u8] = unsafe {std::mem::transmute(&raw.body[..])};
+
+        let (_, parsed) = if endianness == Endianness::Little {
+            ParsedBlock::from_slice::<LittleEndian>(raw.type_, slice).unwrap()
+        }
+        else {
+            ParsedBlock::from_slice::<BigEndian>(raw.type_, slice).unwrap()
+        };
+
+        Block {
+            raw,
+            parsed
+        }
     }
 
     pub fn section_header<'b>(&'b self) -> Option<&SectionHeaderBlock<'b>> {
@@ -199,7 +233,7 @@ impl<'a> RawBlock<'a> {
     }
 
     /// Create an "borrowed" `RawBlock` from a slice
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a[u8]) -> Result<(Self, &[u8]), PcapError> {
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a[u8]) -> Result<(&[u8], Self), PcapError> {
 
         if slice.len() < 12 {
             return Err(PcapError::IncompleteBuffer(12 - slice.len()));
@@ -240,7 +274,7 @@ impl<'a> RawBlock<'a> {
                 trailer_len
             };
 
-            return Ok((raw, end))
+            return Ok((end, raw))
         }
 
         //Common case
@@ -262,7 +296,22 @@ impl<'a> RawBlock<'a> {
             trailer_len
         };
 
-        Ok((raw, slice))
+        Ok((slice, raw))
+    }
+
+    pub fn to_owned(&self) -> RawBlock<'static> {
+
+        let type_ = self.type_;
+        let initial_len = self.initial_len;
+        let body = Cow::Owned(self.body.as_ref().to_owned());
+        let trailer_len = self.trailer_len;
+
+        RawBlock {
+            type_,
+            initial_len,
+            body,
+            trailer_len
+        }
     }
 }
 
@@ -284,7 +333,7 @@ pub enum ParsedBlock<'a> {
 impl<'a> ParsedBlock<'a> {
 
     /// Create a `ParsedBlock` from a slice
-    pub fn from_slice<B: ByteOrder>(type_: u32, slice: &'a[u8]) -> Result<(&'a[u8], Self), PcapError> {
+    pub fn from_slice<B: ByteOrder>(type_: u32, slice: &'a[u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         match type_ {
 

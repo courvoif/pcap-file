@@ -1,6 +1,3 @@
-//! This module contains the `Packet` and the `PacketHeader` structs which represent a packet
-//! and its header.
-
 use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 
 use crate::{
@@ -81,9 +78,7 @@ impl PacketHeader {
     }
 
     /// Create a new `PacketHeader` from a slice.
-    pub fn from_slice<B: ByteOrder>(slice: &[u8], ts_resolution: TsResolution) -> ResultParsing<(PacketHeader, &[u8])> {
-
-        let mut slice = slice;
+    pub fn from_slice<B: ByteOrder>(mut slice: &[u8], ts_resolution: TsResolution) -> ResultParsing<(&[u8], PacketHeader)> {
 
         //Header len
         if slice.len() < 16 {
@@ -92,7 +87,7 @@ impl PacketHeader {
 
         let header = Self::from_reader::<_, B>(&mut slice, ts_resolution)?;
 
-        Ok((header, slice))
+        Ok((slice, header))
     }
 
     /// Write a `PcapHeader` to a writer.
@@ -184,9 +179,9 @@ impl<'a> Packet<'a> {
     }
 
     /// Create a new borrowed `Packet` from a slice.
-    pub fn from_slice<B: ByteOrder>(slice: &'a[u8], ts_resolution: TsResolution) -> ResultParsing<(Packet<'a>, &'a[u8])> {
+    pub fn from_slice<B: ByteOrder>(slice: &'a[u8], ts_resolution: TsResolution) -> ResultParsing<(&'a[u8], Packet<'a>)> {
 
-        let (header, slice) = PacketHeader::from_slice::<B>(slice, ts_resolution)?;
+        let (slice, header) = PacketHeader::from_slice::<B>(slice, ts_resolution)?;
         let len = header.incl_len as usize;
 
         if slice.len() < len {
@@ -200,7 +195,7 @@ impl<'a> Packet<'a> {
 
         let slice = &slice[len..];
 
-        Ok((packet, slice))
+        Ok((slice, packet))
     }
 
     /// Convert a borrowed `Packet` to an owned one.

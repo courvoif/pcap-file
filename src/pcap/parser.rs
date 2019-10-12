@@ -1,5 +1,3 @@
-//! This module contains the `PcapReader` struct which is used to read from a pcap file
-
 use byteorder::{BigEndian, LittleEndian};
 
 use crate::{
@@ -21,12 +19,12 @@ use crate::{
 ///
 /// // Parse all the packets
 /// let mut src = &pcap[..];
-/// let (pcap_parser, rem) = PcapParser::new(&pcap[..]).unwrap();
+/// let (rem, pcap_parser) = PcapParser::new(&pcap[..]).unwrap();
 /// src = rem;
 ///
 /// while !src.is_empty() {
 ///
-///     let (packet, rem) = pcap_parser.next_packet(src).unwrap();
+///     let (rem, packet) = pcap_parser.next_packet(src).unwrap();
 ///     println!("{:?}", packet);
 ///     src = rem;
 /// }
@@ -40,21 +38,19 @@ impl PcapParser {
 
     /// Creates a new `PcapParser`.
     /// Returns the parser and the remainder.
-    pub fn new(slice: &[u8]) -> ResultParsing<(PcapParser, &[u8])> {
+    pub fn new(slice: &[u8]) -> ResultParsing<(&[u8], PcapParser)> {
 
-        let slice = slice;
-
-        let (header, slice) = PcapHeader::from_slice(slice)?;
+        let (slice, header) = PcapHeader::from_slice(slice)?;
 
         let parser = PcapParser {
             header
         };
 
-        Ok((parser, slice))
+        Ok((slice, parser))
     }
 
     /// Returns the next packet and the remainder.
-    pub fn next_packet<'a>(&self, slice: &'a[u8]) -> ResultParsing<(Packet<'a>, &'a[u8])> {
+    pub fn next_packet<'a>(&self, slice: &'a[u8]) -> ResultParsing<(&'a [u8], Packet<'a>)> {
 
         let ts_resolution = self.header.ts_resolution();
 

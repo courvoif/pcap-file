@@ -1,5 +1,3 @@
-//! This module contains the `PcapHeader` struct which represents a global pcap header.
-
 use crate::errors::*;
 
 use std::io::Write;
@@ -76,7 +74,7 @@ impl PcapHeader {
      /// or if there is a reading error.
      ///
      /// `PcapError::IncompleteBuffer` indicates that there is not enough data in the buffer
-    pub fn from_slice(mut slice: &[u8]) -> ResultParsing<(PcapHeader, &[u8])> {
+    pub fn from_slice(mut slice: &[u8]) -> ResultParsing<(&[u8], PcapHeader)> {
 
         if slice.len() < 24 {
             return Err(PcapError::IncompleteBuffer(24 - slice.len()))
@@ -84,7 +82,7 @@ impl PcapHeader {
 
         let header = PcapHeader::from_reader(&mut slice)?;
 
-        Ok((header, slice))
+        Ok((slice, header))
     }
 
     /// Set the timestamp resolution to ts_resolution by modifying the magic_number
