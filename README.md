@@ -65,7 +65,7 @@ Add it to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-pcap-file = "1.0.0"
+pcap-file = "1.0.1"
 ```
 
 
