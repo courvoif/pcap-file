@@ -1,4 +1,4 @@
-# Important: Yanked V1.0 and V1.0.1 bacause of a soundness issue in Pcapng Block
+# Important: Yanked V1.0 and V1.0.1 because of a soundness issue in Pcapng Block
 
 # Pcap and PcapNg parsing
 
