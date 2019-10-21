@@ -1,3 +1,5 @@
+# Important: Yanked V1.0 and V1.0.1 bacause of a soundness issue in Pcapng Block
+
 # Pcap and PcapNg parsing
 
 [![Crates.io](https://img.shields.io/crates/v/pcap-file.svg)](https://crates.io/crates/pcap-file)
