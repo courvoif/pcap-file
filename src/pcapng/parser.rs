@@ -1,6 +1,6 @@
 use byteorder::{BigEndian, LittleEndian};
 use crate::errors::PcapError;
-use crate::pcapng::blocks::{Block, ParsedBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
+use crate::pcapng::blocks::{ParsedBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
 use crate::Endianness;
 
 /// Parser for a PcapNg formated stream.

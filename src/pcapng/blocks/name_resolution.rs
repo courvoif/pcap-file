@@ -2,11 +2,13 @@ use crate::pcapng::blocks::common::opts_from_slice;
 use crate::errors::PcapError;
 use byteorder::{ByteOrder, ReadBytesExt};
 use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, UnknownOption};
+use std::borrow::Cow;
+use derive_into_owned::IntoOwned;
 
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
 /// (present in the captured packets) and their corresponding canonical names and it is optional.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct NameResolutionBlock<'a> {
 
     /// Records
@@ -43,7 +45,7 @@ impl<'a> NameResolutionBlock<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub enum Record<'a> {
     End,
     Ipv4(Ipv4Record<'a>),
@@ -91,10 +93,10 @@ impl<'a> Record<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct Ipv4Record<'a> {
-    pub ip_addr: &'a [u8],
-    pub names: Vec<&'a str>
+    pub ip_addr: Cow<'a, [u8]>,
+    pub names: Vec<Cow<'a, str>>
 }
 
 impl<'a> Ipv4Record<'a> {
@@ -112,11 +114,11 @@ impl<'a> Ipv4Record<'a> {
         while !slice.is_empty() {
             let (slice_tmp, name) = str_from_u8_null_terminated(slice)?;
             slice = slice_tmp;
-            names.push(name);
+            names.push(Cow::Borrowed(name));
         }
 
         let record = Ipv4Record {
-            ip_addr,
+            ip_addr: Cow::Borrowed(ip_addr),
             names
         };
 
@@ -124,10 +126,10 @@ impl<'a> Ipv4Record<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct Ipv6Record<'a> {
-    pub ip_addr: &'a [u8],
-    pub names: Vec<&'a str>
+    pub ip_addr: Cow<'a, [u8]>,
+    pub names: Vec<Cow<'a, str>>
 }
 
 impl<'a> Ipv6Record<'a> {
@@ -145,11 +147,11 @@ impl<'a> Ipv6Record<'a> {
         while !slice.is_empty() {
             let (slice_tmp, name) = str_from_u8_null_terminated(slice)?;
             slice = slice_tmp;
-            names.push(name);
+            names.push(Cow::Borrowed(name));
         }
 
         let record = Ipv6Record {
-            ip_addr,
+            ip_addr: Cow::Borrowed(ip_addr),
             names
         };
 
@@ -157,11 +159,11 @@ impl<'a> Ipv6Record<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct UnknownRecord<'a> {
     pub type_: u16,
     pub length: u16,
-    pub value: &'a [u8]
+    pub value: Cow<'a, [u8]>
 }
 
 impl<'a> UnknownRecord<'a> {
@@ -170,25 +172,25 @@ impl<'a> UnknownRecord<'a> {
         UnknownRecord {
             type_,
             length,
-            value
+            value: Cow::Borrowed(value)
         }
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub enum NameResolutionOption<'a> {
     /// The opt_comment option is a UTF-8 string containing human-readable comment text
     /// that is associated to the current block.
-    Comment(&'a str),
+    Comment(Cow<'a, str>),
 
     /// The ns_dnsname option is a UTF-8 string containing the name of the machine (DNS server) used to perform the name resolution.
-    NsDnsName(&'a str),
+    NsDnsName(Cow<'a, str>),
 
     /// The ns_dnsIP4addr option specifies the IPv4 address of the DNS server.
-    NsDnsIpv4Addr(&'a [u8]),
+    NsDnsIpv4Addr(Cow<'a, [u8]>),
 
     /// The ns_dnsIP6addr option specifies the IPv6 address of the DNS server.
-    NsDnsIpv6Addr(&'a [u8]),
+    NsDnsIpv6Addr(Cow<'a, [u8]>),
 
     /// Custom option containing binary octets in the Custom Data portion
     CustomBinary(CustomBinaryOption<'a>),
@@ -209,19 +211,19 @@ impl<'a> NameResolutionOption<'a> {
 
             let opt = match code {
 
-                1 => NameResolutionOption::Comment(std::str::from_utf8(slice)?),
-                2 => NameResolutionOption::NsDnsName(std::str::from_utf8(slice)?),
+                1 => NameResolutionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
+                2 => NameResolutionOption::NsDnsName(Cow::Borrowed(std::str::from_utf8(slice)?)),
                 3 => {
                     if slice.len() != 4 {
                         return Err(PcapError::InvalidField("NameResolutionOption: NsDnsIpv4Addr length != 4"))
                     }
-                    NameResolutionOption::NsDnsIpv4Addr(slice)
+                    NameResolutionOption::NsDnsIpv4Addr(Cow::Borrowed(slice))
                 },
                 4 => {
                     if slice.len() != 16 {
                         return Err(PcapError::InvalidField("NameResolutionOption: NsDnsIpv6Addr length != 16"))
                     }
-                    NameResolutionOption::NsDnsIpv6Addr(slice)
+                    NameResolutionOption::NsDnsIpv6Addr(Cow::Borrowed(slice))
                 },
 
                 2988 | 19372 => NameResolutionOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),

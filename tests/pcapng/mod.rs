@@ -7,31 +7,13 @@ fn test() {
 
     for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
         let entry = entry.unwrap();
-        //println!("Testing: {:?}", entry);
 
-        let file = File::open(entry).unwrap();
+        let file = File::open(&entry).unwrap();
         let pcapng_reader = PcapNgReader::new(file).unwrap();
 
-        //println!("{:?}", pcapng_reader.section());
-        for block in pcapng_reader {
-            let _block = block.unwrap();
-            //println!("{:?}", block.parsed());
+        for (i, block) in pcapng_reader.enumerate() {
+            let _block = block.expect(&format!("Error on block {} on file: {:?}", i, entry));
+            let parsed = _block.parsed().expect(&format!("Error on parsed block {} file: {:?}", i, entry));
         }
-
-        //println!("\n\n");
     }
 }
-
-/*
-#[test]
-fn test_one() {
-
-    let mut file = File::open("tests/pcapng/big_endian/basic/test008.pcapng").unwrap();
-    let mut pcapng_reader = PcapngReader::new(file).unwrap();
-
-    println!("{:?}", pcapng_reader.section());
-    for block in pcapng_reader {
-        let block = block.unwrap();
-        println!("{:?}", block.parsed());
-    }
-}*/

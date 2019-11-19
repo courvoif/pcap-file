@@ -3,9 +3,11 @@ use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use crate::Endianness;
 use crate::pcapng::blocks::common::opts_from_slice;
 use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, UnknownOption};
+use std::borrow::Cow;
+use derive_into_owned::IntoOwned;
 
 ///Section Header Block: it defines the most important characteristics of the capture file.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct SectionHeaderBlock<'a> {
 
     /// Magic number, whose value is 0x1A2B3C4D.
@@ -83,20 +85,20 @@ impl<'a> SectionHeaderBlock<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub enum SectionHeaderOption<'a> {
 
     /// Comment associated with the current block
-    Comment(&'a str),
+    Comment(Cow<'a, str>),
 
     /// Description of the hardware used to create this section
-    Hardware(&'a str),
+    Hardware(Cow<'a, str>),
 
     /// Name of the operating system used to create this section
-    OS(&'a str),
+    OS(Cow<'a, str>),
 
     /// Name of the application used to create this section
-    UserApplication(&'a str),
+    UserApplication(Cow<'a, str>),
 
     /// Custom option containing binary octets in the Custom Data portion
     CustomBinary(CustomBinaryOption<'a>),
@@ -117,10 +119,10 @@ impl<'a> SectionHeaderOption<'a> {
 
             let opt = match code {
 
-                1 => SectionHeaderOption::Comment(std::str::from_utf8(slice)?),
-                2 => SectionHeaderOption::Hardware(std::str::from_utf8(slice)?),
-                3 => SectionHeaderOption::OS(std::str::from_utf8(slice)?),
-                4 => SectionHeaderOption::UserApplication(std::str::from_utf8(slice)?),
+                1 => SectionHeaderOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
+                2 => SectionHeaderOption::Hardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
+                3 => SectionHeaderOption::OS(Cow::Borrowed(std::str::from_utf8(slice)?)),
+                4 => SectionHeaderOption::UserApplication(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
                 2988 | 19372 => SectionHeaderOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
                 2989 | 19373 => SectionHeaderOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
