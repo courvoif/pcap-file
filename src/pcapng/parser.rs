@@ -2,6 +2,7 @@ use byteorder::{BigEndian, LittleEndian};
 use crate::errors::PcapError;
 use crate::pcapng::blocks::{ParsedBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
 use crate::Endianness;
+use crate::pcapng::{SectionHeaderBlock, Block, BlockType};
 
 /// Parser for a PcapNg formated stream.
 ///
@@ -40,8 +41,8 @@ use crate::Endianness;
 /// }
 /// ```
 pub struct PcapNgParser {
-    section: Block<'static>,
-    interfaces: Vec<Block<'static>>
+    section: SectionHeaderBlock<'static>,
+    interfaces: Vec<InterfaceDescriptionBlock<'static>>
 }
 
 impl PcapNgParser {
@@ -52,12 +53,12 @@ impl PcapNgParser {
     pub fn new(src: &[u8]) -> Result<(&[u8], Self), PcapError> {
 
         let (rem, block) = Block::from_slice::<BigEndian>(src)?;
-        match block.parsed {
-            ParsedBlock::SectionHeader(_) => {},
-            _ => return Err(PcapError::InvalidField("SectionHeader missing"))
-        }
+        let section = block.parsed()?;
 
-        let section = block.to_owned(block.section_header().unwrap().endianness());
+        let section = match section {
+            ParsedBlock::SectionHeader(section) => section.into_owned(),
+            _ => return Err(PcapError::InvalidField("SectionHeader missing"))
+        };
 
         let parser = PcapNgParser {
             section,
@@ -70,40 +71,40 @@ impl PcapNgParser {
     /// Returns the remainder and the next block
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
 
-        let endianess = self.section.section_header().unwrap().endianness();
-
-        let block_res = if endianess == Endianness::Big {
-            Block::from_slice::<BigEndian>(src)
-        }
-        else {
-            Block::from_slice::<LittleEndian>(src)
+        // Read next Block
+        let endianess = self.section.endianness();
+        let (rem, block) = match endianess {
+            Endianness::Big => Block::from_slice::<BigEndian>(src)?,
+            Endianness::Little => Block::from_slice::<LittleEndian>(src)?
         };
 
-        if let Ok((_, block)) = &block_res {
-            if block.section_header().is_some() {
-                self.section = block.to_owned(endianess);
+        match block.type_ {
+            BlockType::SectionHeader => {
+
+                self.section = block.parsed()?.into_section_header().unwrap().into_owned();
                 self.interfaces.clear();
-            }
-            else if block.interface_description().is_some() {
-                self.interfaces.push(block.to_owned(endianess));
-            }
+            },
+            BlockType::InterfaceDescription => {
+                self.interfaces.push(block.parsed()?.into_interface_description().unwrap().into_owned())
+            },
+            _ => {}
         }
 
-        block_res
+        Ok((rem, block))
     }
 
     /// Returns the current SectionHeaderBlock
-    pub fn section(&self) -> &Block<'static> {
+    pub fn section(&self) -> &SectionHeaderBlock<'static> {
         &self.section
     }
 
     /// Returns the current interfaces
-    pub fn interfaces(&self) -> &[Block<'static>] {
+    pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
         &self.interfaces[..]
     }
 
     /// Returns the InterfaceDescriptionBlock corresponding to the given packet
     pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock> {
-        self.interfaces.get(packet.interface_id as usize).map(|block| block.interface_description().unwrap())
+        self.interfaces.get(packet.interface_id as usize)
     }
 }

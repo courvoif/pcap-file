@@ -33,7 +33,7 @@ pub struct Block<'a> {
 
 impl<'a> Block<'a> {
 
-    /// Create an "owned" `RawBlock` from a reader
+    /// Create an "owned" `Block` from a reader
     pub(crate) fn from_reader<R:Read, B: ByteOrder>(reader: &mut R) -> Result<Block<'static>, PcapError> {
 
         let type_ = reader.read_u32::<B>()?.into();
@@ -119,7 +119,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Create an "borrowed" `RawBlock` from a slice
+    /// Create an "borrowed" `Block` from a slice
     pub(crate) fn from_slice<B: ByteOrder>(mut slice: &'a[u8]) -> Result<(&[u8], Self), PcapError> {
 
         if slice.len() < 12 {
@@ -146,16 +146,33 @@ impl<'a> Block<'a> {
                 initial_len = initial_len.swap_bytes();
             }
 
-            if slice.len() < initial_len as usize {
-                return Err(PcapError::IncompleteBuffer(initial_len as usize - slice.len()));
+            if (initial_len % 4) != 0 {
+                return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
             }
-            let body = &slice[..initial_len as usize];
-            let mut end = &slice[initial_len as usize ..];
+
+            if initial_len < 12 {
+                return Err(PcapError::InvalidField("Block: initial_len < 12"))
+            }
+
+            //Check if there is enough data for the body and the trailer_len
+            if slice.len() < initial_len as usize - 8 {
+                return Err(PcapError::IncompleteBuffer(initial_len as usize - 8 - slice.len()));
+            }
+
+            let body_len = initial_len - 12;
+            let body = &slice[..body_len as usize];
+
+            let mut rem = &slice[body_len as usize ..];
 
             let trailer_len = match endianness {
-                Endianness::Big => end.read_u32::<BigEndian>()?,
-                Endianness::Little => end.read_u32::<LittleEndian>()?
+                Endianness::Big => rem.read_u32::<BigEndian>()?,
+                Endianness::Little => rem.read_u32::<LittleEndian>()?
             };
+
+            if initial_len != trailer_len {
+                return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
+            }
+
 
             let block = Block {
                 type_,
@@ -165,30 +182,47 @@ impl<'a> Block<'a> {
                 endianness
             };
 
-            return Ok((end, block))
+            return Ok((rem, block))
         }
+        else {
 
-        //Common case
-        let initial_len = slice.read_u32::<B>()?;
+            //Common case
+            let initial_len = slice.read_u32::<B>()?;
 
-        let body = &slice[..initial_len as usize];
-        slice = &slice[initial_len as usize ..];
+            if (initial_len % 4) != 0 {
+                return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
+            }
 
-        let trailer_len = slice.read_u32::<B>()?;
+            if initial_len < 12 {
+                return Err(PcapError::InvalidField("Block: initial_len < 12"))
+            }
 
-        if initial_len != trailer_len {
-            return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
+            //Check if there is enough data for the body and the trailer_len
+            if slice.len() < initial_len as usize - 8 {
+                return Err(PcapError::IncompleteBuffer(initial_len as usize - 8 - slice.len()));
+            }
+
+            let body_len = initial_len - 12;
+            let body = &slice[..body_len as usize];
+
+            let mut rem = &slice[body_len as usize ..];
+
+            let trailer_len = rem.read_u32::<B>()?;
+
+            if initial_len != trailer_len {
+                return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
+            }
+
+            let block = Block {
+                type_,
+                initial_len,
+                body: Cow::Borrowed(body),
+                trailer_len,
+                endianness: Endianness::new::<B>()
+            };
+
+            Ok((rem, block))
         }
-
-        let raw = Block {
-            type_,
-            initial_len,
-            body: Cow::Borrowed(body),
-            trailer_len,
-            endianness: Endianness::new::<B>()
-        };
-
-        Ok((slice, raw))
     }
 
     pub fn parsed(&self) -> Result<ParsedBlock, PcapError> {
