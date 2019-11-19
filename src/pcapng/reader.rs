@@ -24,6 +24,8 @@ use crate::pcapng::{Block, SectionHeaderBlock, BlockType};
 ///
 ///     //Check if there is no error
 ///     let block = block.unwrap();
+///
+///     //Parse block content
 ///     let parsed_block = block.parsed().unwrap();
 ///
 ///     //Do something

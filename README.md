@@ -36,20 +36,23 @@ It also provides several **parsers** for the PcapNg file format.
 
 ### Example: PcapNgReader
 ```rust
- use std::fs::File;
- use pcap_file::pcapng::PcapNgReader;
+use std::fs::File;
+use pcap_file::pcapng::PcapNgReader;
 
- let file_in = File::open("test.pcapng").expect("Error opening file");
- let pcapng_reader = PcapNgReader::new(file_in).unwrap();
+let file_in = File::open("test.pcapng").expect("Error opening file");
+let pcapng_reader = PcapNgReader::new(file_in).unwrap();
 
- // Read test.pcapng
- for pcapng in pcapng_reader {
+// Read test.pcapng
+for block in pcapng_reader {
 
-     //Check if there is no error
-     let pcapng = pcapng.unwrap();
+    //Check if there is no error
+    let block = block.unwrap();
 
-     //Do something
- }
+    //Parse block content
+    let parsed_block = block.parsed().unwrap();
+
+    //Do something
+}
 ```
 
 
@@ -65,7 +68,7 @@ Add it to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-pcap-file = "1.0.1"
+pcap-file = "1.1.0"
 ```
 
 
