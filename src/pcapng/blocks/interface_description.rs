@@ -5,10 +5,12 @@ use crate::errors::PcapError;
 use crate::DataLink;
 use byteorder::{ByteOrder, ReadBytesExt};
 use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption};
+use std::borrow::Cow;
+use derive_into_owned::IntoOwned;
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct InterfaceDescriptionBlock<'a> {
 
     /// A value that defines the link layer type of this interface.
@@ -52,25 +54,25 @@ impl<'a> InterfaceDescriptionBlock<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub enum InterfaceDescriptionOption<'a> {
 
-    Comment(&'a str),
+    Comment(Cow<'a, str>),
 
     /// The if_name option is a UTF-8 string containing the name of the device used to capture data.
-    IfName(&'a str),
+    IfName(Cow<'a, str>),
 
     /// The if_description option is a UTF-8 string containing the description of the device used to capture data.
-    IfDescription(&'a str),
+    IfDescription(Cow<'a, str>),
 
     /// The if_IPv4addr option is an IPv4 network address and corresponding netmask for the interface.
-    IfIpv4Addr(&'a [u8]),
+    IfIpv4Addr(Cow<'a, [u8]>),
 
     /// The if_IPv6addr option is an IPv6 network address and corresponding prefix length for the interface.
-    IfIpv6Addr(&'a [u8]),
+    IfIpv6Addr(Cow<'a, [u8]>),
 
     /// The if_MACaddr option is the Interface Hardware MAC address (48 bits), if available.
-    IfMacAddr(&'a [u8]),
+    IfMacAddr(Cow<'a, [u8]>),
 
     /// The if_EUIaddr option is the Interface Hardware EUI address (64 bits), if available.
     IfEuIAddr(u64),
@@ -85,11 +87,11 @@ pub enum InterfaceDescriptionOption<'a> {
     IfTzone(u32),
 
     /// The if_filter option identifies the filter (e.g. "capture only TCP traffic") used to capture traffic.
-    IfFilter(&'a [u8]),
+    IfFilter(Cow<'a, [u8]>),
 
     /// The if_os option is a UTF-8 string containing the name of the operating system
     /// of the machine in which this interface is installed.
-    IfOs(&'a str),
+    IfOs(Cow<'a, str>),
 
     /// The if_fcslen option is an 8-bit unsigned integer value that specifies
     /// the length of the Frame Check Sequence (in bits) for this interface.
@@ -100,7 +102,7 @@ pub enum InterfaceDescriptionOption<'a> {
     IfTsOffset(u64),
 
     /// The if_hardware option is a UTF-8 string containing the description of the interface hardware.
-    IfHardware(&'a str),
+    IfHardware(Cow<'a, str>),
 
     /// Custom option containing binary octets in the Custom Data portion
     CustomBinary(CustomBinaryOption<'a>),
@@ -121,26 +123,26 @@ impl<'a> InterfaceDescriptionOption<'a> {
 
             let opt = match code {
 
-                1 => InterfaceDescriptionOption::Comment(std::str::from_utf8(slice)?),
-                2 => InterfaceDescriptionOption::IfName(std::str::from_utf8(slice)?),
-                3 => InterfaceDescriptionOption::IfDescription(std::str::from_utf8(slice)?),
+                1 => InterfaceDescriptionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
+                2 => InterfaceDescriptionOption::IfName(Cow::Borrowed(std::str::from_utf8(slice)?)),
+                3 => InterfaceDescriptionOption::IfDescription(Cow::Borrowed(std::str::from_utf8(slice)?)),
                 4 => {
                     if slice.len() != 8 {
                         return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfIpv4Addr length != 8"))
                     }
-                    InterfaceDescriptionOption::IfIpv4Addr(slice)
+                    InterfaceDescriptionOption::IfIpv4Addr(Cow::Borrowed(slice))
                 },
                 5 => {
                     if slice.len() != 17 {
                         return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfIpv6Addr length != 17"))
                     }
-                    InterfaceDescriptionOption::IfIpv6Addr(slice)
+                    InterfaceDescriptionOption::IfIpv6Addr(Cow::Borrowed(slice))
                 },
                 6 => {
                     if slice.len() != 6 {
                         return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfMacAddr length != 6"))
                     }
-                    InterfaceDescriptionOption::IfMacAddr(slice)
+                    InterfaceDescriptionOption::IfMacAddr(Cow::Borrowed(slice))
                 },
                 7 => {
                     if slice.len() != 8 {
@@ -170,9 +172,9 @@ impl<'a> InterfaceDescriptionOption<'a> {
                     if slice.is_empty() {
                         return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFilter is empty"))
                     }
-                    InterfaceDescriptionOption::IfFilter(slice)
+                    InterfaceDescriptionOption::IfFilter(Cow::Borrowed(slice))
                 },
-                12 => InterfaceDescriptionOption::IfOs(std::str::from_utf8(slice)?),
+                12 => InterfaceDescriptionOption::IfOs(Cow::Borrowed(std::str::from_utf8(slice)?)),
                 13 => {
                     if slice.len() != 1 {
                         return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFcsLen length != 1"))
@@ -185,7 +187,7 @@ impl<'a> InterfaceDescriptionOption<'a> {
                     }
                     InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>()?)
                 },
-                15 => InterfaceDescriptionOption::IfHardware(std::str::from_utf8(slice)?),
+                15 => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
                 2988 | 19372 => InterfaceDescriptionOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
                 2989 | 19373 => InterfaceDescriptionOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),

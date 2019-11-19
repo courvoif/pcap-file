@@ -1,7 +1,7 @@
 [package]
 name = "pcap-file"
 edition = "2018"
-version = "1.0.1"
+version = "1.1.0"
 authors = ["Courvoif <courvoif@pm.me>"]
 description = "A crate to read and write Pcap and read PcapNg"
 
@@ -13,7 +13,8 @@ keywords = ["pcap", "pcapng", "parse", "read", "write"]
 categories = ["encoding", "parsing"]
 
 [dependencies]
-byteorder = "1.3"
+byteorder = "1.3.2"
+derive-into-owned = "0.1.0"
 thiserror = "1.0"
 
 [dev-dependencies]

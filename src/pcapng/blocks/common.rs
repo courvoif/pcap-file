@@ -6,128 +6,8 @@ use byteorder::WriteBytesExt;
 use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock, NameResolutionBlock, InterfaceStatisticsBlock, SystemdJournalExportBlock};
 use crate::pcapng::PacketBlock;
 use crate::Endianness;
+use derive_into_owned::IntoOwned;
 
-
-/// PcapNg Block
-#[derive(Clone, Debug)]
-pub struct Block<'a> {
-
-    pub(crate) raw: RawBlock<'a>,
-    pub(crate) parsed: ParsedBlock<'a>
-}
-
-impl Block<'static> {
-
-    /// Create an "owned" `Block` from a reader
-    pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R) -> Result<Block<'static>, PcapError> {
-
-        let raw = RawBlock::from_reader::<R, B>(reader)?;
-        let slice: &'static [u8] = unsafe {std::mem::transmute(&raw.body[..])};
-        let (_, parsed) = ParsedBlock::from_slice::<B>(raw.type_, slice)?;
-
-        let block = Block {
-            raw,
-            parsed
-        };
-
-        Ok(block)
-    }
-}
-
-impl<'a> Block<'a> {
-
-    /// Create an "borrowed" `Block` from a slice
-    pub fn from_slice<B: ByteOrder>(src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
-
-        let (rem, raw) = RawBlock::from_slice::<B>(src)?;
-        let slice: &'static [u8] = unsafe {std::mem::transmute(&raw.body[..])};
-        let (_, parsed) = ParsedBlock::from_slice::<B>(raw.type_, slice)?;
-
-        let block = Block {
-            raw,
-            parsed
-        };
-
-        Ok((rem, block))
-    }
-
-    /// Get a reference to the raw block data
-    pub fn raw(&self) -> &RawBlock<'a> {
-        &self.raw
-    }
-
-    /// Get a reference to the parsed block data
-    pub fn parsed<'b>(&'b self) -> &ParsedBlock<'b> {
-        &self.parsed
-    }
-
-    pub fn to_owned(&self, endianness: Endianness) -> Block<'static> {
-
-        let raw = self.raw.to_owned();
-        let slice: &'static [u8] = unsafe {std::mem::transmute(&raw.body[..])};
-
-        let (_, parsed) = if endianness == Endianness::Little {
-            ParsedBlock::from_slice::<LittleEndian>(raw.type_, slice).unwrap()
-        }
-        else {
-            ParsedBlock::from_slice::<BigEndian>(raw.type_, slice).unwrap()
-        };
-
-        Block {
-            raw,
-            parsed
-        }
-    }
-
-    pub fn section_header<'b>(&'b self) -> Option<&SectionHeaderBlock<'b>> {
-        match &self.parsed {
-            ParsedBlock::SectionHeader(inner) => Some(inner),
-            _ => None
-        }
-    }
-
-    pub fn interface_description<'b>(&'b self) -> Option<&InterfaceDescriptionBlock<'b>> {
-        match &self.parsed {
-            ParsedBlock::InterfaceDescription(inner) => Some(inner),
-            _ => None
-        }
-    }
-
-    pub fn simple_packet<'b>(&'b self) -> Option<&SimplePacketBlock<'b>> {
-        match &self.parsed {
-            ParsedBlock::SimplePacket(inner) => Some(inner),
-            _ => None
-        }
-    }
-
-    pub fn name_resolution<'b>(&'b self) -> Option<&NameResolutionBlock<'b>> {
-        match &self.parsed {
-            ParsedBlock::NameResolution(inner) => Some(inner),
-            _ => None
-        }
-    }
-
-    pub fn interface_statistics<'b>(&'b self) -> Option<&InterfaceStatisticsBlock<'b>> {
-        match &self.parsed {
-            ParsedBlock::InterfaceStatistics(inner) => Some(inner),
-            _ => None
-        }
-    }
-
-    pub fn enhanced_packet<'b>(&'b self) -> Option<&EnhancedPacketBlock<'b>> {
-        match &self.parsed {
-            ParsedBlock::EnhancedPacket(inner) => Some(inner),
-            _ => None
-        }
-    }
-
-    pub fn systemd_journal_export<'b>(&'b self) -> Option<&SystemdJournalExportBlock<'b>> {
-        match &self.parsed {
-            ParsedBlock::SystemdJournalExport(inner) => Some(inner),
-            _ => None
-        }
-    }
-}
 
 //   0               1               2               3
 //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -141,32 +21,37 @@ impl<'a> Block<'a> {
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //  |                      Block Total Length                       |
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/// PcapNg Raw Block
+/// PcapNg Block
 #[derive(Clone, Debug)]
-pub struct RawBlock<'a> {
-    pub type_: u32,
+pub struct Block<'a> {
+    pub type_: BlockType,
     pub initial_len: u32,
     pub body: Cow<'a, [u8]>,
-    pub trailer_len: u32
+    pub trailer_len: u32,
+    endianness: Endianness
 }
 
-impl<'a> RawBlock<'a> {
+impl<'a> Block<'a> {
 
-    /// Create an "owned" `RawBlock` from a reader
-    fn from_reader<R:Read, B: ByteOrder>(reader: &mut R) -> Result<RawBlock<'static>, PcapError> {
+    /// Create an "owned" `Block` from a reader
+    pub(crate) fn from_reader<R:Read, B: ByteOrder>(reader: &mut R) -> Result<Block<'static>, PcapError> {
 
-        let type_ = reader.read_u32::<B>()?;
+        let type_ = reader.read_u32::<B>()?.into();
 
         //Special case for the section header because we don't know the endianness yet
-        if type_ == 0x0A0D0D0A {
-            let initial_len = reader.read_u32::<BigEndian>()?;
+        if type_ == BlockType::SectionHeader {
+            let mut initial_len = reader.read_u32::<BigEndian>()?;
             let magic = reader.read_u32::<BigEndian>()?;
 
-            let initial_len = match magic {
-                0x1A2B3C4D => initial_len,
-                0x4D3C2B1A => initial_len.swap_bytes(),
+            let endianness = match magic {
+                0x1A2B3C4D => Endianness::Big,
+                0x4D3C2B1A => Endianness::Little,
                 _ => return Err(PcapError::InvalidField("SectionHeaderBlock: invalid magic number"))
             };
+
+            if endianness == Endianness::Little {
+                initial_len = initial_len.swap_bytes();
+            }
 
             if (initial_len % 4) != 0 {
                 return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
@@ -182,21 +67,22 @@ impl<'a> RawBlock<'a> {
             (&mut body[..]).write_u32::<BigEndian>(magic)?;
             reader.read_exact(&mut body[4..])?;
 
-            let trailer_len = match magic {
-                0x1A2B3C4D => reader.read_u32::<BigEndian>()?,
-                0x4D3C2B1A => reader.read_u32::<LittleEndian>()?,
-                _ => unreachable!()
+            let trailer_len = match endianness {
+                Endianness::Big => reader.read_u32::<BigEndian>()?,
+                Endianness::Little => reader.read_u32::<LittleEndian>()?
             };
+
             if initial_len != trailer_len {
                 return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
             }
 
             Ok(
-                RawBlock {
+                Block {
                     type_,
                     initial_len,
                     body: Cow::Owned(body),
-                    trailer_len
+                    trailer_len,
+                    endianness
                 }
             )
         }
@@ -222,102 +108,164 @@ impl<'a> RawBlock<'a> {
             }
 
             Ok(
-                RawBlock {
+                Block {
                     type_,
                     initial_len,
                     body: Cow::Owned(body),
-                    trailer_len
+                    trailer_len,
+                    endianness: Endianness::new::<B>()
                 }
             )
         }
     }
 
-    /// Create an "borrowed" `RawBlock` from a slice
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a[u8]) -> Result<(&[u8], Self), PcapError> {
+    /// Create an "borrowed" `Block` from a slice
+    pub(crate) fn from_slice<B: ByteOrder>(mut slice: &'a[u8]) -> Result<(&[u8], Self), PcapError> {
 
         if slice.len() < 12 {
             return Err(PcapError::IncompleteBuffer(12 - slice.len()));
         }
 
-        let type_ = slice.read_u32::<B>()?;
+        let type_ = slice.read_u32::<B>()?.into();
 
         //Special case for the section header because we don't know the endianness yet
-        if type_ == 0x0A0D0D0A {
-            let initial_len = slice.read_u32::<BigEndian>()?;
+        if type_ == BlockType::SectionHeader {
+            let mut initial_len = slice.read_u32::<BigEndian>()?;
 
             let mut tmp_slice = slice;
 
             let magic = tmp_slice.read_u32::<BigEndian>()?;
 
-            let initial_len = match magic {
-                0x1A2B3C4D => initial_len,
-                0x4D3C2B1A => initial_len.swap_bytes(),
-                _ => return Err(PcapError::InvalidField("SectionHeaderBlock invalid magic number"))
+            let endianness = match magic {
+                0x1A2B3C4D => Endianness::Big,
+                0x4D3C2B1A => Endianness::Little,
+                _ => return Err(PcapError::InvalidField("SectionHeaderBlock: invalid magic number"))
             };
 
-            if slice.len() < initial_len as usize {
-                return Err(PcapError::IncompleteBuffer(initial_len as usize - slice.len()));
+            if endianness == Endianness::Little {
+                initial_len = initial_len.swap_bytes();
             }
-            let body = &slice[..initial_len as usize];
-            let mut end = &slice[initial_len as usize ..];
 
-            let trailer_len = match magic {
-                0x1A2B3C4D => end.read_u32::<BigEndian>()?,
-                0x4D3C2B1A => end.read_u32::<LittleEndian>()?,
-                _ => unreachable!()
+            if (initial_len % 4) != 0 {
+                return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
+            }
+
+            if initial_len < 12 {
+                return Err(PcapError::InvalidField("Block: initial_len < 12"))
+            }
+
+            //Check if there is enough data for the body and the trailer_len
+            if slice.len() < initial_len as usize - 8 {
+                return Err(PcapError::IncompleteBuffer(initial_len as usize - 8 - slice.len()));
+            }
+
+            let body_len = initial_len - 12;
+            let body = &slice[..body_len as usize];
+
+            let mut rem = &slice[body_len as usize ..];
+
+            let trailer_len = match endianness {
+                Endianness::Big => rem.read_u32::<BigEndian>()?,
+                Endianness::Little => rem.read_u32::<LittleEndian>()?
             };
 
-            let raw = RawBlock {
+            if initial_len != trailer_len {
+                return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
+            }
+
+
+            let block = Block {
                 type_,
                 initial_len,
                 body: Cow::Borrowed(body),
-                trailer_len
+                trailer_len,
+                endianness
             };
 
-            return Ok((end, raw))
+            return Ok((rem, block))
         }
+        else {
 
-        //Common case
-        let initial_len = slice.read_u32::<B>()?;
+            //Common case
+            let initial_len = slice.read_u32::<B>()?;
 
-        let body = &slice[..initial_len as usize];
-        slice = &slice[initial_len as usize ..];
+            if (initial_len % 4) != 0 {
+                return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
+            }
 
-        let trailer_len = slice.read_u32::<B>()?;
+            if initial_len < 12 {
+                return Err(PcapError::InvalidField("Block: initial_len < 12"))
+            }
 
-        if initial_len != trailer_len {
-            return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
+            //Check if there is enough data for the body and the trailer_len
+            if slice.len() < initial_len as usize - 8 {
+                return Err(PcapError::IncompleteBuffer(initial_len as usize - 8 - slice.len()));
+            }
+
+            let body_len = initial_len - 12;
+            let body = &slice[..body_len as usize];
+
+            let mut rem = &slice[body_len as usize ..];
+
+            let trailer_len = rem.read_u32::<B>()?;
+
+            if initial_len != trailer_len {
+                return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
+            }
+
+            let block = Block {
+                type_,
+                initial_len,
+                body: Cow::Borrowed(body),
+                trailer_len,
+                endianness: Endianness::new::<B>()
+            };
+
+            Ok((rem, block))
         }
-
-        let raw = RawBlock {
-            type_,
-            initial_len,
-            body: Cow::Borrowed(body),
-            trailer_len
-        };
-
-        Ok((slice, raw))
     }
 
-    pub fn to_owned(&self) -> RawBlock<'static> {
+    pub fn parsed(&self) -> Result<ParsedBlock, PcapError> {
 
-        let type_ = self.type_;
-        let initial_len = self.initial_len;
-        let body = Cow::Owned(self.body.as_ref().to_owned());
-        let trailer_len = self.trailer_len;
-
-        RawBlock {
-            type_,
-            initial_len,
-            body,
-            trailer_len
+        match self.endianness {
+            Endianness::Big => ParsedBlock::from_slice::<BigEndian>(self.type_, &self.body).map(|r| r.1),
+            Endianness::Little => ParsedBlock::from_slice::<LittleEndian>(self.type_, &self.body).map(|r| r.1)
         }
     }
 }
 
+/// PcapNg parsed blocks
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum BlockType {
+    SectionHeader,
+    InterfaceDescription,
+    Packet,
+    SimplePacket,
+    NameResolution,
+    InterfaceStatistics,
+    EnhancedPacket,
+    SystemdJournalExport,
+    Unknown(u32)
+}
+
+impl From<u32> for BlockType {
+    fn from(src: u32) -> Self {
+        match src {
+            0x0A0D0D0A => BlockType::SectionHeader,
+            0x00000001 => BlockType::InterfaceDescription,
+            0x00000002 => BlockType::Packet,
+            0x00000003 => BlockType::SimplePacket,
+            0x00000004 => BlockType::NameResolution,
+            0x00000005 => BlockType::InterfaceStatistics,
+            0x00000006 => BlockType::EnhancedPacket,
+            0x00000009 => BlockType::SystemdJournalExport,
+            _ => BlockType::Unknown(src),
+        }
+    }
+}
 
 /// PcapNg parsed blocks
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub enum ParsedBlock<'a> {
     SectionHeader(SectionHeaderBlock<'a>),
     InterfaceDescription(InterfaceDescriptionBlock<'a>),
@@ -333,59 +281,74 @@ pub enum ParsedBlock<'a> {
 impl<'a> ParsedBlock<'a> {
 
     /// Create a `ParsedBlock` from a slice
-    pub fn from_slice<B: ByteOrder>(type_: u32, slice: &'a[u8]) -> Result<(&'a [u8], Self), PcapError> {
+    pub fn from_slice<B: ByteOrder>(type_: BlockType, slice: &'a[u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         match type_ {
 
-            0x0A0D0D0A => {
+            BlockType::SectionHeader => {
                 let (rem, block) = SectionHeaderBlock::from_slice(slice)?;
                 Ok((rem, ParsedBlock::SectionHeader(block)))
             },
-            0x00000001 => {
+            BlockType::InterfaceDescription => {
                 let (rem, block) = InterfaceDescriptionBlock::from_slice::<B>(slice)?;
                 Ok((rem, ParsedBlock::InterfaceDescription(block)))
             },
-            0x00000002 => {
+            BlockType::Packet => {
                 let (rem, block) = PacketBlock::from_slice::<B>(slice)?;
                 Ok((rem, ParsedBlock::Packet(block)))
             },
-            0x00000003 => {
+            BlockType::SimplePacket => {
                 let (rem, block) = SimplePacketBlock::from_slice::<B>(slice)?;
                 Ok((rem, ParsedBlock::SimplePacket(block)))
             },
-            0x00000004 => {
+            BlockType::NameResolution => {
                 let (rem, block) = NameResolutionBlock::from_slice::<B>(slice)?;
                 Ok((rem, ParsedBlock::NameResolution(block)))
             },
-            0x00000005 => {
+            BlockType::InterfaceStatistics => {
                 let (rem, block) = InterfaceStatisticsBlock::from_slice::<B>(slice)?;
                 Ok((rem, ParsedBlock::InterfaceStatistics(block)))
             },
-            0x00000006 => {
+            BlockType::EnhancedPacket => {
                 let (rem, block) = EnhancedPacketBlock::from_slice::<B>(slice)?;
                 Ok((rem, ParsedBlock::EnhancedPacket(block)))
             },
-            0x00000009 => {
+            BlockType::SystemdJournalExport => {
                 let (rem, block) = SystemdJournalExportBlock::from_slice::<B>(slice)?;
                 Ok((rem, ParsedBlock::SystemdJournalExport(block)))
             }
             _ => Ok((slice, ParsedBlock::Unknown(UnknownBlock::new(type_, slice.len() as u32, slice))))
         }
     }
+
+    pub fn into_section_header(self) -> Option<SectionHeaderBlock<'a>> {
+        match self {
+            ParsedBlock::SectionHeader(section) => Some(section),
+            _ => None
+        }
+    }
+
+    pub fn into_interface_description(self) -> Option<InterfaceDescriptionBlock<'a>> {
+        match self {
+            ParsedBlock::InterfaceDescription(block) => Some(block),
+            _ => None
+        }
+    }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct UnknownBlock<'a> {
-    pub type_: u32,
+    pub type_: BlockType,
     pub length: u32,
-    pub value: &'a [u8]
+    pub value: Cow<'a, [u8]>
 }
+
 impl<'a> UnknownBlock<'a> {
-    pub fn new(type_: u32, length: u32, value: &'a [u8]) -> Self {
+    pub fn new(type_: BlockType, length: u32, value: &'a [u8]) -> Self {
         UnknownBlock {
             type_,
             length,
-            value
+            value: Cow::Borrowed(value)
         }
     }
 }
@@ -431,27 +394,27 @@ pub(crate) fn opts_from_slice<'a, B, F, O>(mut slice: &'a [u8], func: F) -> Resu
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct UnknownOption<'a> {
     code: u16,
     length: u16,
-    value: &'a [u8]
+    value: Cow<'a, [u8]>
 }
 impl<'a> UnknownOption<'a> {
     pub fn new(code: u16, length: u16, value: &'a[u8]) -> Self {
         UnknownOption {
             code,
             length,
-            value
+            value: Cow::Borrowed(value)
         }
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct CustomBinaryOption<'a> {
     code: u16,
     pen: u32,
-    value: &'a [u8]
+    value: Cow<'a, [u8]>
 }
 impl<'a> CustomBinaryOption<'a> {
     pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
@@ -460,18 +423,18 @@ impl<'a> CustomBinaryOption<'a> {
         let opt = CustomBinaryOption {
             code,
             pen,
-            value: src
+            value: Cow::Borrowed(src)
         };
 
         Ok(opt)
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct CustomUtf8Option<'a> {
     code: u16,
     pen: u32,
-    value: &'a str
+    value: Cow<'a, str>
 }
 impl<'a> CustomUtf8Option<'a> {
     pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
@@ -480,7 +443,7 @@ impl<'a> CustomUtf8Option<'a> {
         let opt = CustomUtf8Option {
             code,
             pen,
-            value: std::str::from_utf8(src)?
+            value: Cow::Borrowed(std::str::from_utf8(src)?)
         };
 
         Ok(opt)

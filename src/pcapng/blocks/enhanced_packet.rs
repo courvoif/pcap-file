@@ -2,10 +2,11 @@ use crate::pcapng::blocks::opts_from_slice;
 use crate::errors::PcapError;
 use byteorder::{ByteOrder, ReadBytesExt};
 use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption};
-
+use std::borrow::Cow;
+use derive_into_owned::IntoOwned;
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct EnhancedPacketBlock<'a> {
 
     /// It specifies the interface this packet comes from.
@@ -24,7 +25,7 @@ pub struct EnhancedPacketBlock<'a> {
     pub original_len: u32,
 
     /// The data coming from the network, including link-layer headers.
-    pub data: &'a [u8],
+    pub data: Cow<'a, [u8]>,
 
     /// Options
     pub options: Vec<EnhancedPacketOption<'a>>
@@ -59,7 +60,7 @@ impl<'a> EnhancedPacketBlock<'a> {
             timestamp,
             captured_len,
             original_len,
-            data,
+            data: Cow::Borrowed(data),
             options
         };
 
@@ -67,17 +68,17 @@ impl<'a> EnhancedPacketBlock<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub enum EnhancedPacketOption<'a> {
 
     /// Comment associated with the current block
-    Comment(&'a str),
+    Comment(Cow<'a, str>),
 
     /// 32-bit flags word containing link-layer information.
     Flags(u32),
 
     /// Contains a hash of the packet.
-    Hash(&'a [u8]),
+    Hash(Cow<'a, [u8]>),
 
     /// 64-bit integer value specifying the number of packets lost
     /// (by the interface and the operating system) between this packet and the preceding one for
@@ -104,14 +105,14 @@ impl<'a> EnhancedPacketOption<'a> {
 
             let opt = match code {
 
-                1 => EnhancedPacketOption::Comment(std::str::from_utf8(slice)?),
+                1 => EnhancedPacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
                 2 => {
                     if slice.len() != 4 {
                         return Err(PcapError::InvalidField("EnhancedPacketOption: Flags length != 4"))
                     }
                     EnhancedPacketOption::Flags(slice.read_u32::<B>()?)
                 },
-                3 => EnhancedPacketOption::Hash(slice),
+                3 => EnhancedPacketOption::Hash(Cow::Borrowed(slice)),
                 4 => {
                     if slice.len() != 8 {
                         return Err(PcapError::InvalidField("EnhancedPacketOption: DropCount length != 8"))

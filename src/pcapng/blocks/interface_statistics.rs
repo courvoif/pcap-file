@@ -2,11 +2,13 @@ use crate::pcapng::blocks::common::opts_from_slice;
 use crate::errors::PcapError;
 use byteorder::{ByteOrder, ReadBytesExt};
 use crate::pcapng::{UnknownOption, CustomUtf8Option, CustomBinaryOption};
+use std::borrow::Cow;
+use derive_into_owned::IntoOwned;
 
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct InterfaceStatisticsBlock<'a> {
 
     /// Specifies the interface these statistics refers to.
@@ -45,12 +47,12 @@ impl<'a> InterfaceStatisticsBlock<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub enum InterfaceStatisticsOption<'a> {
 
     /// The opt_comment option is a UTF-8 string containing human-readable comment text
     /// that is associated to the current block.
-    Comment(&'a str),
+    Comment(Cow<'a, str>),
 
     /// The isb_starttime option specifies the time the capture started.
     IsbStartTime(u64),
@@ -96,7 +98,7 @@ impl<'a> InterfaceStatisticsOption<'a> {
 
             let opt = match code {
 
-                1 => InterfaceStatisticsOption::Comment(std::str::from_utf8(slice)?),
+                1 => InterfaceStatisticsOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
                 2 => InterfaceStatisticsOption::IsbStartTime(slice.read_u64::<B>()?),
                 3 => InterfaceStatisticsOption::IsbEndTime(slice.read_u64::<B>()?),
                 4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>()?),

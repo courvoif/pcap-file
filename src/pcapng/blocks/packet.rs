@@ -2,11 +2,13 @@ use crate::pcapng::blocks::opts_from_slice;
 use crate::errors::PcapError;
 use byteorder::{ByteOrder, ReadBytesExt};
 use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption};
+use std::borrow::Cow;
+use derive_into_owned::IntoOwned;
 
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub struct PacketBlock<'a> {
 
     /// It specifies the interface this packet comes from.
@@ -28,7 +30,7 @@ pub struct PacketBlock<'a> {
     pub original_len: u32,
 
     /// The data coming from the network, including link-layer headers.
-    pub data: &'a [u8],
+    pub data: Cow<'a, [u8]>,
 
     /// Options
     pub options: Vec<PacketOption<'a>>
@@ -65,7 +67,7 @@ impl<'a> PacketBlock<'a> {
             timestamp,
             captured_len,
             original_len,
-            data,
+            data: Cow::Borrowed(data),
             options
         };
 
@@ -73,17 +75,17 @@ impl<'a> PacketBlock<'a> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned)]
 pub enum PacketOption<'a> {
 
     /// Comment associated with the current block
-    Comment(&'a str),
+    Comment(Cow<'a, str>),
 
     /// 32-bit flags word containing link-layer information.
     Flags(u32),
 
     /// Contains a hash of the packet.
-    Hash(&'a [u8]),
+    Hash(Cow<'a, [u8]>),
 
     /// Custom option containing binary octets in the Custom Data portion
     CustomBinary(CustomBinaryOption<'a>),
@@ -104,14 +106,14 @@ impl<'a> PacketOption<'a> {
 
             let opt = match code {
 
-                1 => PacketOption::Comment(std::str::from_utf8(slice)?),
+                1 => PacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
                 2 => {
                     if slice.len() != 4 {
                         return Err(PcapError::InvalidField("PacketOption: Flags length != 4"))
                     }
                     PacketOption::Flags(slice.read_u32::<B>()?)
                 },
-                3 => PacketOption::Hash(slice),
+                3 => PacketOption::Hash(Cow::Borrowed(slice)),
 
                 2988 | 19372 => PacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
                 2989 | 19373 => PacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),

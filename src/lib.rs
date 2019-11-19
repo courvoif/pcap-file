@@ -19,6 +19,6 @@ pub mod pcap;
 pub use pcap::{PcapReader, PcapParser, PcapWriter};
 
 pub mod pcapng;
-pub use pcapng::{PcapNgReader, PcapNgParser};
+pub use pcapng::{PcapNgReader, /*PcapNgParser*/};
 
 pub(crate) mod peek_reader;

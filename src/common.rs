@@ -1,3 +1,5 @@
+use byteorder::ByteOrder;
+
 /// Timestamp resolution of the pcap
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum TsResolution {
@@ -25,6 +27,16 @@ impl Endianness {
         match self {
             Endianness::Big => true,
             Endianness::Little => false
+        }
+    }
+
+    pub fn new<B: ByteOrder>() -> Self {
+
+        if B::read_u32(&[0,0,0,1]) == 1 {
+            Endianness::Big
+        }
+        else {
+            Endianness::Little
         }
     }
 }
