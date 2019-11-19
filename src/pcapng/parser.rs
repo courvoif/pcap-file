@@ -25,6 +25,8 @@ use crate::pcapng::{SectionHeaderBlock, Block, BlockType};
 ///
 ///     match pcapng_parser.next_block(src) {
 ///         Ok((rem, block)) => {
+///
+///             let parsed_block = block.parsed().unwrap();
 ///             // Do something
 ///
 ///             // Don't forget to update src
