@@ -4,10 +4,10 @@
 //! It also contains a writer for Pcap files.
 //!
 //! For Pcap files see
-//! [PcapReader](struct.PcapReader.html), [PcapParser](struct.PcapParser.html) and [PcapWriter](struct.PcapParser.html)
+//! [PcapReader](struct.PcapReader.html), [PcapParser](struct.PcapParser.html) and [PcapWriter](struct.PcapParser.html).
 //!
 //! For PcapNg files see
-//! [PcapNgReader](struct.PcapNgReader.html) and [PcapParser](struct.PcapParser.html)
+//! [PcapNgReader](struct.PcapNgReader.html) and [PcapNgParser](struct.PcapNgParser.html).
 
 pub(crate) mod common;
 pub use common::*;
@@ -19,6 +19,6 @@ pub mod pcap;
 pub use pcap::{PcapReader, PcapParser, PcapWriter};
 
 pub mod pcapng;
-pub use pcapng::{PcapNgReader, /*PcapNgParser*/};
+pub use pcapng::{PcapNgReader, PcapNgParser};
 
 pub(crate) mod peek_reader;

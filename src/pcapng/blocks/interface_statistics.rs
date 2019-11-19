@@ -6,8 +6,7 @@ use std::borrow::Cow;
 use derive_into_owned::IntoOwned;
 
 
-/// An Interface Description Block (IDB) is the container for information describing an interface
-/// on which packet data is captured.
+/// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
 #[derive(Clone, Debug, IntoOwned)]
 pub struct InterfaceStatisticsBlock<'a> {
 

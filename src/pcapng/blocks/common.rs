@@ -234,7 +234,6 @@ impl<'a> Block<'a> {
     }
 }
 
-/// PcapNg parsed blocks
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum BlockType {
     SectionHeader,
