@@ -1,10 +1,10 @@
 #![allow(clippy::cast_lossless)]
 
-use crate::pcapng::blocks::common::opts_from_slice;
+use crate::pcapng::blocks::block_common::opts_from_slice;
 use crate::errors::PcapError;
 use crate::DataLink;
 use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
-use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption, PcapNgOption, WritePcapNgOpt};
+use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption, PcapNgOption, WriteOptTo};
 use std::borrow::Cow;
 use derive_into_owned::IntoOwned;
 use std::io::Write;
@@ -42,7 +42,7 @@ impl<'a> InterfaceDescriptionBlock<'a> {
         let linktype = (slice.read_u16::<B>()? as u32).into();
         let reserved = slice.read_u16::<B>()?;
         let snaplen = slice.read_u32::<B>()?;
-        let (slice, options) = InterfaceDescriptionOption::from_slice::<B>(slice)?;
+        let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(slice)?;
 
         let block = InterfaceDescriptionBlock {
             linktype,
@@ -196,37 +196,27 @@ impl PcapNgOption for InterfaceDescriptionOption {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> _ {
-        unimplemented!()
-    }
-}
-
-
-impl<'a> InterfaceDescriptionOption<'a> {
-
-    pub fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
-        let pad = [0_u8; 3];
+    fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
 
         match self {
-            InterfaceDescriptionOption::Comment(a) => a.write_opt(1),
-            InterfaceDescriptionOption::IfName(a) => a.write_opt(2),
-            InterfaceDescriptionOption::IfDescription(a) => a.write_opt(3),
-            InterfaceDescriptionOption::IfIpv4Addr(a) => a.write_opt(4),
-            InterfaceDescriptionOption::IfIpv6Addr(a) => a.write_opt(5),
-            InterfaceDescriptionOption::IfMacAddr(a) => a.write_opt(6),
-            InterfaceDescriptionOption::IfEuIAddr(a) => a.write_opt(7),
-            InterfaceDescriptionOption::IfSpeed(a) => a.write_opt(8),
-            InterfaceDescriptionOption::IfTsResol(a) => a.write_opt(9),
-            InterfaceDescriptionOption::IfTzone(a) => a.write_opt(10),
-            InterfaceDescriptionOption::IfFilter(a) => a.write_opt(11),
-            InterfaceDescriptionOption::IfOs(a) => a.write_opt(12),
-            InterfaceDescriptionOption::IfFcsLen(a) => a.write_opt(13),
-            InterfaceDescriptionOption::IfTsOffset(a) => a.write_opt(14),
-            InterfaceDescriptionOption::IfHardware(a) => a.write_opt(15),
-            InterfaceDescriptionOption::CustomBinary(a) => a.write_opt(a.code),
-            InterfaceDescriptionOption::CustomUtf8(a) => a.write_opt(17),
-            InterfaceDescriptionOption::Unknown(a) => a.write_opt(1),
+            InterfaceDescriptionOption::Comment(a) => a.write_opt_to(1, writer),
+            InterfaceDescriptionOption::IfName(a) => a.write_opt_to(2, writer),
+            InterfaceDescriptionOption::IfDescription(a) => a.write_opt_to(3, writer),
+            InterfaceDescriptionOption::IfIpv4Addr(a) => a.write_opt_to(4, writer),
+            InterfaceDescriptionOption::IfIpv6Addr(a) => a.write_opt_to(5, writer),
+            InterfaceDescriptionOption::IfMacAddr(a) => a.write_opt_to(6, writer),
+            InterfaceDescriptionOption::IfEuIAddr(a) => a.write_opt_to(7, writer),
+            InterfaceDescriptionOption::IfSpeed(a) => a.write_opt_to(8, writer),
+            InterfaceDescriptionOption::IfTsResol(a) => a.write_opt_to(9, writer),
+            InterfaceDescriptionOption::IfTzone(a) => a.write_opt_to(10, writer),
+            InterfaceDescriptionOption::IfFilter(a) => a.write_opt_to(11, writer),
+            InterfaceDescriptionOption::IfOs(a) => a.write_opt_to(12, writer),
+            InterfaceDescriptionOption::IfFcsLen(a) => a.write_opt_to(13, writer),
+            InterfaceDescriptionOption::IfTsOffset(a) => a.write_opt_to(14, writer),
+            InterfaceDescriptionOption::IfHardware(a) => a.write_opt_to(15, writer),
+            InterfaceDescriptionOption::CustomBinary(a) => a.write_opt_to(a.code, writer),
+            InterfaceDescriptionOption::CustomUtf8(a) => a.write_opt_to(a.code, writer),
+            InterfaceDescriptionOption::Unknown(a) => a.write_opt_to(a.code, writer),
         }
     }
 }

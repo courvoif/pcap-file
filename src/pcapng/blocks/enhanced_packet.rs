@@ -1,7 +1,7 @@
 use crate::pcapng::blocks::{Block, opts_from_slice};
 use crate::errors::PcapError;
 use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt, BigEndian, LittleEndian};
-use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption, BlockType};
+use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption, BlockType, WriteOptTo, PcapNgOption};
 use std::borrow::Cow;
 use derive_into_owned::IntoOwned;
 use crate::Endianness;
@@ -57,7 +57,7 @@ impl<'a> EnhancedPacketBlock<'a> {
         let data = &slice[..captured_len as usize];
         slice = &slice[tot_len..];
 
-        let (slice, options) = EnhancedPacketOption::from_slice::<B>(slice)?;
+        let (slice, options) = EnhancedPacketOption::opts_from_slice::<B>(slice)?;
         let block = EnhancedPacketBlock {
             interface_id,
             timestamp,
@@ -147,98 +147,45 @@ pub enum EnhancedPacketOption<'a> {
     Unknown(UnknownOption<'a>)
 }
 
+impl<'a> PcapNgOption for EnhancedPacketOption<'a> {
 
-impl<'a> EnhancedPacketOption<'a> {
+    fn from_slice(code: u16, length: u16, slice: &[u8]) -> Result<Self, PcapError> {
 
-    pub fn from_slice<B:ByteOrder>(slice: &'a [u8]) -> Result<(&'a[u8], Vec<Self>), PcapError> {
+        let opt = match code {
 
-        opts_from_slice::<B, _, _>(slice, |mut slice, code, length| {
+            1 => EnhancedPacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            2 => {
+                if slice.len() != 4 {
+                    return Err(PcapError::InvalidField("EnhancedPacketOption: Flags length != 4"))
+                }
+                EnhancedPacketOption::Flags(slice.read_u32::<B>()?)
+            },
+            3 => EnhancedPacketOption::Hash(Cow::Borrowed(slice)),
+            4 => {
+                if slice.len() != 8 {
+                    return Err(PcapError::InvalidField("EnhancedPacketOption: DropCount length != 8"))
+                }
+                EnhancedPacketOption::DropCount(slice.read_u64::<B>()?)
+            },
 
-            let opt = match code {
+            2988 | 19372 => EnhancedPacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
+            2989 | 19373 => EnhancedPacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
 
-                1 => EnhancedPacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
-                2 => {
-                    if slice.len() != 4 {
-                        return Err(PcapError::InvalidField("EnhancedPacketOption: Flags length != 4"))
-                    }
-                    EnhancedPacketOption::Flags(slice.read_u32::<B>()?)
-                },
-                3 => EnhancedPacketOption::Hash(Cow::Borrowed(slice)),
-                4 => {
-                    if slice.len() != 8 {
-                        return Err(PcapError::InvalidField("EnhancedPacketOption: DropCount length != 8"))
-                    }
-                    EnhancedPacketOption::DropCount(slice.read_u64::<B>()?)
-                },
+            _ => EnhancedPacketOption::Unknown(UnknownOption::new(code, length, slice))
+        };
 
-                2988 | 19372 => EnhancedPacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-                2989 | 19373 => EnhancedPacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-                _ => EnhancedPacketOption::Unknown(UnknownOption::new(code, length, slice))
-            };
-
-            Ok(opt)
-        })
+        Ok(opt)
     }
 
-    pub fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
-        let pad = [0_u8; 3];
-
+    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         match self {
-
-            EnhancedPacketOption::Comment(s) => {
-
-                let len = s.as_bytes().len();
-                let pad_len = (4-len%4)%4;
-
-                writer.write_u16::<B>(1)?;
-                writer.write_u16::<B>(len as u16)?;
-                writer.write(s.as_bytes())?;
-                writer.write(&pad[..pad_len])?;
-
-                Ok(len + pad_len + 4)
-            },
-            EnhancedPacketOption::Flags(f) => {
-
-                writer.write_u16::<B>(2)?;
-                writer.write_u16::<B>(4)?;
-                writer.write_u32::<B>(*f)?;
-
-                Ok(8)
-            },
-            EnhancedPacketOption::Hash(h) => {
-
-                let len = h.len();
-                let pad_len = (4-len%4)%4;
-
-                //Code
-                writer.write_u16::<B>(3)?;
-                //Len
-                writer.write_u16::<B>(len as u16)?;
-                //Hash
-                writer.write(h)?;
-                //Pad
-                writer.write(&pad[..pad_len])?;
-
-                Ok(len + pad_len + 4)
-            },
-            EnhancedPacketOption::DropCount(d) => {
-
-                //Code
-                writer.write_u16::<B>(4)?;
-                //Len
-                writer.write_u16::<B>(8)?;
-                //Hash
-                writer.write_u64::<B>(*d)?;
-
-                Ok(12)
-            },
-            EnhancedPacketOption::CustomUtf8(c) => {
-                c.write_to(writer)
-            },
-            EnhancedPacketOption::CustomBinary(c) => c.write_to(writer),
-            EnhancedPacketOption::Unknown(u) => u.write_to(writer),
+            EnhancedPacketOption::Comment(a) => a.write_opt_to(1, writer),
+            EnhancedPacketOption::Flags(a) => a.write_opt_to(2, writer),
+            EnhancedPacketOption::Hash(a) => a.write_opt_to(3, writer),
+            EnhancedPacketOption::DropCount(a) => a.write_opt_to(4, writer),
+            EnhancedPacketOption::CustomBinary(a) => a.write_opt_to(a.code, writer),
+            EnhancedPacketOption::CustomUtf8(a) => a.write_opt_to(a.code, writer),
+            EnhancedPacketOption::Unknown(a) => a.write_opt_to(a.code, writer),
         }
     }
 }

@@ -1,10 +1,11 @@
 use crate::errors::PcapError;
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use crate::Endianness;
-use crate::pcapng::blocks::common::opts_from_slice;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, UnknownOption};
+use crate::pcapng::blocks::block_common::opts_from_slice;
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
 use std::borrow::Cow;
 use derive_into_owned::IntoOwned;
+use std::io::Write;
 
 ///Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug, IntoOwned)]
@@ -67,7 +68,7 @@ impl<'a> SectionHeaderBlock<'a> {
             let maj_ver = slice.read_u16::<B>()?;
             let min_ver = slice.read_u16::<B>()?;
             let sec_len = slice.read_i64::<B>()?;
-            let (rem, opts) = SectionHeaderOption::from_slice::<B>(slice)?;
+            let (rem, opts) = SectionHeaderOption::opts_from_slice::<B>(slice)?;
 
             Ok((rem, maj_ver, min_ver, sec_len, opts))
         }
@@ -111,27 +112,37 @@ pub enum SectionHeaderOption<'a> {
 }
 
 
-impl<'a> SectionHeaderOption<'a> {
+impl<'a> PcapNgOption for SectionHeaderOption<'a> {
 
-    fn from_slice<B:ByteOrder>(slice: &'a [u8]) -> Result<(&'a [u8], Vec<Self>), PcapError> {
+    fn from_slice(code: u16, length: u16, slice: &[u8]) -> Result<Self, PcapError> {
 
-        opts_from_slice::<B, _, _>(slice, |slice, code, length| {
+        let opt = match code {
 
-            let opt = match code {
+            1 => SectionHeaderOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            2 => SectionHeaderOption::Hardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            3 => SectionHeaderOption::OS(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            4 => SectionHeaderOption::UserApplication(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
-                1 => SectionHeaderOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
-                2 => SectionHeaderOption::Hardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
-                3 => SectionHeaderOption::OS(Cow::Borrowed(std::str::from_utf8(slice)?)),
-                4 => SectionHeaderOption::UserApplication(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            2988 | 19372 => SectionHeaderOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
+            2989 | 19373 => SectionHeaderOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
 
-                2988 | 19372 => SectionHeaderOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-                2989 | 19373 => SectionHeaderOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
+            _ => SectionHeaderOption::Unknown(UnknownOption::new(code, length, slice))
+        };
 
-                _ => SectionHeaderOption::Unknown(UnknownOption::new(code, length, slice))
-            };
+        Ok(opt)
+    }
 
-            Ok(opt)
-        })
+    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+        
+        match self {
+            SectionHeaderOption::Comment(a) => a.write_opt_to(1, writer),
+            SectionHeaderOption::Hardware(a) => a.write_opt_to(2, writer),
+            SectionHeaderOption::OS(a) => a.write_opt_to(3, writer),
+            SectionHeaderOption::UserApplication(a) => a.write_opt_to(4, writer),
+            SectionHeaderOption::CustomBinary(a) => a.write_opt_to(a.code, writer),
+            SectionHeaderOption::CustomUtf8(a) => a.write_opt_to(a.code, writer),
+            SectionHeaderOption::Unknown(a) => a.write_opt_to(a.code, writer),
+        }
     }
 }
 

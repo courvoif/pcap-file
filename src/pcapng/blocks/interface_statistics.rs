@@ -1,4 +1,4 @@
-use crate::pcapng::blocks::common::opts_from_slice;
+use crate::pcapng::blocks::block_common::opts_from_slice;
 use crate::errors::PcapError;
 use byteorder::{ByteOrder, ReadBytesExt};
 use crate::pcapng::{UnknownOption, CustomUtf8Option, CustomBinaryOption};

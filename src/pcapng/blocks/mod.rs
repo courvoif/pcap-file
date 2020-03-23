@@ -10,8 +10,11 @@ pub use enhanced_packet::*;
 pub(crate) mod simple_packet;
 pub use simple_packet::*;
 
-pub(crate) mod common;
-pub use common::*;
+pub(crate) mod block_common;
+pub use block_common::*;
+
+pub(crate) mod opt_common;
+pub use opt_common::*;
 
 pub(crate) mod name_resolution;
 pub use name_resolution::*;
