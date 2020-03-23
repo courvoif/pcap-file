@@ -1,4 +1,5 @@
 #![allow(clippy::unreadable_literal)]
+#![feature(specialization)]
 
 //! This crate contains parsers and readers for Pcap and Pcapng files.
 //! It also contains a writer for Pcap files.

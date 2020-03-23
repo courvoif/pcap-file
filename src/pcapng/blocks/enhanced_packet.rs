@@ -1,9 +1,12 @@
-use crate::pcapng::blocks::opts_from_slice;
+use crate::pcapng::blocks::{Block, opts_from_slice};
 use crate::errors::PcapError;
-use byteorder::{ByteOrder, ReadBytesExt};
-use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption};
+use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt, BigEndian, LittleEndian};
+use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption, BlockType};
 use std::borrow::Cow;
 use derive_into_owned::IntoOwned;
+use crate::Endianness;
+use std::io::Write;
+use std::io::Result as IoResult;
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
 #[derive(Clone, Debug, IntoOwned)]
@@ -65,6 +68,54 @@ impl<'a> EnhancedPacketBlock<'a> {
         };
 
         Ok((slice, block))
+    }
+
+    pub fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+
+
+        self.write_packet_to::<BigEndian>(body);
+        self.write_opts_to::<BigEndian>(body);
+
+
+
+        let len = block.body.len() as u32;
+        block.initial_len = len;
+        block.trailer_len = len;
+
+        block
+    }
+
+    fn write_packet_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+
+        let pad = [0_u8; 3];
+        let pad_len = (4 - (self.captured_len as usize % 4)) % 4;
+
+        writer.write_u32::<BigEndian>(self.interface_id)?;
+        writer.write_u64::<BigEndian>(self.timestamp)?;
+        writer.write_u32::<BigEndian>(self.captured_len)?;
+        writer.write_u32::<BigEndian>(self.original_len)?;
+        writer.write(data)?;
+        writer.write(&pad[..pad_len])?;
+
+        Ok(20 + data.len() + pad_len)
+    }
+
+    fn write_opts_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+
+        let mut have_opt = false;
+        let mut written = 0;
+        for opt in &self.options {
+            written += opt.write_to::<B>(writer)?;
+            have_opt = true;
+        }
+
+        if have_opt {
+            writer.write_u16(0)?;
+            writer.write_u16(0)?;
+            written += 4;
+        }
+
+        Ok(written)
     }
 }
 
@@ -129,6 +180,65 @@ impl<'a> EnhancedPacketOption<'a> {
             Ok(opt)
         })
     }
+
+    pub fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+
+        let pad = [0_u8; 3];
+
+        match self {
+
+            EnhancedPacketOption::Comment(s) => {
+
+                let len = s.as_bytes().len();
+                let pad_len = (4-len%4)%4;
+
+                writer.write_u16::<B>(1)?;
+                writer.write_u16::<B>(len as u16)?;
+                writer.write(s.as_bytes())?;
+                writer.write(&pad[..pad_len])?;
+
+                Ok(len + pad_len + 4)
+            },
+            EnhancedPacketOption::Flags(f) => {
+
+                writer.write_u16::<B>(2)?;
+                writer.write_u16::<B>(4)?;
+                writer.write_u32::<B>(*f)?;
+
+                Ok(8)
+            },
+            EnhancedPacketOption::Hash(h) => {
+
+                let len = h.len();
+                let pad_len = (4-len%4)%4;
+
+                //Code
+                writer.write_u16::<B>(3)?;
+                //Len
+                writer.write_u16::<B>(len as u16)?;
+                //Hash
+                writer.write(h)?;
+                //Pad
+                writer.write(&pad[..pad_len])?;
+
+                Ok(len + pad_len + 4)
+            },
+            EnhancedPacketOption::DropCount(d) => {
+
+                //Code
+                writer.write_u16::<B>(4)?;
+                //Len
+                writer.write_u16::<B>(8)?;
+                //Hash
+                writer.write_u64::<B>(*d)?;
+
+                Ok(12)
+            },
+            EnhancedPacketOption::CustomUtf8(c) => {
+                c.write_to(writer)
+            },
+            EnhancedPacketOption::CustomBinary(c) => c.write_to(writer),
+            EnhancedPacketOption::Unknown(u) => u.write_to(writer),
+        }
+    }
 }
-
-
