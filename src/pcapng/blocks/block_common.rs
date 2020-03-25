@@ -184,7 +184,7 @@ impl<'a> Block<'a> {
                 endianness
             };
 
-            return Ok((rem, block))
+            Ok((rem, block))
         }
         else {
 
@@ -239,7 +239,7 @@ impl<'a> Block<'a> {
 
         writer.write_u32::<B>(self.type_.into())?;
         writer.write_u32::<B>(self.initial_len)?;
-        writer.write(&self.body[..])?;
+        writer.write_all(&self.body[..])?;
         writer.write_u32::<B>(self.trailer_len)?;
 
         Ok(12 + self.body.len())

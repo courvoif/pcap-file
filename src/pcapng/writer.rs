@@ -4,7 +4,6 @@ use thiserror::Error;
 
 use crate::pcapng::{InterfaceDescriptionBlock, SectionHeaderBlock, PcapNgBlock, ParsedBlock};
 use byteorder::{ByteOrder, NativeEndian, BigEndian, LittleEndian};
-use std::marker::PhantomData;
 use crate::Endianness;
 
 
@@ -56,7 +55,7 @@ impl<W: Write> PcapNgWriter<W> {
         Self::with_endianness(writer, endianness)
     }
 
-    pub fn with_endianness(mut writer: W, endianness: Endianness) -> PcapWriteResult<Self> {
+    pub fn with_endianness(writer: W, endianness: Endianness) -> PcapWriteResult<Self> {
 
         let mut section = SectionHeaderBlock::new();
         section.set_endianness(endianness);

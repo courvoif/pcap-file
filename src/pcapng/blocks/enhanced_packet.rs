@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::io::Result as IoResult;
 use std::io::Write;
 
-use byteorder::{BigEndian, ByteOrder, ReadBytesExt, WriteBytesExt};
+use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;

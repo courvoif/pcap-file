@@ -12,7 +12,7 @@
 pub use common::*;
 pub use errors::*;
 pub use pcap::{PcapParser, PcapReader, PcapWriter};
-pub use pcapng::{PcapNgParser, PcapNgReader};
+pub use pcapng::{PcapNgParser, PcapNgReader, PcapNgWriter};
 
 pub(crate) mod common;
 pub(crate) mod errors;

@@ -194,13 +194,13 @@ impl<'a> Ipv4Record<'a> {
         let mut names = vec![];
         for name in slice.split(|&b| b == 0) {
 
-            if name.len() == 0 {
+            if name.is_empty() {
                 break;
             }
             names.push( Cow::Borrowed(std::str::from_utf8(name)?));
         }
 
-        if names.len() == 0 {
+        if names.is_empty()  {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv4Record without any name"));
         }
 
@@ -250,14 +250,14 @@ impl<'a> Ipv6Record<'a> {
         let mut names = vec![];
         for name in slice.split(|&b| b == 0) {
 
-            if name.len() == 0 {
+            if name.is_empty()  {
                 break;
             }
 
             names.push( Cow::Borrowed(std::str::from_utf8(name)?));
         }
 
-        if names.len() == 0 {
+        if names.is_empty() {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv6Record without any name"));
         }
 
