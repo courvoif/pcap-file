@@ -115,6 +115,20 @@ impl<R: Read> PcapNgReader<R> {
     pub fn get_mut(&mut self) -> &mut R {
         &mut self.reader.inner
     }
+
+    pub fn packets(&mut self) -> impl Iterator<Item=Result<Block<'static>, PcapError>> + '_{
+
+        self.filter(|block| {
+
+            if let Ok(block) = block {
+                if let Ok(ParsedBlock::EnhancedPacket(_)) = block.parsed() {
+                    return true;
+                }
+            }
+
+            false
+        })
+    }
 }
 
 impl<R: Read> Iterator for PcapNgReader<R> {
