@@ -7,6 +7,7 @@ use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
 use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, ParsedBlock};
+use std::time::Duration;
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -32,6 +33,13 @@ pub struct EnhancedPacketBlock<'a> {
 
     /// Options
     pub options: Vec<EnhancedPacketOption<'a>>
+}
+
+impl<'a> EnhancedPacketBlock<'a> {
+
+    pub fn timestamp(&self) -> Duration {
+        Duration::from_nanos(self.timestamp)
+    }
 }
 
 impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {

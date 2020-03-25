@@ -116,7 +116,7 @@ impl<R: Read> PcapNgReader<R> {
         &mut self.reader.inner
     }
 
-    pub fn packets(&mut self) -> impl Iterator<Item=Result<Block<'static>, PcapError>> + '_{
+    pub fn packets(&mut self) -> impl Iterator<Item=Result<Block<'static>, PcapError>> + '_ {
 
         self.filter(|block| {
 
