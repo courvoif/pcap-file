@@ -27,3 +27,6 @@ pub use systemd_journal_export::*;
 
 pub(crate) mod packet;
 pub use packet::*;
+
+pub(crate) mod unknown;
+pub use unknown::*;

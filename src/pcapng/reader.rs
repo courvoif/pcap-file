@@ -98,6 +98,23 @@ impl<R: Read> PcapNgReader<R> {
 
         Ok(block)
     }
+
+    /// Consumes the `PcapNgReader`, returning the wrapped reader.
+    pub fn into_inner(self) -> R {
+        self.reader.inner
+    }
+
+    /// Gets a reference to the underlying writer.
+    pub fn get_ref(&self) -> &R {
+        &self.reader.inner
+    }
+
+    /// Gets a mutable reference to the underlying writer.
+    ///
+    /// It is inadvisable to directly write to the underlying writer.
+    pub fn get_mut(&mut self) -> &mut R {
+        &mut self.reader.inner
+    }
 }
 
 impl<R: Read> Iterator for PcapNgReader<R> {

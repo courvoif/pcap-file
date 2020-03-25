@@ -1,14 +1,15 @@
-use crate::errors::PcapError;
-use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
-use crate::Endianness;
-use crate::pcapng::blocks::block_common::opts_from_slice;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
 use std::borrow::Cow;
+use std::io::{Result as IoResult, Write};
+
+use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
-use std::io::Write;
+
+use crate::Endianness;
+use crate::errors::PcapError;
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, ParsedBlock};
 
 ///Section Header Block: it defines the most important characteristics of the capture file.
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SectionHeaderBlock<'a> {
 
     /// Magic number, whose value is 0x1A2B3C4D.
@@ -34,9 +35,11 @@ pub struct SectionHeaderBlock<'a> {
 }
 
 
-impl<'a> SectionHeaderBlock<'a> {
+impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
 
-    pub fn from_slice(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    const BLOCK_TYPE: BlockType = BlockType::SectionHeader;
+
+    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         if slice.len() < 16 {
             return Err(PcapError::InvalidField("SectionHeaderBlock: block length < 16"));
@@ -74,6 +77,25 @@ impl<'a> SectionHeaderBlock<'a> {
         }
     }
 
+    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+
+        writer.write_u32::<BigEndian>(self.magic)?;
+        writer.write_u16::<B>(self.major_version)?;
+        writer.write_u16::<B>(self.minor_version)?;
+        writer.write_i64::<B>(self.section_length)?;
+
+        let opt_len = SectionHeaderOption::write_opts_to::<B, W>(&self.options, writer)?;
+
+        Ok(16 + opt_len)
+    }
+
+    fn into_parsed(self) -> ParsedBlock<'a> {
+        ParsedBlock::SectionHeader(self)
+    }
+}
+
+impl<'a> SectionHeaderBlock<'a> {
+
     pub fn endianness(&self) -> Endianness {
 
         match self.magic {
@@ -81,12 +103,35 @@ impl<'a> SectionHeaderBlock<'a> {
             0x1A2B3C4D => Endianness::Big,
             0x4D3C2B1A => Endianness::Little,
             _ => unreachable!()
+        }
+    }
 
+    pub fn set_endianness(&mut self, endianness: Endianness) {
+
+        self.magic = match endianness {
+
+            Endianness::Big => 0x1A2B3C4D,
+            Endianness::Little => 0x4D3C2B1A
+        };
+    }
+}
+
+impl SectionHeaderBlock<'static> {
+
+    pub fn new() -> Self {
+
+        Self {
+            magic: 0xA1B2C3D4,
+            major_version: 1,
+            minor_version: 0,
+            section_length: -1,
+            options: vec![]
         }
     }
 }
 
-#[derive(Clone, Debug, IntoOwned)]
+
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum SectionHeaderOption<'a> {
 
     /// Comment associated with the current block
@@ -112,9 +157,9 @@ pub enum SectionHeaderOption<'a> {
 }
 
 
-impl<'a> PcapNgOption for SectionHeaderOption<'a> {
+impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
 
-    fn from_slice(code: u16, length: u16, slice: &[u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
 
         let opt = match code {
 
@@ -135,13 +180,13 @@ impl<'a> PcapNgOption for SectionHeaderOption<'a> {
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         
         match self {
-            SectionHeaderOption::Comment(a) => a.write_opt_to(1, writer),
-            SectionHeaderOption::Hardware(a) => a.write_opt_to(2, writer),
-            SectionHeaderOption::OS(a) => a.write_opt_to(3, writer),
-            SectionHeaderOption::UserApplication(a) => a.write_opt_to(4, writer),
-            SectionHeaderOption::CustomBinary(a) => a.write_opt_to(a.code, writer),
-            SectionHeaderOption::CustomUtf8(a) => a.write_opt_to(a.code, writer),
-            SectionHeaderOption::Unknown(a) => a.write_opt_to(a.code, writer),
+            SectionHeaderOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
+            SectionHeaderOption::Hardware(a) => a.write_opt_to::<B, W>(2, writer),
+            SectionHeaderOption::OS(a) => a.write_opt_to::<B, W>(3, writer),
+            SectionHeaderOption::UserApplication(a) => a.write_opt_to::<B, W>(4, writer),
+            SectionHeaderOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
+            SectionHeaderOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
+            SectionHeaderOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
         }
     }
 }

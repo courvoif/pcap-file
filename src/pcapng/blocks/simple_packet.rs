@@ -1,12 +1,15 @@
-use crate::errors::PcapError;
-use byteorder::{ByteOrder, ReadBytesExt};
 use std::borrow::Cow;
+use std::io::{Result as IoResult, Write};
+
+use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 
+use crate::errors::PcapError;
+use crate::pcapng::{PcapNgBlock, BlockType, ParsedBlock};
 
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
 /// Its presence is optional.
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SimplePacketBlock<'a> {
 
     /// Actual length of the packet when it was transmitted on the network.
@@ -16,9 +19,11 @@ pub struct SimplePacketBlock<'a> {
     pub data: Cow<'a, [u8]>
 }
 
-impl<'a> SimplePacketBlock<'a> {
+impl<'a>  PcapNgBlock<'a> for SimplePacketBlock<'a> {
 
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    const BLOCK_TYPE: BlockType = BlockType::SimplePacket;
+
+    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         if slice.len() < 4 {
             return Err(PcapError::InvalidField("SimplePacketBlock: block length < 4"));
@@ -31,5 +36,20 @@ impl<'a> SimplePacketBlock<'a> {
         };
 
         Ok((&[], packet))
+    }
+
+    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+
+        writer.write_u32::<B>(self.original_len)?;
+        writer.write_all(&self.data)?;
+
+        let pad_len = (4 - (self.data.len() as usize % 4)) % 4;
+        writer.write_all(&[0_u8; 3][..pad_len])?;
+
+        Ok(4 + self.data.len() + pad_len)
+    }
+
+    fn into_parsed(self) -> ParsedBlock<'a> {
+        ParsedBlock::SimplePacket(self)
     }
 }

@@ -1,13 +1,15 @@
-use byteorder::{ByteOrder, LittleEndian, BigEndian, ReadBytesExt};
-use std::io::{Read, Write};
-use crate::errors::PcapError;
 use std::borrow::Cow;
-use byteorder::WriteBytesExt;
-use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock, NameResolutionBlock, InterfaceStatisticsBlock, SystemdJournalExportBlock};
-use crate::pcapng::PacketBlock;
-use crate::Endianness;
-use derive_into_owned::IntoOwned;
+use std::io::{Read, Result as IoResult, Write};
 
+use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
+use byteorder::WriteBytesExt;
+
+use crate::Endianness;
+use crate::errors::PcapError;
+use crate::pcapng::blocks::{EnhancedPacketBlock, InterfaceDescriptionBlock, InterfaceStatisticsBlock, NameResolutionBlock, SectionHeaderBlock, SimplePacketBlock, SystemdJournalExportBlock};
+use crate::pcapng::{PacketBlock, UnknownBlock};
+
+use derive_into_owned::IntoOwned;
 
 //   0               1               2               3
 //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -29,19 +31,6 @@ pub struct Block<'a> {
     pub body: Cow<'a, [u8]>,
     pub trailer_len: u32,
     pub(crate) endianness: Endianness
-}
-
-impl Block<'static> {
-
-    pub(crate) fn new(type_: BlockType, endianess: Endianness) -> Self {
-        Self {
-            type_,
-            initial_len: 0,
-            body: Cow::Owned(Vec::new()),
-            trailer_len: 0,
-            endianness
-        }
-    }
 }
 
 impl<'a> Block<'a> {
@@ -246,7 +235,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    pub fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
 
         writer.write_u32::<B>(self.type_.into())?;
         writer.write_u32::<B>(self.initial_len)?;
@@ -303,7 +292,7 @@ impl Into<u32> for BlockType {
 }
 
 /// PcapNg parsed blocks
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum ParsedBlock<'a> {
     SectionHeader(SectionHeaderBlock<'a>),
     InterfaceDescription(InterfaceDescriptionBlock<'a>),
@@ -324,7 +313,7 @@ impl<'a> ParsedBlock<'a> {
         match type_ {
 
             BlockType::SectionHeader => {
-                let (rem, block) = SectionHeaderBlock::from_slice(slice)?;
+                let (rem, block) = SectionHeaderBlock::from_slice::<BigEndian>(slice)?;
                 Ok((rem, ParsedBlock::SectionHeader(block)))
             },
             BlockType::InterfaceDescription => {
@@ -355,46 +344,87 @@ impl<'a> ParsedBlock<'a> {
                 let (rem, block) = SystemdJournalExportBlock::from_slice::<B>(slice)?;
                 Ok((rem, ParsedBlock::SystemdJournalExport(block)))
             }
-            _ => Ok((slice, ParsedBlock::Unknown(UnknownBlock::new(type_, slice.len() as u32, slice))))
+            _ => Ok((&[], ParsedBlock::Unknown(UnknownBlock::new(type_, slice.len() as u32 + 12, slice))))
         }
     }
 
-    pub fn into_section_header(self) -> Option<SectionHeaderBlock<'a>> {
+    pub fn into_enhanced_packet(self) -> Option<EnhancedPacketBlock<'a>> {
         match self {
-            ParsedBlock::SectionHeader(section) => Some(section),
+            ParsedBlock::EnhancedPacket(a) => Some(a),
             _ => None
         }
     }
 
     pub fn into_interface_description(self) -> Option<InterfaceDescriptionBlock<'a>> {
         match self {
-            ParsedBlock::InterfaceDescription(block) => Some(block),
+            ParsedBlock::InterfaceDescription(a) => Some(a),
+            _ => None
+        }
+    }
+
+    pub fn into_interface_statistics(self) -> Option<InterfaceStatisticsBlock<'a>> {
+        match self {
+            ParsedBlock::InterfaceStatistics(a) => Some(a),
+            _ => None
+        }
+    }
+
+    pub fn into_name_resolution(self) -> Option<NameResolutionBlock<'a>> {
+        match self {
+            ParsedBlock::NameResolution(a) => Some(a),
+            _ => None
+        }
+    }
+
+    pub fn into_packet(self) -> Option<PacketBlock<'a>> {
+        match self {
+            ParsedBlock::Packet(a) => Some(a),
+            _ => None
+        }
+    }
+
+    pub fn into_section_header(self) -> Option<SectionHeaderBlock<'a>> {
+        match self {
+            ParsedBlock::SectionHeader(a) => Some(a),
+            _ => None
+        }
+    }
+
+    pub fn into_simple_packet(self) -> Option<SimplePacketBlock<'a>> {
+        match self {
+            ParsedBlock::SimplePacket(a) => Some(a),
+            _ => None
+        }
+    }
+
+    pub fn into_systemd_journal_export(self) -> Option<SystemdJournalExportBlock<'a>> {
+        match self {
+            ParsedBlock::SystemdJournalExport(a) => Some(a),
             _ => None
         }
     }
 }
 
-#[derive(Clone, Debug, IntoOwned)]
-pub struct UnknownBlock<'a> {
-    pub type_: BlockType,
-    pub length: u32,
-    pub value: Cow<'a, [u8]>
-}
+pub(crate) trait PcapNgBlock<'a> {
 
-impl<'a> UnknownBlock<'a> {
-    pub fn new(type_: BlockType, length: u32, value: &'a [u8]) -> Self {
-        UnknownBlock {
-            type_,
-            length,
-            value: Cow::Borrowed(value)
-        }
+    const BLOCK_TYPE: BlockType;
+
+    fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&[u8], Self), PcapError> where Self: std::marker::Sized;
+    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize>;
+
+    fn write_block_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+
+        let len = self.write_to::<B, _>(&mut std::io::sink()).unwrap() + 12;
+
+        writer.write_u32::<B>( Self::BLOCK_TYPE.into())?;
+        writer.write_u32::<B>(len as u32)?;
+        self.write_to::<B, _>(writer)?;
+        writer.write_u32::<B>(len as u32)?;
+
+        Ok(len)
     }
-}
 
-pub(crate) trait PcapNgBlock {
-
-    fn from_slice<B: ByteOrder>(mut slice: &[u8]) -> Result<(&[u8], Self), PcapError>;
-    fn write_to<B: ByteOrder, W:Write>(&self, writer: &mut W) -> Result<(&[u8], Self), PcapError>;
+    fn into_parsed(self) -> ParsedBlock<'a>;
 }
 
 

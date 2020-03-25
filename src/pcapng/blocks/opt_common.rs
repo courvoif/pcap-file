@@ -1,18 +1,18 @@
-use byteorder::{ByteOrder, LittleEndian, BigEndian, ReadBytesExt};
-use std::io::{Read, Write};
-use crate::errors::PcapError;
 use std::borrow::Cow;
+use std::io::{Result as IoResult, Write};
+
+use byteorder::{ByteOrder, ReadBytesExt};
 use byteorder::WriteBytesExt;
-use crate::pcapng::blocks::{SectionHeaderBlock, InterfaceDescriptionBlock, EnhancedPacketBlock, SimplePacketBlock, NameResolutionBlock, InterfaceStatisticsBlock, SystemdJournalExportBlock};
-use crate::pcapng::PacketBlock;
-use crate::Endianness;
 use derive_into_owned::IntoOwned;
 
+use crate::errors::PcapError;
 
-pub(crate) trait PcapNgOption {
+pub(crate) trait PcapNgOption<'a> {
+
+    fn from_slice<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> where Self: std::marker::Sized;
 
     /// Parse all options in a block
-    fn opts_from_slice<B: ByteOrder>(mut slice: &[u8]) -> Result<(&[u8], Vec<Self>), PcapError> {
+    fn opts_from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Vec<Self>), PcapError> where Self: std::marker::Sized {
 
         let mut options = vec![];
 
@@ -39,8 +39,8 @@ pub(crate) trait PcapNgOption {
                 return Err(PcapError::InvalidField("Option: length + pad.len() > slice.len()"));
             }
 
-            let mut tmp_slice = &slice[..length];
-            let opt = Self::from_slice(code, length as u16, data: &[u8])?;
+            let tmp_slice = &slice[..length];
+            let opt = Self::from_slice::<B>(code, length as u16, tmp_slice)?;
 
             // Jump over the padding
             slice = &slice[length+pad_len..];
@@ -51,11 +51,29 @@ pub(crate) trait PcapNgOption {
         Err(PcapError::InvalidField("Invalid option"))
     }
 
-    fn from_slice(code: u16, length: u16, slice: &[u8]) -> Result<Self, PcapError>;
+
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize>;
+
+    fn write_opts_to<B:ByteOrder, W: Write>(opts: &[Self], writer: &mut W) -> IoResult<usize> where Self: std::marker::Sized {
+
+        let mut have_opt = false;
+        let mut written = 0;
+        for opt in opts {
+            written += opt.write_to::<B, W>(writer)?;
+            have_opt = true;
+        }
+
+        if have_opt {
+            writer.write_u16::<B>(0)?;
+            writer.write_u16::<B>(0)?;
+            written += 4;
+        }
+
+        Ok(written)
+    }
 }
 
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct UnknownOption<'a> {
     pub code: u16,
     pub length: u16,
@@ -70,23 +88,9 @@ impl<'a> UnknownOption<'a> {
             value: Cow::Borrowed(value)
         }
     }
-
-    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> IoResult<usize> {
-
-        let pad = [0_u8; 3];
-        let len = &self.length;
-        let pad_len = (4-len%4)%4;
-
-        writer.write_u16::<B>(self.code)?;
-        writer.write_u16::<B>(len as u16)?;
-        writer.write(&self.value)?;
-        writer.write(&pad[..pad_len])?;
-
-        Ok(len + pad_len + 4)
-    }
 }
 
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct CustomBinaryOption<'a> {
     pub code: u16,
     pub pen: u32,
@@ -106,24 +110,9 @@ impl<'a> CustomBinaryOption<'a> {
 
         Ok(opt)
     }
-
-    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> IoResult<usize> {
-
-        let pad = [0_u8; 3];
-        let len = &self.value.len() + 4;
-        let pad_len = (4-len%4)%4;
-
-        writer.write_u16::<B>(self.code)?;
-        writer.write_u16::<B>(len as u16)?;
-        writer.write_u32::<B>(self.pen)?;
-        writer.write(&self.value)?;
-        writer.write(&pad[..pad_len])?;
-
-        Ok(len + pad_len + 8)
-    }
 }
 
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct CustomUtf8Option<'a> {
     pub code: u16,
     pub pen: u32,
@@ -131,6 +120,7 @@ pub struct CustomUtf8Option<'a> {
 }
 
 impl<'a> CustomUtf8Option<'a> {
+
     pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
         let pen = src.read_u32::<B>()?;
 
@@ -142,38 +132,23 @@ impl<'a> CustomUtf8Option<'a> {
 
         Ok(opt)
     }
-
-    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> IoResult<usize> {
-
-        let pad = [0_u8; 3];
-        let len = &self.as_bytes().len() + 4;
-        let pad_len = (4-len%4)%4;
-
-        writer.write_u16::<B>(self.code)?;
-        writer.write_u16::<B>(len as u16)?;
-        writer.write_u32::<B>(self.pen)?;
-        writer.write(&self.as_bytes())?;
-        writer.write(&pad[..pad_len])?;
-
-        Ok(len + pad_len + 8)
-    }
 }
 
 pub(crate) trait WriteOptTo {
-    fn write_opt_to<B: ByteOrder, W: write>(&self, code: u16, writer: &mut W);
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize>;
 }
 
 impl<'a> WriteOptTo for Cow<'a, [u8]> {
 
-    fn write_opt_to<B: ByteOrder, W: write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
 
-        let len = b.len();
+        let len = self.len();
         let pad_len = (4-len%4)%4;
 
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(len as u16)?;
-        writer.write(b)?;
-        writer.write(&pad[..pad_len])?;
+        writer.write_all(self)?;
+        writer.write_all(&[0_u8; 3][..pad_len])?;
 
         Ok(len + pad_len + 4)
     }
@@ -181,118 +156,115 @@ impl<'a> WriteOptTo for Cow<'a, [u8]> {
 
 impl<'a> WriteOptTo for Cow<'a, str> {
 
-    fn write_opt_to<B: ByteOrder, W: write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
 
-        let len = s.as_bytes().len();
+        let len = self.as_bytes().len();
         let pad_len = (4-len%4)%4;
 
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(len as u16)?;
-        writer.write(s.as_bytes())?;
-        writer.write(&pad[..pad_len])?;
+        writer.write_all(self.as_bytes())?;
+        writer.write_all(&[0_u8; 3][..pad_len])?;
 
         Ok(len + pad_len + 4)
     }
 }
 
-impl<'a> WriteOptTo for u8 {
+impl WriteOptTo for u8 {
 
-    fn write_opt_to<B: ByteOrder, W: write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
 
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(1)?;
-        writer.write_u8(*d)?;
-        wrier.write([0_u8;3])?;
+        writer.write_u8(*self)?;
+        writer.write_all(&[0_u8;3])?;
 
-        Ok(12)
+        Ok(8)
     }
 }
 
-impl<'a> WriteOptTo for u16 {
+impl WriteOptTo for u16 {
 
-    fn write_opt_to<B: ByteOrder, W: write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
 
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(2)?;
-        writer.write_u8(*d)?;
-        wrier.write([0_u8;2])?;
+        writer.write_u16::<B>(*self)?;
+        writer.write_all(&[0_u8;2])?;
 
-        Ok(12)
+        Ok(8)
     }
 }
 
-impl<'a> WriteOptTo for u32 {
+impl WriteOptTo for u32 {
 
-    fn write_opt_to<B: ByteOrder, W: write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
 
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(4)?;
-        writer.write_u8(*d)?;
+        writer.write_u32::<B>(*self)?;
 
-        Ok(12)
+        Ok(8)
     }
 }
 
-impl<'a> WriteOptTo for u64 {
+impl WriteOptTo for u64 {
 
-    fn write_opt_to<B: ByteOrder, W: write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
 
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(8)?;
-        writer.write_u64::<B>(*d)?;
+        writer.write_u64::<B>(*self)?;
 
         Ok(12)
     }
 }
 
-impl<'a> WriteOptTo for CustomBinaryOption {
+impl<'a> WriteOptTo for CustomBinaryOption<'a> {
 
-    fn write_opt_to<B: ByteOrder, W: write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
 
-        let pad = [0_u8; 3];
         let len = &self.value.len() + 4;
         let pad_len = (4-len%4)%4;
 
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(len as u16)?;
         writer.write_u32::<B>(self.pen)?;
-        writer.write(&self.value)?;
-        writer.write(&pad[..pad_len])?;
+        writer.write_all(&self.value)?;
+        writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        Ok(len + pad_len + 8)
+        Ok(len + pad_len + 4)
     }
 }
 
-impl<'a> WriteOptTo for CustomUtf8Option {
+impl<'a> WriteOptTo for CustomUtf8Option<'a> {
 
-    fn write_opt_to<B: ByteOrder, W: write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
 
-        let pad = [0_u8; 3];
         let len = &self.value.len() + 4;
         let pad_len = (4-len%4)%4;
 
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(len as u16)?;
         writer.write_u32::<B>(self.pen)?;
-        writer.write(&self.value.as_bytes())?;
-        writer.write(&pad[..pad_len])?;
+        writer.write_all(&self.value.as_bytes())?;
+        writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        Ok(len + pad_len + 8)
+        Ok(len + pad_len + 4)
     }
 }
 
-impl<'a> WriteOptTo for UnknownOption {
+impl<'a> WriteOptTo for UnknownOption<'a> {
 
-    fn write_opt_to<B: ByteOrder, W: write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
 
-        let pad = [0_u8; 3];
-        let len = &self.value.len();
+        let len = self.value.len();
         let pad_len = (4-len%4)%4;
 
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(len as u16)?;
-        writer.write(&self.value)?;
-        writer.write(&pad[..pad_len])?;
+        writer.write_all(&self.value)?;
+        writer.write_all(&[0_u8; 3][..pad_len])?;
 
         Ok(len + pad_len + 4)
     }

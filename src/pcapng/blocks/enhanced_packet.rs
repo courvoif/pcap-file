@@ -1,15 +1,15 @@
-use crate::pcapng::blocks::{Block, opts_from_slice};
-use crate::errors::PcapError;
-use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt, BigEndian, LittleEndian};
-use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption, BlockType, WriteOptTo, PcapNgOption};
 use std::borrow::Cow;
-use derive_into_owned::IntoOwned;
-use crate::Endianness;
-use std::io::Write;
 use std::io::Result as IoResult;
+use std::io::Write;
+
+use byteorder::{BigEndian, ByteOrder, ReadBytesExt, WriteBytesExt};
+use derive_into_owned::IntoOwned;
+
+use crate::errors::PcapError;
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, ParsedBlock};
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct EnhancedPacketBlock<'a> {
 
     /// It specifies the interface this packet comes from.
@@ -34,16 +34,20 @@ pub struct EnhancedPacketBlock<'a> {
     pub options: Vec<EnhancedPacketOption<'a>>
 }
 
-impl<'a> EnhancedPacketBlock<'a> {
+impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    const BLOCK_TYPE: BlockType = BlockType::EnhancedPacket;
+
+    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         if slice.len() < 20 {
             return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
         }
 
         let interface_id = slice.read_u32::<B>()?;
-        let timestamp = slice.read_u64::<B>()?;
+        let timestamp_high = slice.read_u32::<B>()? as u64;
+        let timestamp_low = slice.read_u32::<B>()? as u64;
+        let timestamp = (timestamp_high << 32) + timestamp_low;
         let captured_len = slice.read_u32::<B>()?;
         let original_len = slice.read_u32::<B>()?;
 
@@ -70,56 +74,33 @@ impl<'a> EnhancedPacketBlock<'a> {
         Ok((slice, block))
     }
 
-    pub fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
 
+        let pad_len = (4 - (&self.data.len() % 4)) % 4;
 
-        self.write_packet_to::<BigEndian>(body);
-        self.write_opts_to::<BigEndian>(body);
+        writer.write_u32::<B>(self.interface_id)?;
 
+        let timestamp_high = (self.timestamp >> 32) as u32;
+        writer.write_u32::<B>(timestamp_high)?;
+        let timestamp_low = (self.timestamp & 0xFFFFFFFF) as u32;
+        writer.write_u32::<B>(timestamp_low)?;
 
+        writer.write_u32::<B>(self.captured_len)?;
+        writer.write_u32::<B>(self.original_len)?;
+        writer.write_all(&self.data)?;
+        writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        let len = block.body.len() as u32;
-        block.initial_len = len;
-        block.trailer_len = len;
+        let opt_len = EnhancedPacketOption::write_opts_to::<B, W>(&self.options, writer)?;
 
-        block
+        Ok(20 + &self.data.len() + pad_len + opt_len)
     }
 
-    fn write_packet_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
-        let pad = [0_u8; 3];
-        let pad_len = (4 - (self.captured_len as usize % 4)) % 4;
-
-        writer.write_u32::<BigEndian>(self.interface_id)?;
-        writer.write_u64::<BigEndian>(self.timestamp)?;
-        writer.write_u32::<BigEndian>(self.captured_len)?;
-        writer.write_u32::<BigEndian>(self.original_len)?;
-        writer.write(data)?;
-        writer.write(&pad[..pad_len])?;
-
-        Ok(20 + data.len() + pad_len)
-    }
-
-    fn write_opts_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
-        let mut have_opt = false;
-        let mut written = 0;
-        for opt in &self.options {
-            written += opt.write_to::<B>(writer)?;
-            have_opt = true;
-        }
-
-        if have_opt {
-            writer.write_u16(0)?;
-            writer.write_u16(0)?;
-            written += 4;
-        }
-
-        Ok(written)
+    fn into_parsed(self) -> ParsedBlock<'a> {
+        ParsedBlock::EnhancedPacket(self)
     }
 }
 
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum EnhancedPacketOption<'a> {
 
     /// Comment associated with the current block
@@ -147,9 +128,9 @@ pub enum EnhancedPacketOption<'a> {
     Unknown(UnknownOption<'a>)
 }
 
-impl<'a> PcapNgOption for EnhancedPacketOption<'a> {
+impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
 
-    fn from_slice(code: u16, length: u16, slice: &[u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
 
         let opt = match code {
 
@@ -179,13 +160,13 @@ impl<'a> PcapNgOption for EnhancedPacketOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         match self {
-            EnhancedPacketOption::Comment(a) => a.write_opt_to(1, writer),
-            EnhancedPacketOption::Flags(a) => a.write_opt_to(2, writer),
-            EnhancedPacketOption::Hash(a) => a.write_opt_to(3, writer),
-            EnhancedPacketOption::DropCount(a) => a.write_opt_to(4, writer),
-            EnhancedPacketOption::CustomBinary(a) => a.write_opt_to(a.code, writer),
-            EnhancedPacketOption::CustomUtf8(a) => a.write_opt_to(a.code, writer),
-            EnhancedPacketOption::Unknown(a) => a.write_opt_to(a.code, writer),
+            EnhancedPacketOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
+            EnhancedPacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
+            EnhancedPacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),
+            EnhancedPacketOption::DropCount(a) => a.write_opt_to::<B, W>(4, writer),
+            EnhancedPacketOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
+            EnhancedPacketOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
+            EnhancedPacketOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
         }
     }
 }
