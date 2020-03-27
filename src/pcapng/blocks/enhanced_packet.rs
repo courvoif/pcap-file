@@ -35,7 +35,7 @@ pub struct EnhancedPacketBlock<'a> {
     pub options: Vec<EnhancedPacketOption<'a>>
 }
 
-impl<'a> EnhancedPacketBlock<'a> {
+impl<'a, 'b> EnhancedPacketBlock<'a> {
 
     pub fn timestamp(&self) -> Duration {
         Duration::from_nanos(self.timestamp)
