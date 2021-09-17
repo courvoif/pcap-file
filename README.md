@@ -95,3 +95,8 @@ $ cargo fuzz run pcap_parser
 $ cargo fuzz run pcap_ng_parser
 ```
 Keep in mind that libfuzzer by default uses only one core, so you can either run all the harnesses in different terminals, or you can pass the `-jobs` and `-workers` attributes. More info can be found in its documentation [here](https://llvm.org/docs/LibFuzzer.html).
+To get better crash reports add to you rust flags: `-Zsanitizer=address`. 
+E.g.
+```bash
+RUSTFLAGS="-Zsanitizer=address" cargo fuzz run pcap_reader
+```
