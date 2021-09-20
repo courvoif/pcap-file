@@ -4,7 +4,7 @@
 //! It also contains a writer for Pcap files.
 //!
 //! For Pcap files see
-//! [PcapReader](struct.PcapReader.html), [PcapParser](struct.PcapParser.html) and [PcapWriter](struct.PcapParser.html).
+//! [PcapReader](struct.PcapReader.html), [PcapParser](struct.PcapParser.html) and [PcapWriter](struct.PcapWriter.html).
 //!
 //! For PcapNg files see
 //! [PcapNgReader](struct.PcapNgReader.html) and [PcapNgParser](struct.PcapNgParser.html).
