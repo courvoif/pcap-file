@@ -15,7 +15,6 @@ use std::{
 /// Describes a pcap packet header.
 #[derive(Copy, Clone, Default, Debug, Eq, PartialEq)]
 pub struct PacketHeader {
-
     /// Timestamp in seconds
     pub ts_sec: u32,
 
@@ -30,10 +29,8 @@ pub struct PacketHeader {
 }
 
 impl PacketHeader {
-
     /// Create a new `PacketHeader` with the given parameters.
     pub fn new(ts_sec: u32, ts_nsec: u32, incl_len:u32, orig_len:u32) -> PacketHeader {
-
         PacketHeader {
             ts_sec,
             ts_nsec,
@@ -44,12 +41,16 @@ impl PacketHeader {
 
     /// Create a new `PacketHeader` from a reader.
     pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R, ts_resolution: TsResolution) -> ResultParsing<PacketHeader> {
-
+        // Read and validate timestamps
         let ts_sec = reader.read_u32::<B>()?;
         let mut ts_nsec = reader.read_u32::<B>()?;
         if ts_resolution == TsResolution::MicroSecond {
-            ts_nsec *= 1000;
+            ts_nsec = ts_nsec.checked_mul(1000).ok_or(PcapError::InvalidField("Packet Header ts_microsecond can't be converted to nanosecond"))?;
         }
+        if ts_nsec > 1_000_000_000 {
+            return Err(PcapError::InvalidField("Packet Header ts_nanosecond > 1_000_000_000"));
+        }
+
         let incl_len = reader.read_u32::<B>()?;
         let orig_len = reader.read_u32::<B>()?;
 
@@ -94,7 +95,6 @@ impl PacketHeader {
     ///
     /// Writes 24B in the writer on success.
     pub fn write_to< W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> ResultParsing<()> {
-
         let mut ts_unsec = self.ts_nsec;
         if ts_resolution == TsResolution::MicroSecond{
             ts_unsec /= 1000;
@@ -119,7 +119,6 @@ impl PacketHeader {
 /// The payload can be owned or borrowed.
 #[derive(Clone, Debug)]
 pub struct Packet<'a> {
-
     /// Header of the packet
     pub header: PacketHeader,
 
@@ -128,7 +127,6 @@ pub struct Packet<'a> {
 }
 
 impl<'a> Packet<'a> {
-
     /// Create a new borrowed `Packet` with the given parameters.
     pub fn new(ts_sec: u32, ts_nsec: u32, data: &'a [u8], orig_len: u32) -> Packet<'a> {
 
@@ -147,7 +145,6 @@ impl<'a> Packet<'a> {
 
     /// Create a new owned `Packet` with the given parameters.
     pub fn new_owned(ts_sec: u32, ts_nsec: u32, data: Vec<u8>, orig_len: u32) -> Packet<'static> {
-
         let header = PacketHeader {
             ts_sec,
             ts_nsec,

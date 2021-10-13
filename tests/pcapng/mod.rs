@@ -2,7 +2,6 @@ use pcap_file::pcapng::{PcapNgReader, PcapNgParser};
 use std::fs::File;
 use glob::glob;
 use std::io::Read;
-use pcap_file::PcapError;
 
 #[test]
 fn reader() {
@@ -15,7 +14,7 @@ fn reader() {
 
         for (i, block) in pcapng_reader.enumerate() {
             let _block = block.expect(&format!("Error on block {} on file: {:?}", i, entry));
-            let parsed = _block.parsed().expect(&format!("Error on parsed block {} file: {:?}", i, entry));
+            let _parsed = _block.parsed().expect(&format!("Error on parsed block {} file: {:?}", i, entry));
         }
     }
 }
