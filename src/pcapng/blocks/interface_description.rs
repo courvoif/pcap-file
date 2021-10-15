@@ -9,7 +9,7 @@ use derive_into_owned::IntoOwned;
 
 use crate::DataLink;
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, ParsedBlock};
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, Block};
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.
@@ -68,8 +68,8 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         Ok(8 + opt_len)
     }
 
-    fn into_parsed(self) -> ParsedBlock<'a> {
-        ParsedBlock::InterfaceDescription(self)
+    fn into_parsed(self) -> Block<'a> {
+        Block::InterfaceDescription(self)
     }
 }
 

@@ -5,7 +5,7 @@ use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, ParsedBlock};
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, Block};
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
@@ -94,8 +94,8 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         Ok(20 + self.data.len() + pad_len + opt_len)
     }
 
-    fn into_parsed(self) -> ParsedBlock<'a> {
-        ParsedBlock::Packet(self)
+    fn into_parsed(self) -> Block<'a> {
+        Block::Packet(self)
     }
 }
 

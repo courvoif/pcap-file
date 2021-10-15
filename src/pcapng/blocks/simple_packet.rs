@@ -5,7 +5,7 @@ use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{PcapNgBlock, BlockType, ParsedBlock};
+use crate::pcapng::{PcapNgBlock, BlockType, Block};
 
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
 /// Its presence is optional.
@@ -49,7 +49,7 @@ impl<'a>  PcapNgBlock<'a> for SimplePacketBlock<'a> {
         Ok(4 + self.data.len() + pad_len)
     }
 
-    fn into_parsed(self) -> ParsedBlock<'a> {
-        ParsedBlock::SimplePacket(self)
+    fn into_parsed(self) -> Block<'a> {
+        Block::SimplePacket(self)
     }
 }

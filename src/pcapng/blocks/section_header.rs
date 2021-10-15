@@ -6,7 +6,7 @@ use derive_into_owned::IntoOwned;
 
 use crate::Endianness;
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, ParsedBlock};
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, Block};
 
 ///Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -89,8 +89,8 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         Ok(16 + opt_len)
     }
 
-    fn into_parsed(self) -> ParsedBlock<'a> {
-        ParsedBlock::SectionHeader(self)
+    fn into_parsed(self) -> Block<'a> {
+        Block::SectionHeader(self)
     }
 }
 
@@ -116,10 +116,8 @@ impl<'a> SectionHeaderBlock<'a> {
     }
 }
 
-impl SectionHeaderBlock<'static> {
-
-    pub fn new() -> Self {
-
+impl Default for SectionHeaderBlock<'static> {
+    fn default() -> Self {
         Self {
             magic: 0xA1B2C3D4,
             major_version: 1,

@@ -6,7 +6,7 @@ use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo, PcapNgBlock, BlockType, ParsedBlock};
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo, PcapNgBlock, BlockType, Block};
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
 /// (present in the captured packets) and their corresponding canonical names and it is optional.
@@ -63,8 +63,8 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         Ok(len)
     }
 
-    fn into_parsed(self) -> ParsedBlock<'a> {
-        ParsedBlock::NameResolution(self)
+    fn into_parsed(self) -> Block<'a> {
+        Block::NameResolution(self)
     }
 }
 
@@ -184,7 +184,7 @@ impl<'a> Ipv4Record<'a> {
 
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, PcapError> {
 
-        if slice.len() < 6 as usize {
+        if slice.len() < 6 {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv4Record len < 6"));
         }
 
@@ -240,7 +240,7 @@ impl<'a> Ipv6Record<'a> {
 
     pub fn from_slice(mut slice: &'a[u8]) -> Result<Self, PcapError> {
 
-        if slice.len() < 18 as usize {
+        if slice.len() < 18 {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv6Record len < 18"));
         }
 

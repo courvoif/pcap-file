@@ -1,8 +1,8 @@
 use byteorder::{BigEndian, LittleEndian};
 use crate::errors::PcapError;
-use crate::pcapng::blocks::{ParsedBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
+use crate::pcapng::blocks::{Block, EnhancedPacketBlock, InterfaceDescriptionBlock};
 use crate::Endianness;
-use crate::pcapng::{SectionHeaderBlock, Block, BlockType};
+use crate::pcapng::SectionHeaderBlock;
 
 /// Parser for a PcapNg formated stream.
 ///
@@ -22,25 +22,19 @@ use crate::pcapng::{SectionHeaderBlock, Block, BlockType};
 /// src = rem;
 ///
 /// loop {
-///
 ///     match pcapng_parser.next_block(src) {
 ///         Ok((rem, block)) => {
-///
-///             //Parse block content
-///             let parsed_block = block.parsed().unwrap();
-///
 ///             // Do something
 ///
 ///             // Don't forget to update src
 ///             src = rem;
-///
-///             // No more data, if no more incoming either then this is the end of the file
-///             if rem.is_empty() {
-///                 break;
-///             }
 ///         },
-///         Err(PcapError::IncompleteBuffer(needed)) => {},// Load more data into src
-///         Err(_) => {}// Parsing error
+///         Err(PcapError::IncompleteBuffer(needed)) => {
+///             // Load more data into src
+///         },
+///         Err(_) => {
+///             // Handle parsing error
+///         }
 ///     }
 /// }
 /// ```
@@ -50,18 +44,14 @@ pub struct PcapNgParser {
 }
 
 impl PcapNgParser {
-
     /// Creates a new `PcapNgParser`.
     ///
     /// Parses the first block which must be a valid SectionHeaderBlock
     pub fn new(src: &[u8]) -> Result<(&[u8], Self), PcapError> {
-
-        let (rem, block) = Block::from_slice::<BigEndian>(src)?;
-        let section = block.parsed()?;
-
+        let (rem, section) = Block::from_slice::<BigEndian>(src)?;
         let section = match section {
-            ParsedBlock::SectionHeader(section) => section.into_owned(),
-            _ => return Err(PcapError::InvalidField("SectionHeader missing"))
+            Block::SectionHeader(section) => section.into_owned(),
+            _ => return Err(PcapError::InvalidField("PcapNg: SectionHeader invalid or missing"))
         };
 
         let parser = PcapNgParser {
@@ -74,7 +64,6 @@ impl PcapNgParser {
 
     /// Returns the remainder and the next block
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
-
         // Read next Block
         let endianess = self.section.endianness();
         let (rem, block) = match endianess {
@@ -82,14 +71,13 @@ impl PcapNgParser {
             Endianness::Little => Block::from_slice::<LittleEndian>(src)?
         };
 
-        match block.type_ {
-            BlockType::SectionHeader => {
-
-                self.section = block.parsed()?.into_section_header().unwrap().into_owned();
+        match &block {
+            Block::SectionHeader(section) => {
+                self.section = section.clone().into_owned();
                 self.interfaces.clear();
             },
-            BlockType::InterfaceDescription => {
-                self.interfaces.push(block.parsed()?.into_interface_description().unwrap().into_owned())
+            Block::InterfaceDescription(interface) => {
+                self.interfaces.push(interface.clone().into_owned())
             },
             _ => {}
         }

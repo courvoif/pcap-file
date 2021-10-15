@@ -2,7 +2,7 @@ use std::io::Read;
 use byteorder::{BigEndian, LittleEndian};
 use crate::errors::PcapError;
 use crate::pcapng::blocks::{ParsedBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
-use crate::Endianness;
+use crate::{Endianness, PcapNgParser};
 use crate::peek_reader::PeekReader;
 use crate::pcapng::{Block, SectionHeaderBlock, BlockType};
 
@@ -32,9 +32,9 @@ use crate::pcapng::{Block, SectionHeaderBlock, BlockType};
 /// }
 /// ```
 pub struct PcapNgReader<R: Read> {
-    reader: PeekReader<R>,
-    section: SectionHeaderBlock<'static>,
-    interfaces: Vec<InterfaceDescriptionBlock<'static>>
+    parser: PcapNgParser,
+    reader: R,
+    buffer: Vec<u8>
 }
 
 impl<R: Read> PcapNgReader<R> {

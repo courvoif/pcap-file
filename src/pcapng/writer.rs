@@ -2,7 +2,7 @@ use std::io::Write;
 
 use thiserror::Error;
 
-use crate::pcapng::{InterfaceDescriptionBlock, SectionHeaderBlock, PcapNgBlock, ParsedBlock};
+use crate::pcapng::{InterfaceDescriptionBlock, SectionHeaderBlock, PcapNgBlock, Block};
 use byteorder::{ByteOrder, NativeEndian, BigEndian, LittleEndian};
 use crate::Endianness;
 
@@ -57,7 +57,7 @@ impl<W: Write> PcapNgWriter<W> {
 
     pub fn with_endianness(writer: W, endianness: Endianness) -> PcapWriteResult<Self> {
 
-        let mut section = SectionHeaderBlock::new();
+        let mut section = SectionHeaderBlock::default();
         section.set_endianness(endianness);
 
         Self::with_section_header(writer, &section)
@@ -79,7 +79,7 @@ impl<W: Write> PcapNgWriter<W> {
         )
     }
 
-    pub fn write_block(&mut self, block: &ParsedBlock) -> PcapWriteResult<usize> {
+    pub fn write_block(&mut self, block: &Block) -> PcapWriteResult<usize> {
 
         match self.section.endianness() {
             Endianness::Big => self.write_block_inner::<BigEndian>(block),
@@ -87,11 +87,11 @@ impl<W: Write> PcapNgWriter<W> {
         }
     }
 
-    fn write_block_inner<B: ByteOrder>(&mut self, block: &ParsedBlock) -> PcapWriteResult<usize> {
+    fn write_block_inner<B: ByteOrder>(&mut self, block: &Block) -> PcapWriteResult<usize> {
 
         match block {
 
-            ParsedBlock::SectionHeader(a) => {
+            Block::SectionHeader(a) => {
 
                 self.section = a.clone().into_owned();
                 self.interfaces.clear();
@@ -100,21 +100,21 @@ impl<W: Write> PcapNgWriter<W> {
                     Endianness::Little => Ok(a.write_block_to::<LittleEndian, _>(&mut self.writer)?),
                 }
             },
-            ParsedBlock::InterfaceDescription(a) => {
+            Block::InterfaceDescription(a) => {
 
                 self.interfaces.push(a.clone().into_owned());
                 Ok(a.write_block_to::<B, _>(&mut self.writer)?)
             },
-            ParsedBlock::Packet(a) => {
+            Block::Packet(a) => {
                 Ok(a.write_block_to::<B, _>(&mut self.writer)?)
             },
-            ParsedBlock::SimplePacket(a) => {
+            Block::SimplePacket(a) => {
                 Ok(a.write_block_to::<B, _>(&mut self.writer)?)
             },
-            ParsedBlock::NameResolution(a) => {
+            Block::NameResolution(a) => {
                 Ok(a.write_block_to::<B, _>(&mut self.writer)?)
             },
-            ParsedBlock::InterfaceStatistics(a) => {
+            Block::InterfaceStatistics(a) => {
 
                 if a.interface_id as usize >= self.interfaces.len() {
                     Err(PcapWriteError::InvalidInterfaceId(a.interface_id))
@@ -123,7 +123,7 @@ impl<W: Write> PcapNgWriter<W> {
                     Ok(a.write_block_to::<B, _>(&mut self.writer)?)
                 }
             },
-            ParsedBlock::EnhancedPacket(a) => {
+            Block::EnhancedPacket(a) => {
                 if a.interface_id as usize >= self.interfaces.len() {
                     Err(PcapWriteError::InvalidInterfaceId(a.interface_id))
                 }
@@ -131,10 +131,10 @@ impl<W: Write> PcapNgWriter<W> {
                     Ok(a.write_block_to::<B, _>(&mut self.writer)?)
                 }
             },
-            ParsedBlock::SystemdJournalExport(a) => {
+            Block::SystemdJournalExport(a) => {
                 Ok(a.write_block_to::<B, _>(&mut self.writer)?)
             },
-            ParsedBlock::Unknown(a) => {
+            Block::Unknown(a) => {
                 Ok(a.write_block_to::<B, _>(&mut self.writer)?)
             },
         }

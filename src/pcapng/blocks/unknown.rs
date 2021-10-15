@@ -1,5 +1,5 @@
 use derive_into_owned::IntoOwned;
-use crate::pcapng::{BlockType, ParsedBlock};
+use crate::pcapng::{BlockType, Block};
 use std::borrow::Cow;
 use byteorder::{ByteOrder, WriteBytesExt};
 use std::io::Write;
@@ -32,7 +32,7 @@ impl<'a> UnknownBlock<'a> {
         Ok(self.length as usize)
     }
 
-    pub fn into_parsed(self) -> ParsedBlock<'a> {
-        ParsedBlock::Unknown(self)
+    pub fn into_parsed(self) -> Block<'a> {
+        Block::Unknown(self)
     }
 }

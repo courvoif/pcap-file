@@ -6,7 +6,7 @@ use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, ParsedBlock};
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, Block};
 use std::time::Duration;
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
@@ -103,8 +103,8 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         Ok(20 + &self.data.len() + pad_len + opt_len)
     }
 
-    fn into_parsed(self) -> ParsedBlock<'a> {
-        ParsedBlock::EnhancedPacket(self)
+    fn into_parsed(self) -> Block<'a> {
+        Block::EnhancedPacket(self)
     }
 }
 

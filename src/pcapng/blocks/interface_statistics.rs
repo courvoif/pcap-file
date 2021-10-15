@@ -5,7 +5,7 @@ use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, ParsedBlock};
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, Block};
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -57,8 +57,8 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         Ok(12 + opt_len)
     }
 
-    fn into_parsed(self) -> ParsedBlock<'a> {
-        ParsedBlock::InterfaceStatistics(self)
+    fn into_parsed(self) -> Block<'a> {
+        Block::InterfaceStatistics(self)
     }
 }
 

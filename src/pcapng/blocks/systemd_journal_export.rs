@@ -5,7 +5,7 @@ use byteorder::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{PcapNgBlock, BlockType, ParsedBlock};
+use crate::pcapng::{PcapNgBlock, BlockType, Block};
 
 /// The systemd Journal Export Block is a lightweight containter for systemd Journal Export Format entry data.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -38,7 +38,7 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
         Ok(self.journal_entry.len() + pad_len)
     }
 
-    fn into_parsed(self) -> ParsedBlock<'a> {
-        ParsedBlock::SystemdJournalExport(self)
+    fn into_parsed(self) -> Block<'a> {
+        Block::SystemdJournalExport(self)
     }
 }
