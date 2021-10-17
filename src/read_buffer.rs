@@ -23,10 +23,12 @@ impl<R: Read> ReadBuffer<R> {
 
     pub fn fill_buf(&mut self) -> Result<usize, std::io::Error> {
         // Copy the remaining data to the start of the buffer
-        let (start, rem) = self.buffer.split_at_mut(self.pos);
-        let rem = &rem[..self.len];
-        start.copy_from_slice(rem);
-        let rem_len = rem.len();
+        let rem_len = unsafe {
+            let buf_ptr_mut = self.buffer.as_mut_ptr();
+            let rem_ptr_mut = buf_ptr_mut.add(self.pos);
+            std::ptr::copy(rem_ptr_mut, buf_ptr_mut, self.len - self.pos);
+            self.len - self.pos
+        };
 
         let nb_read = self.reader.read(&mut self.buffer[rem_len..])?;
 
