@@ -23,19 +23,18 @@ use std::{
 ///
 ///
 /// let file_in = File::open("test.pcap").expect("Error opening file");
-/// let pcap_reader = PcapReader::new(file_in).unwrap();
+/// let mut pcap_reader = PcapReader::new(file_in).unwrap();
 ///
 /// let file_out = File::create("out.pcap").expect("Error creating file out");
 /// let mut pcap_writer = PcapWriter::new(file_out).expect("Error writing file");
 ///
 /// // Read test.pcap
-/// for pcap in pcap_reader {
-///
+/// while let Some(pkt) = pcap_reader.next_packet() {
 ///     //Check if there is no error
-///     let pcap = pcap.unwrap();
+///     let pkt = pkt.unwrap();
 ///
 ///     //Write each packet of test.pcap in out.pcap
-///     pcap_writer.write_packet(&pcap).unwrap();
+///     pcap_writer.write_packet(&pkt).unwrap();
 /// }
 /// ```
 #[derive(Debug)]

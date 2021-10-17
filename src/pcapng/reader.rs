@@ -21,16 +21,12 @@ const BUF_SIZE: usize = 1_000_000;
 /// use pcap_file::pcapng::PcapNgReader;
 ///
 /// let file_in = File::open("test.pcapng").expect("Error opening file");
-/// let pcapng_reader = PcapNgReader::new(file_in).unwrap();
+/// let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
 ///
 /// // Read test.pcapng
-/// for block in pcapng_reader {
-///
+/// while let Some(block) = pcapng_reader.next_block() {
 ///     //Check if there is no error
 ///     let block = block.unwrap();
-///
-///     //Parse block content
-///     let parsed_block = block.parsed().unwrap();
 ///
 ///     //Do something
 /// }

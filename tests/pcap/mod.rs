@@ -6,18 +6,16 @@ static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
 
 #[test]
 fn read() {
-
-    let pcap_reader = PcapReader::new(&DATA[..]).unwrap();
+    let mut pcap_reader = PcapReader::new(&DATA[..]).unwrap();
 
     //Global header len
     let mut data_len = 24;
-    for pcap in pcap_reader {
-
-        let pcap = pcap.unwrap();
+    while let Some(pkt) = pcap_reader.next_packet() {
+        let pkt = pkt.unwrap();
 
         //Packet header len
         data_len += 16;
-        data_len += pcap.data.len();
+        data_len += pkt.data.len();
     }
 
     assert_eq!(data_len, DATA.len());
@@ -25,15 +23,14 @@ fn read() {
 
 #[test]
 fn read_write() {
-
-    let pcap_reader = PcapReader::new(&DATA[..]).unwrap();
-    let header = pcap_reader.header;
+    let mut pcap_reader = PcapReader::new(&DATA[..]).unwrap();
+    let header = pcap_reader.header();
 
     let mut out = Vec::new();
     let mut pcap_writer = PcapWriter::with_header(header, out).unwrap();
 
-    for pcap in pcap_reader {
-        pcap_writer.write_packet(&pcap.unwrap()).unwrap();
+    while let Some(pkt) = pcap_reader.next_packet() {
+        pcap_writer.write_packet(&pkt.unwrap()).unwrap();
     }
 
     out = pcap_writer.into_writer();
@@ -58,11 +55,11 @@ fn big_endian() {
         datalink: pcap_file::DataLink::ETHERNET,
     };
 
-    assert_eq!(pcap_reader.header, header);
-    assert_eq!(pcap_reader.header.endianness(), pcap_file::Endianness::Big);
+    assert_eq!(pcap_reader.header(), header);
+    assert_eq!(pcap_reader.header().endianness(), pcap_file::Endianness::Big);
 
     //Packet header test
-    let packet = pcap_reader.next().unwrap().unwrap();
+    let packet = pcap_reader.next_packet().unwrap().unwrap();
     let pkt_hdr = PacketHeader {
         ts_sec: 0x4fa11b29,
         ts_nsec: 152630000,
@@ -90,11 +87,11 @@ fn little_endian() {
         datalink: pcap_file::DataLink::ETHERNET,
     };
 
-    assert_eq!(pcap_reader.header, header);
-    assert_eq!(pcap_reader.header.endianness(), pcap_file::Endianness::Little);
+    assert_eq!(pcap_reader.header(), header);
+    assert_eq!(pcap_reader.header().endianness(), pcap_file::Endianness::Little);
 
     //Packet header test
-    let packet = pcap_reader.next().unwrap().unwrap();
+    let packet = pcap_reader.next_packet().unwrap().unwrap();
     let pkt_hdr = PacketHeader {
         ts_sec: 0x4f633248,
         ts_nsec: 0x0,

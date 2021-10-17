@@ -72,4 +72,8 @@ impl PcapParser {
             Endianness::Little => Packet::from_slice::<LittleEndian>(slice, ts_resolution)
         }
     }
+
+    pub fn header(&self) -> PcapHeader {
+        self.header
+    }
 }

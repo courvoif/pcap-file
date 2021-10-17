@@ -3,6 +3,7 @@ use crate::PcapError;
 
 const BUF_SIZE: usize = 1_000_000;
 
+#[derive(Debug)]
 pub(crate) struct ReadBuffer<R: Read> {
     reader: R,
     buffer: Vec<u8>,
