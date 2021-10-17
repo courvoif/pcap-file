@@ -96,7 +96,7 @@ impl PacketHeader {
     /// Writes 24B in the writer on success.
     pub fn write_to< W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> ResultParsing<()> {
         let mut ts_unsec = self.ts_nsec;
-        if ts_resolution == TsResolution::MicroSecond{
+        if ts_resolution == TsResolution::MicroSecond {
             ts_unsec /= 1000;
         }
         writer.write_u32::<B>(self.ts_sec)?;

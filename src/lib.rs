@@ -19,3 +19,4 @@ pub(crate) mod errors;
 pub mod pcap;
 pub mod pcapng;
 pub(crate) mod peek_reader;
+mod read_buffer;

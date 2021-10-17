@@ -1,24 +1,25 @@
-use pcap_file::pcapng::{PcapNgParser, Block};
+use pcap_file::pcapng::{PcapNgParser, Block, PcapNgReader};
 use std::fs::File;
 use glob::glob;
 use std::io::Read;
 use pcap_file::PcapError;
 
 
-// #[test]
-// fn reader() {
-//     for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
-//         let entry = entry.unwrap();
-//
-//         let file = File::open(&entry).unwrap();
-//         let pcapng_reader = PcapNgReader::new(file).unwrap();
-//
-//         for (i, block) in pcapng_reader.enumerate() {
-//             let _block = block.expect(&format!("Error on block {} on file: {:?}", i, entry));
-//             let parsed = _block.parsed().expect(&format!("Error on parsed block {} file: {:?}", i, entry));
-//         }
-//     }
-// }
+#[test]
+fn reader() {
+    for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
+        let entry = entry.unwrap();
+
+        let file = File::open(&entry).unwrap();
+        let mut pcapng_reader = PcapNgReader::new(file).unwrap();
+
+        let mut i = 0;
+        while let Some(block) = pcapng_reader.next_block() {
+            let _block = block.expect(&format!("Error on block {} on file: {:?}", i, entry));
+            i += 1;
+        }
+    }
+}
 
 
 #[test]

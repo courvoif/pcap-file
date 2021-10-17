@@ -1,14 +1,18 @@
-use std::io::Read;
+use std::io::{BufRead, BufReader, Cursor, ErrorKind, Read, Error as IoError};
+use std::ops::Not;
 use byteorder::{BigEndian, LittleEndian};
 use crate::errors::PcapError;
-use crate::pcapng::blocks::{ParsedBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
+use crate::pcapng::blocks::{EnhancedPacketBlock, InterfaceDescriptionBlock};
 use crate::{Endianness, PcapNgParser};
 use crate::peek_reader::PeekReader;
 use crate::pcapng::{Block, SectionHeaderBlock, BlockType};
+use crate::read_buffer::ReadBuffer;
+
+const BUF_SIZE: usize = 1_000_000;
 
 /// Wraps another reader and uses it to read a PcapNg formated stream.
 ///
-/// It implements the Iterator trait in order to read one block at a time except the first SectionHeaderBlock
+/// It implements the Iterator trait in order to read one block at a time except for the first SectionHeaderBlock
 ///
 /// # Examples
 ///
@@ -33,114 +37,57 @@ use crate::pcapng::{Block, SectionHeaderBlock, BlockType};
 /// ```
 pub struct PcapNgReader<R: Read> {
     parser: PcapNgParser,
-    reader: R,
-    buffer: Vec<u8>
+    reader: ReadBuffer<R>
 }
 
 impl<R: Read> PcapNgReader<R> {
-
     /// Creates a new `PcapNgReader` from a reader.
     /// Parses the first block which must be a valid SectionHeaderBlock
     pub fn new(mut reader: R) -> Result<PcapNgReader<R>, PcapError> {
-
-        let current_block = Block::from_reader::<_, BigEndian>(&mut reader)?;
-        let section = current_block.parsed()?;
-
-        let section = match section {
-            ParsedBlock::SectionHeader(section) => section.into_owned(),
-            _ => return Err(PcapError::InvalidField("SectionHeader missing"))
-        };
+        let mut reader = ReadBuffer::new(reader);
+        let parser = reader.parse_with(PcapNgParser::new)?;
 
         Ok(
-            PcapNgReader {
-                reader: PeekReader::new(reader),
-                section,
-                interfaces: vec![]
+            Self {
+                parser,
+                reader
             }
         )
     }
 
     /// Returns the current SectionHeaderBlock
     pub fn section(&self) -> &SectionHeaderBlock<'static> {
-        &self.section
+        &self.parser.section()
     }
 
     /// Returns the current interfaces
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
-        &self.interfaces[..]
+        &self.parser.interfaces()
     }
 
     /// Returns the InterfaceDescriptionBlock corresponding to the given packet
     pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock> {
-        self.interfaces.get(packet.interface_id as usize)
-    }
-
-    fn next_impl(&mut self) -> Result<Block<'static>, PcapError> {
-
-        // Read next Block
-        let endianess = self.section.endianness();
-        let block = match endianess {
-            Endianness::Big => Block::from_reader::<_, BigEndian>(&mut self.reader)?,
-            Endianness::Little => Block::from_reader::<_, LittleEndian>(&mut self.reader)?
-        };
-
-        match block.type_ {
-            BlockType::SectionHeader => {
-
-                self.section = block.parsed()?.into_section_header().unwrap().into_owned();
-                self.interfaces.clear();
-            },
-            BlockType::InterfaceDescription => {
-                self.interfaces.push(block.parsed()?.into_interface_description().unwrap().into_owned())
-            },
-            _ => {}
-        }
-
-        Ok(block)
+        self.interfaces().get(packet.interface_id as usize)
     }
 
     /// Consumes the `PcapNgReader`, returning the wrapped reader.
     pub fn into_inner(self) -> R {
-        self.reader.inner
+        self.reader.into_inner()
     }
 
-    /// Gets a reference to the underlying writer.
-    pub fn get_ref(&self) -> &R {
-        &self.reader.inner
-    }
-
-    /// Gets a mutable reference to the underlying writer.
-    ///
-    /// It is inadvisable to directly write to the underlying writer.
-    pub fn get_mut(&mut self) -> &mut R {
-        &mut self.reader.inner
-    }
-
-    pub fn packets(&mut self) -> impl Iterator<Item=Result<Block<'static>, PcapError>> + '_ {
-
-        self.filter(|block| {
-
-            if let Ok(block) = block {
-                if let Ok(ParsedBlock::EnhancedPacket(_)) = block.parsed() {
-                    return true;
-                }
-            }
-
-            false
-        })
-    }
-}
-
-impl<R: Read> Iterator for PcapNgReader<R> {
-    type Item = Result<Block<'static>, PcapError>;
-
-    fn next(&mut self) -> Option<Self::Item> {
+    pub fn next_block(&mut self) -> Option<Result<Block, PcapError>> {
         match self.reader.is_empty() {
-            Ok(is_empty) if is_empty => return None,
-            Err(err) => return Some(Err(err.into())),
-            _ => {}
-        }
+            Ok(empty) => {
+                if empty.not() {
+                    let parser = &mut self.parser;
+                    Some(self.reader.parse_with(|src| parser.next_block(src)))
+                }
+                else {
+                    None
+                }
+            },
 
-        Some(self.next_impl())
+            Err(e) => Some(Err(e.into())),
+        }
     }
 }
