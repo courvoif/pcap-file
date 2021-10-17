@@ -1,14 +1,10 @@
-use std::io::{BufRead, BufReader, Cursor, ErrorKind, Read, Error as IoError};
+use std::io::Read;
 use std::ops::Not;
-use byteorder::{BigEndian, LittleEndian};
-use crate::errors::PcapError;
-use crate::pcapng::blocks::{EnhancedPacketBlock, InterfaceDescriptionBlock};
-use crate::{Endianness, PcapNgParser};
-use crate::peek_reader::PeekReader;
-use crate::pcapng::{Block, SectionHeaderBlock, BlockType};
-use crate::read_buffer::ReadBuffer;
 
-const BUF_SIZE: usize = 1_000_000;
+use crate::PcapNgParser;
+use crate::errors::PcapError;
+use crate::pcapng::{Block, SectionHeaderBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
+use crate::read_buffer::ReadBuffer;
 
 /// Wraps another reader and uses it to read a PcapNg formated stream.
 ///
@@ -39,7 +35,7 @@ pub struct PcapNgReader<R: Read> {
 impl<R: Read> PcapNgReader<R> {
     /// Creates a new `PcapNgReader` from a reader.
     /// Parses the first block which must be a valid SectionHeaderBlock
-    pub fn new(mut reader: R) -> Result<PcapNgReader<R>, PcapError> {
+    pub fn new(reader: R) -> Result<PcapNgReader<R>, PcapError> {
         let mut reader = ReadBuffer::new(reader);
         let parser = reader.parse_with(PcapNgParser::new)?;
 
@@ -53,12 +49,12 @@ impl<R: Read> PcapNgReader<R> {
 
     /// Returns the current SectionHeaderBlock
     pub fn section(&self) -> &SectionHeaderBlock<'static> {
-        &self.parser.section()
+        self.parser.section()
     }
 
     /// Returns the current interfaces
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
-        &self.parser.interfaces()
+        self.parser.interfaces()
     }
 
     /// Returns the InterfaceDescriptionBlock corresponding to the given packet

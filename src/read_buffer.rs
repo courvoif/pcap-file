@@ -1,8 +1,6 @@
 use std::io::{Error, ErrorKind, Read};
 use crate::PcapError;
 
-const BUF_SIZE: usize = 1_000_000;
-
 #[derive(Debug)]
 pub(crate) struct ReadBuffer<R: Read> {
     reader: R,
@@ -13,15 +11,19 @@ pub(crate) struct ReadBuffer<R: Read> {
 
 impl<R: Read> ReadBuffer<R> {
     pub fn new(reader: R) -> Self {
+        Self::with_capacity(reader, 1_000_000)
+    }
+
+    pub fn with_capacity(reader: R, capacity: usize) -> Self {
         Self {
             reader,
-            buffer: vec![0_u8; BUF_SIZE],
+            buffer: vec![0_u8; capacity],
             pos: 0,
             len: 0
         }
     }
 
-    pub fn fill_buf(&mut self) -> Result<usize, std::io::Error> {
+    fn fill_buf(&mut self) -> Result<usize, std::io::Error> {
         // Copy the remaining data to the start of the buffer
         let rem_len = unsafe {
             let buf_ptr_mut = self.buffer.as_mut_ptr();
@@ -38,12 +40,8 @@ impl<R: Read> ReadBuffer<R> {
         Ok(nb_read)
     }
 
-    pub fn buffer(&self) -> &[u8] {
+    fn buffer(&self) -> &[u8] {
         &self.buffer[self.pos..self.len]
-    }
-
-    pub fn advance(&mut self, rem: &[u8]) {
-        Self::advance_raw(&self.buffer, &mut self.pos, &mut self.len, rem)
     }
 
     fn advance_raw(buffer: &[u8], pos: &mut usize, len: &mut usize, slice: &[u8]) {
@@ -81,46 +79,6 @@ impl<R: Read> ReadBuffer<R> {
             }
         }
     }
-
-    /*
-    pub fn parse_with_raw<'a, 'b: 'a, F, O>(reader: &mut R, buffer: &'b mut [u8], pos: &mut usize, len: &mut usize, mut parser: F) -> Result<O, PcapError>
-        where F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), PcapError>
-    {
-        loop {
-            let buf = &buffer[*pos.. *len];
-            match parser(buf) {
-                Ok((rem, value)) => {
-                    Self::advance_raw(&buffer, pos, len, rem);
-                    return Ok(value);
-                },
-
-                Err(PcapError::IncompleteBuffer(_)) => {
-                    let nb_read = Self::fill_buf_raw(reader, buffer, pos, len)?;
-                    if nb_read == 0 {
-                        return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
-                    }
-                },
-
-                Err(e) => return Err(e)
-            }
-        }
-    }
-    */
-
-    /*
-    pub fn fill_buf_raw(reader: &mut R, buffer: &mut [u8], pos: &mut usize, len: &mut usize) -> Result<usize, std::io::Error> {
-        // Copy the remaining data to the start of the buffer
-        let (start, rem) = buffer.split_at_mut(*pos);
-        start.copy_from_slice(&rem[.. *len]);
-        let rem_len = rem.len();
-
-        let nb_read = reader.read(&mut buffer[rem_len..])?;
-
-        *len = rem_len + nb_read;
-        *pos = 0;
-
-        Ok(nb_read)
-    }*/
 
     pub fn is_empty(&mut self) -> Result<bool, std::io::Error> {
         // The buffer can be empty and the reader can still have data

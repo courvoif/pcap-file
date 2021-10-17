@@ -25,10 +25,10 @@ use derive_into_owned::IntoOwned;
 /// PcapNg Block
 #[derive(Clone, Debug)]
 pub(crate) struct RawBlock<'a> {
-    pub type_: BlockType,
-    pub initial_len: u32,
-    pub body: &'a [u8],
-    pub trailer_len: u32
+    pub(crate) type_: BlockType,
+    pub(crate) initial_len: u32,
+    pub(crate) body: &'a [u8],
+    pub(crate) trailer_len: u32
 }
 
 impl<'a> RawBlock<'a> {
@@ -136,7 +136,7 @@ impl<'a> RawBlock<'a> {
     pub fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         writer.write_u32::<B>(self.type_.into())?;
         writer.write_u32::<B>(self.initial_len)?;
-        writer.write_all(&self.body[..])?;
+        writer.write_all(self.body)?;
         writer.write_u32::<B>(self.trailer_len)?;
 
         Ok(12 + self.body.len())

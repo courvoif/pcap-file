@@ -16,7 +16,7 @@ pub use pcapng::{PcapNgParser, /*PcapNgReader,PcapNgWriter*/};
 
 pub(crate) mod common;
 pub(crate) mod errors;
+pub(crate) mod read_buffer;
+
 pub mod pcap;
 pub mod pcapng;
-pub(crate) mod peek_reader;
-mod read_buffer;

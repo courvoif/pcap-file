@@ -1,10 +1,8 @@
-use byteorder::{BigEndian, LittleEndian};
-
-use crate::{Endianness, errors::*, pcap::Packet, pcap::PcapHeader, PcapParser, peek_reader::PeekReader};
+use crate::{errors::*, pcap::Packet, pcap::PcapHeader, PcapParser};
 
 use std::io::Read;
 use std::ops::Not;
-use crate::pcap::PacketHeader;
+
 use crate::read_buffer::ReadBuffer;
 
 

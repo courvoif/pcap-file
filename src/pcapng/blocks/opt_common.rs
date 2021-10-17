@@ -247,7 +247,7 @@ impl<'a> WriteOptTo for CustomUtf8Option<'a> {
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(len as u16)?;
         writer.write_u32::<B>(self.pen)?;
-        writer.write_all(&self.value.as_bytes())?;
+        writer.write_all(self.value.as_bytes())?;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
         Ok(len + pad_len + 4)
