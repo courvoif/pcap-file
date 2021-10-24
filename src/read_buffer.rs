@@ -1,4 +1,5 @@
 use std::io::{Error, ErrorKind, Read};
+
 use crate::PcapError;
 
 #[derive(Debug)]
@@ -56,12 +57,14 @@ impl<R: Read> ReadBuffer<R> {
         *len = diff_len + slice.len();
     }
 
-    pub fn parse_with<'a, F, O>(&'a mut self, mut parser: F) -> Result<O, PcapError>
+    // TODO: think about the lifetime here and maybe fuzz it too
+    pub(crate) fn parse_with<'a, F, O>(&'a mut self, mut parser: F) -> Result<O, PcapError>
         where F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), PcapError>,
+              F: 'a,
               O: 'a
     {
         loop {
-            let buf: &'static [u8] = unsafe{std::mem::transmute(&self.buffer[self.pos..self.len])};
+            let buf: &'a [u8] = unsafe{std::mem::transmute(&self.buffer[self.pos..self.len])};
             match parser(buf) {
                 Ok((rem, value)) => {
                     Self::advance_raw(&self.buffer, &mut self.pos, &mut self.len, rem);

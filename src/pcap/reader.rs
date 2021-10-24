@@ -1,4 +1,4 @@
-use crate::{errors::*, pcap::Packet, pcap::PcapHeader, PcapParser};
+use crate::{errors::*, pcap::PcapPacket, pcap::PcapHeader, PcapParser};
 
 use std::io::Read;
 use std::ops::Not;
@@ -69,12 +69,12 @@ impl <R:Read> PcapReader<R>{
     }
 
     /// Returns the next packet and the remainder.
-    pub fn next_packet(&mut self) -> Option<Result<Packet, PcapError>> {
+    pub fn next_packet(&mut self) -> Option<Result<PcapPacket, PcapError>> {
         match self.reader.is_empty() {
             Ok(empty) => {
                 if empty.not() {
                     let parser = &mut self.parser;
-                    Some(self.reader.parse_with(|src| parser.next_packet(src)))
+                    Some(self.reader.parse_with(move |src| parser.next_packet(src)))
                 }
                 else {
                     None

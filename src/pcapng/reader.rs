@@ -72,7 +72,7 @@ impl<R: Read> PcapNgReader<R> {
             Ok(empty) => {
                 if empty.not() {
                     let parser = &mut self.parser;
-                    Some(self.reader.parse_with(|src| parser.next_block(src)))
+                    Some(self.reader.parse_with(move |src| parser.next_block(src)))
                 }
                 else {
                     None

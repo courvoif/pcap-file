@@ -1,16 +1,8 @@
+use std::io::Write;
+
 use byteorder::{ByteOrder, BigEndian, LittleEndian, NativeEndian};
 
-use crate::{
-    Endianness,
-    errors::*,
-    pcap::PcapHeader,
-    pcap::{Packet, PacketHeader}
-};
-
-use std::{
-    borrow::Cow,
-    io::Write
-};
+use crate::{DataLink, Endianness, errors::*, pcap::PcapHeader, pcap::PcapPacket, TsResolution};
 
 
 /// This struct wraps another writer and uses it to write a Pcap formated stream.
@@ -39,13 +31,13 @@ use std::{
 /// ```
 #[derive(Debug)]
 pub struct PcapWriter<W: Write> {
-    pub header: PcapHeader,
+    endianness: Endianness,
+    snaplen: u32,
+    ts_resolution: TsResolution,
     writer: W
 }
 
-
 impl<W: Write> PcapWriter<W> {
-
     /// Creates a new `PcapWriter` from an existing writer in the choosen endianess.
     /// Defaults to the native endianness of the CPU.
     ///
@@ -77,10 +69,9 @@ impl<W: Write> PcapWriter<W> {
     /// let file_out = File::create("out.pcap").expect("Error creating file");
     /// let mut pcap_writer = PcapWriter::new(file_out);
     /// ```
-    pub fn new(writer: W) -> ResultParsing<PcapWriter<W>> {
-
+    pub fn new(writer: W, datalink: DataLink, ts_resolution: TsResolution) -> ResultParsing<PcapWriter<W>> {
+        // Get endianness of current processor
         let tmp = NativeEndian::read_u16(&[0x42, 0x00]);
-
         let endianness = match tmp {
             0x4200 => Endianness::Big,
             0x0042 => Endianness::Little,
@@ -88,8 +79,11 @@ impl<W: Write> PcapWriter<W> {
         };
 
         let mut header = PcapHeader::default();
-        header.set_endianness(endianness);
-        PcapWriter::with_header(header, writer)
+        header.endianness = endianness;
+        header.datalink = datalink;
+        header.ts_resolution = ts_resolution;
+
+        PcapWriter::with_header(writer, header)
     }
 
     /// Create a new `PcapWriter` from an existing writer with a user defined pcap header.
@@ -116,8 +110,6 @@ impl<W: Write> PcapWriter<W> {
     /// let file = File::create("out.pcap").expect("Error creating file");
     ///
     /// let header = PcapHeader {
-    ///
-    ///     magic_number : 0xa1b2c3d4,
     ///     version_major : 2,
     ///     version_minor : 4,
     ///     ts_correction : 0,
@@ -128,16 +120,14 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// let mut pcap_writer = PcapWriter::with_header(header, file);
     /// ```
-    pub fn with_header(header: PcapHeader, mut writer: W) -> ResultParsing<PcapWriter<W>> {
-
-        match header.endianness() {
-            Endianness::Big => header.write_to::<_, BigEndian>(&mut writer)?,
-            Endianness::Little => header.write_to::<_, LittleEndian>(&mut writer)?,
-        }
+    pub fn with_header(mut writer: W, header: PcapHeader) -> ResultParsing<PcapWriter<W>> {
+        header.write_to(&mut writer)?;
 
         Ok(
             PcapWriter {
-                header,
+                endianness: header.endianness,
+                snaplen: header.snaplen,
+                ts_resolution: header.ts_resolution,
                 writer
             }
         )
@@ -148,71 +138,34 @@ impl<W: Write> PcapWriter<W> {
         self.writer
     }
 
-    /// Gets a reference to the underlying writer.
-    pub fn get_ref(&self) -> &W {
-        &self.writer
-    }
-
-    /// Gets a mutable reference to the underlying writer.
-    ///
-    /// It is inadvisable to directly write to the underlying writer.
-    pub fn get_mut(&mut self) -> &mut W {
-        &mut self.writer
-    }
-
-    /// Writes some raw data, converting it to the pcap file format.
-    ///
-    /// # Examples
-    /// ```rust,no_run
-    /// use std::fs::File;
-    /// use pcap_file::pcap::PcapWriter;
-    ///
-    /// let data = [0u8; 10];
-    /// let file = File::create("out.pcap").expect("Error creating file");
-    /// let mut pcap_writer = PcapWriter::new(file).unwrap();
-    ///
-    /// pcap_writer.write(1, 0, &data, data.len() as u32).unwrap();
-    /// ```
-    pub fn write(&mut self, ts_sec: u32, ts_nsec: u32, data: &[u8], orig_len: u32) -> ResultParsing<()> {
-
-        let packet = Packet {
-
-            header: PacketHeader::new(ts_sec, ts_nsec, data.len() as u32, orig_len),
-            data: Cow::Borrowed(data)
-        };
-
-        self.write_packet(&packet)
-    }
-
     /// Writes a `Packet`.
     ///
     /// # Examples
     /// ```rust,no_run
     /// use std::fs::File;
+    /// use std::time::Duration;
     /// use pcap_file::pcap::{
-    ///     Packet,
+    ///     PcapPacket,
     ///     PcapWriter
     /// };
     ///
     /// let data = [0u8; 10];
-    /// let packet = Packet::new(1, 0, &data, data.len() as u32);
+    /// let packet = PcapPacket::new(Duration::new(1, 0), data.len() as u32, &data);
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     /// let mut pcap_writer = PcapWriter::new(file).unwrap();
     ///
     /// pcap_writer.write_packet(&packet).unwrap();
     /// ```
-    pub fn write_packet(&mut self, packet: &Packet) -> ResultParsing<()> {
-
-        let ts_resolution = self.header.ts_resolution();
-
-        match self.header.endianness() {
-
-            Endianness::Big => packet.header.write_to::<_, BigEndian>(&mut self.writer, ts_resolution)?,
-            Endianness::Little => packet.header.write_to::<_, LittleEndian>(&mut self.writer, ts_resolution)?,
+    pub fn write_packet(&mut self, packet: &PcapPacket) -> ResultParsing<()> {
+        if packet.data.len() > self.snaplen as usize {
+            return Err(PcapError::InvalidField("Packet.len > PcapHeader.snap_len"))
         }
 
-        self.writer.write_all(&packet.data)?;
+        match self.endianness {
+            Endianness::Big => packet.write_to::<_, BigEndian>(&mut self.writer, self.ts_resolution)?,
+            Endianness::Little => packet.write_to::<_, LittleEndian>(&mut self.writer, self.ts_resolution)?,
+        }
 
         Ok(())
     }
