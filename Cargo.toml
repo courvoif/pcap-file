@@ -19,3 +19,4 @@ thiserror = "1.0"
 
 [dev-dependencies]
 glob = "0.3.0"
+hex = "0.4.3"

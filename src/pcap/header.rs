@@ -80,7 +80,7 @@ impl PcapHeader {
     pub fn write_to<W: Write>(&self, writer: &mut W) -> ResultParsing<()> {
         return match self.endianness {
             Endianness::Big => write_header::<_, BigEndian>(self, writer),
-            Endianness::Little => write_header::<_, BigEndian>(self, writer)
+            Endianness::Little => write_header::<_, LittleEndian>(self, writer)
         };
 
         fn write_header<W: Write, B: ByteOrder>(header: &PcapHeader, writer: &mut W) -> ResultParsing<()> {
