@@ -13,7 +13,6 @@ use crate::{DataLink, Endianness, errors::*, pcap::PcapHeader, pcap::PcapPacket,
 /// use std::fs::File;
 /// use pcap_file::pcap::{PcapReader, PcapWriter};
 ///
-///
 /// let file_in = File::open("test.pcap").expect("Error opening file");
 /// let mut pcap_reader = PcapReader::new(file_in).unwrap();
 ///
@@ -45,13 +44,14 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// ```rust, ignore
     /// PcapHeader {
-    ///
-    ///     version_major : 2,
-    ///     version_minor : 4,
-    ///     ts_correction : 0,
-    ///     ts_accuracy : 0,
-    ///     snaplen : 65535,
-    ///     datalink : DataLink::ETHERNET
+    ///     version_major: 2,
+    ///     version_minor: 4,
+    ///     ts_correction: 0,
+    ///     ts_accuracy: 0,
+    ///     snaplen: 65535,
+    ///     datalink: DataLink::ETHERNET,
+    ///     ts_resolution: TsResolution::MicroSecond,
+    ///     endianness: Endianness::Big
     /// };
     /// ```
     ///
@@ -69,7 +69,7 @@ impl<W: Write> PcapWriter<W> {
     /// let file_out = File::create("out.pcap").expect("Error creating file");
     /// let mut pcap_writer = PcapWriter::new(file_out);
     /// ```
-    pub fn new(writer: W, datalink: DataLink, ts_resolution: TsResolution) -> ResultParsing<PcapWriter<W>> {
+    pub fn new(writer: W) -> ResultParsing<PcapWriter<W>> {
         // Get endianness of current processor
         let tmp = NativeEndian::read_u16(&[0x42, 0x00]);
         let endianness = match tmp {
@@ -80,8 +80,6 @@ impl<W: Write> PcapWriter<W> {
 
         let mut header = PcapHeader::default();
         header.endianness = endianness;
-        header.datalink = datalink;
-        header.ts_resolution = ts_resolution;
 
         PcapWriter::with_header(writer, header)
     }
@@ -103,22 +101,24 @@ impl<W: Write> PcapWriter<W> {
     /// ```rust,no_run
     /// use std::fs::File;
     /// use pcap_file::{
-    ///     DataLink,
+    ///     DataLink, Endianness, TsResolution,
     ///     pcap::{PcapHeader, PcapWriter},
     /// };
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     ///
     /// let header = PcapHeader {
-    ///     version_major : 2,
-    ///     version_minor : 4,
-    ///     ts_correction : 0,
-    ///     ts_accuracy : 0,
-    ///     snaplen : 65535,
-    ///     datalink : DataLink::ETHERNET
+    ///     version_major: 2,
+    ///     version_minor: 4,
+    ///     ts_correction: 0,
+    ///     ts_accuracy: 0,
+    ///     snaplen: 65535,
+    ///     datalink: DataLink::ETHERNET,
+    ///     ts_resolution: TsResolution::MicroSecond,
+    ///     endianness: Endianness::Big
     /// };
     ///
-    /// let mut pcap_writer = PcapWriter::with_header(header, file);
+    /// let mut pcap_writer = PcapWriter::with_header(file, header);
     /// ```
     pub fn with_header(mut writer: W, header: PcapHeader) -> ResultParsing<PcapWriter<W>> {
         header.write_to(&mut writer)?;

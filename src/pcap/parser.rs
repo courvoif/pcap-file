@@ -3,7 +3,7 @@ use byteorder::{BigEndian, LittleEndian};
 use crate::{Endianness, errors::*, pcap::PcapPacket, pcap::PcapHeader};
 
 
-/// Parser for a Pcap formated stream.
+/// Parser for a Pcap formatted stream.
 ///
 /// # Examples
 ///
@@ -19,7 +19,6 @@ use crate::{Endianness, errors::*, pcap::PcapPacket, pcap::PcapHeader};
 /// src = rem;
 ///
 /// loop {
-///
 ///     match pcap_parser.next_packet(src) {
 ///         Ok((rem, packet)) => {
 ///             // Do something

@@ -106,14 +106,14 @@ impl PcapHeader {
 ///
 /// ```rust,ignore
 /// PcapHeader {
-///
-///     magic_number : 0xa1b2c3d4,
-///     version_major : 2,
-///     version_minor : 4,
-///     ts_correction : 0,
-///     ts_accuracy : 0,
-///     snaplen : 65535,
-///     datalink : DataLink::ETHERNET
+///     version_major: 2,
+///     version_minor: 4,
+///     ts_correction: 0,
+///     ts_accuracy: 0,
+///     snaplen: 65535,
+///     datalink: DataLink::ETHERNET,
+///     ts_resolution: TsResolution::MicroSecond,
+///     endianness: Endianness::Big
 /// };
 /// ```
 impl Default for PcapHeader {
