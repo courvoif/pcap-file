@@ -16,22 +16,18 @@ use crate::Endianness;
 /// use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 ///
 /// let file_in = File::open("test.pcapng").expect("Error opening file");
-/// let pcapng_reader = PcapNgReader::new(file_in).unwrap();
+/// let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
 ///
 /// let mut out = Vec::new();
 /// let mut pcapng_writer = PcapNgWriter::new(out).unwrap();
 ///
 /// // Read test.pcapng
-/// for block in pcapng_reader {
-///
-///     //Check if there is no error
+/// while let Some(block) = pcapng_reader.next_block() {
+///     // Check if there is no error
 ///     let block = block.unwrap();
 ///
-///     //Parse block content
-///     let parsed_block = block.parsed().unwrap();
-///
-///     //Write parsed Block
-///     pcapng_writer.write_parsed_block(&parsed_block).unwrap();
+///     // Write back parsed Block
+///     pcapng_writer.write_block(&block).unwrap();
 /// }
 /// ```
 pub struct PcapNgWriter<W: Write> {
@@ -108,7 +104,7 @@ impl<W: Write> PcapNgWriter<W> {
     }
 
     /// Consumes the `PcapNgWriter`, returning the wrapped writer.
-    pub fn into_writer(self) -> W {
+    pub fn into_inner(self) -> W {
         self.writer
     }
 
@@ -119,7 +115,7 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Gets a mutable reference to the underlying writer.
     ///
-    /// It is inadvisable to directly write to the underlying writer.
+    /// You should not be used unless you really know what you're doing
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.writer
     }

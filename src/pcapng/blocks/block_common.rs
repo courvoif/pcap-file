@@ -187,7 +187,7 @@ impl<'a> Block<'a> {
                 let (_, block) = SystemdJournalExportBlock::from_slice::<B>(raw_block.body)?;
                 Block::SystemdJournalExport(block)
             },
-            _ => Block::Unknown(UnknownBlock::new(raw_block.type_, raw_block.initial_len, raw_block.body))
+            type_ => Block::Unknown(UnknownBlock::new(type_, raw_block.initial_len, raw_block.body))
         };
 
         Ok((rem, block))
@@ -210,16 +210,18 @@ impl<'a> Block<'a> {
         };
 
         fn inner_write_to<'a, B:ByteOrder, BL: PcapNgBlock<'a>, W: Write>(block: &BL, block_code: u32, writer: &mut W) -> IoResult<usize> {
-            let len = block.write_to::<B, _>(&mut std::io::sink()).unwrap() + 12;
-            let pad_len = (4 - (len % 4)) % 4;
+            let data_len = block.write_to::<B, _>(&mut std::io::sink()).unwrap();
+            let pad_len = (4 - (data_len % 4)) % 4;
+
+            let block_len = data_len + pad_len + 12;
 
             writer.write_u32::<B>( block_code)?;
-            writer.write_u32::<B>(len as u32)?;
+            writer.write_u32::<B>(block_len as u32)?;
             block.write_to::<B, _>(writer)?;
-            writer.write_all(&[0_u8; 4][..pad_len])?;
-            writer.write_u32::<B>(len as u32)?;
+            writer.write_all(&[0_u8; 3][..pad_len])?;
+            writer.write_u32::<B>(block_len as u32)?;
 
-            Ok(len)
+            Ok(block_len)
         }
     }
 

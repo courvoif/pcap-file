@@ -1,9 +1,7 @@
-use pcap_file::pcapng::{PcapNgParser, Block, PcapNgReader};
+use pcap_file::pcapng::{PcapNgParser, PcapNgReader, PcapNgWriter};
 use std::fs::File;
 use glob::glob;
 use std::io::Read;
-use pcap_file::PcapError;
-
 
 #[test]
 fn reader() {
@@ -41,7 +39,7 @@ fn parser() {
                 break;
             }
 
-            let (rem, block) =  pcapng_parser.next_block(src).expect(&format!("Error on block {} on file: {:?}", i, entry));
+            let (rem, _) =  pcapng_parser.next_block(src).expect(&format!("Error on block {} on file: {:?}", i, entry));
             src = rem;
 
             i += 1;
@@ -50,39 +48,42 @@ fn parser() {
 }
 
 
-// #[test]
-// fn writer() {
-//
-//     for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
-//         let entry = entry.unwrap();
-//
-//         let pcapng_in = std::fs::read(&entry).unwrap();
-//         let pcapng_reader = PcapNgReader::new(&pcapng_in[..]).unwrap();
-//
-//         let mut pcapng_writer = PcapNgWriter::with_section_header( Vec::new(), pcapng_reader.section()).unwrap();
-//
-//         for (i, block) in pcapng_reader.enumerate() {
-//
-//             let _block = block.unwrap();
-//             let parsed = _block.parsed().unwrap();
-//             pcapng_writer.write_block(&parsed).expect(&format!("Error writing parsed block n°{} in file: {:?}, {:?}", i, entry, parsed));
-//         }
-//
-//
-//         let expecteds = PcapNgReader::new(&pcapng_in[..]).unwrap();
-//         let actuals =  PcapNgReader::new(&pcapng_writer.get_ref()[..]).expect(&format!("Error reading section header block in file: {:?}\n expected {:?}\n actual   {:?}", entry, &pcapng_in[..], &pcapng_writer.get_ref()[..]));
-//
-//         for (i, (actual, expected)) in actuals.zip(expecteds).enumerate() {
-//
-//             let actual_block = actual.expect(&format!("Error on block {} on file: {:?}", i, entry));
-//             let expected_block = expected.unwrap();
-//
-//             let actual_parsed = actual_block.parsed().expect(&format!("Error on parsed block {} on file: {:?}\nActual:   {:02X?}\nExpected: {:02X?}", i, entry, actual_block, expected_block));
-//             let expected_parsed = expected_block.parsed().unwrap();
-//
-//             if actual_parsed != expected_parsed {
-//                 assert_eq!(actual_parsed, expected_parsed)
-//             }
-//         }
-//     }
-// }
+#[test]
+fn writer() {
+    for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
+        let entry = entry.unwrap();
+
+        let pcapng_in = std::fs::read(&entry).unwrap();
+        let mut pcapng_reader = PcapNgReader::new(&pcapng_in[..]).unwrap();
+        let mut pcapng_writer = PcapNgWriter::with_section_header( Vec::new(), pcapng_reader.section().clone()).unwrap();
+
+        let mut idx = 0;
+        while let Some(block) = pcapng_reader.next_block() {
+            let block = block.unwrap();
+            pcapng_writer.write_block(&block).expect(&format!("Error writing block, file: {:?}, block n°{}, block: {:?}", entry, idx, block));
+            idx += 1;
+        }
+
+        let expected = &pcapng_in;
+        let actual = pcapng_writer.get_ref();
+
+        if expected != actual {
+            let mut expected_reader = PcapNgReader::new(&expected[..]).unwrap();
+            let mut actual_reader = PcapNgReader::new(&actual[..]).unwrap();
+
+            let mut idx = 0;
+            while let (Some(expected), Some(actual)) = (expected_reader.next_block(), actual_reader.next_block()) {
+                let expected = expected.unwrap();
+                let actual = actual.unwrap();
+
+                if expected != actual {
+                    assert_eq!(expected, actual, "Pcap written != pcap read, file: {:?}, block n°{}", entry, idx)
+                }
+
+                idx += 1;
+            }
+
+            panic!("Pcap written != pcap read  but blocks are equal, file: {:?}", entry);
+        }
+    }
+}

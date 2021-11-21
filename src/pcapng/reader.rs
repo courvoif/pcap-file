@@ -67,6 +67,11 @@ impl<R: Read> PcapNgReader<R> {
         self.reader.into_inner()
     }
 
+    /// /// Gets a reference to the wrapped reader.
+    pub fn get_ref(&self) -> &R {
+        self.reader.get_ref()
+    }
+
     pub fn next_block(&mut self) -> Option<Result<Block, PcapError>> {
         match self.reader.is_empty() {
             Ok(empty) => {
