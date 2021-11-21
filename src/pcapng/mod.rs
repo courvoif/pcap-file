@@ -1,3 +1,5 @@
+//! Contains the PcapNg parser, reader and writer
+
 pub(crate) mod blocks;
 pub use blocks::*;
 

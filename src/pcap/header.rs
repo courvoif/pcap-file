@@ -41,7 +41,7 @@ impl PcapHeader {
     /// or if there is a reading error.
     ///
     /// `PcapError::IncompleteBuffer` indicates that there is not enough data in the buffer
-    pub fn from_slice(mut slice: &[u8]) -> ResultParsing<(&[u8], PcapHeader)> {
+    pub fn from_slice(mut slice: &[u8]) -> PcapResult<(&[u8], PcapHeader)> {
         if slice.len() < 24 {
             return Err(PcapError::IncompleteBuffer(24 - slice.len()))
         }
@@ -57,7 +57,7 @@ impl PcapHeader {
         };
 
         // Inner function used for the initialisation of the `PcapHeader`
-        fn init_pcap_header<B: ByteOrder>(mut src: &[u8], ts_resolution: TsResolution, endianness: Endianness) -> ResultParsing<(&[u8], PcapHeader)> {
+        fn init_pcap_header<B: ByteOrder>(mut src: &[u8], ts_resolution: TsResolution, endianness: Endianness) -> PcapResult<(&[u8], PcapHeader)> {
             let header = PcapHeader {
                 version_major: src.read_u16::<B>()?,
                 version_minor: src.read_u16::<B>()?,
@@ -77,13 +77,13 @@ impl PcapHeader {
     ///
     /// Writes 24o in the writer on success.
     /// Uses the endianness of the header.
-    pub fn write_to<W: Write>(&self, writer: &mut W) -> ResultParsing<()> {
+    pub fn write_to<W: Write>(&self, writer: &mut W) -> PcapResult<()> {
         return match self.endianness {
             Endianness::Big => write_header::<_, BigEndian>(self, writer),
             Endianness::Little => write_header::<_, LittleEndian>(self, writer)
         };
 
-        fn write_header<W: Write, B: ByteOrder>(header: &PcapHeader, writer: &mut W) -> ResultParsing<()> {
+        fn write_header<W: Write, B: ByteOrder>(header: &PcapHeader, writer: &mut W) -> PcapResult<()> {
             let magic_number = match header.ts_resolution {
                 TsResolution::MicroSecond => 0xa1b2c3d4,
                 TsResolution::NanoSecond => 0xa1b23c4d

@@ -296,7 +296,7 @@ impl<'a> Block<'a> {
     }
 }
 
-pub(crate) trait PcapNgBlock<'a> {
+pub trait PcapNgBlock<'a> {
     fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&[u8], Self), PcapError> where Self: std::marker::Sized;
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize>;
     fn into_block(self) -> Block<'a>;

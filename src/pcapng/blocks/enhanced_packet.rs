@@ -18,12 +18,8 @@ pub struct EnhancedPacketBlock<'a> {
     /// (within the current Section of the file) is identified by the same number of this field.
     pub interface_id: u32,
 
-    /// The timestamp is a single 64-bit unsigned integer that represents the number of units of time
-    /// that have elapsed since 1970-01-01 00:00:00 UTC.
-    pub timestamp: u64,
-
-    /// Number of octets captured from the packet (i.e. the length of the Packet Data field).
-    pub captured_len: u32,
+    /// Number of units of time that have elapsed since 1970-01-01 00:00:00 UTC.
+    pub timestamp: Duration,
 
     /// Actual length of the packet when it was transmitted on the network.
     pub original_len: u32,
@@ -35,16 +31,8 @@ pub struct EnhancedPacketBlock<'a> {
     pub options: Vec<EnhancedPacketOption<'a>>
 }
 
-impl<'a, 'b> EnhancedPacketBlock<'a> {
-
-    pub fn timestamp(&self) -> Duration {
-        Duration::from_nanos(self.timestamp)
-    }
-}
-
 impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
     fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
-
         if slice.len() < 20 {
             return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
         }
@@ -69,8 +57,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         let (slice, options) = EnhancedPacketOption::opts_from_slice::<B>(slice)?;
         let block = EnhancedPacketBlock {
             interface_id,
-            timestamp,
-            captured_len,
+            timestamp: Duration::from_nanos(timestamp),
             original_len,
             data: Cow::Borrowed(data),
             options
@@ -85,12 +72,13 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 
         writer.write_u32::<B>(self.interface_id)?;
 
-        let timestamp_high = (self.timestamp >> 32) as u32;
+        let timestamp = self.timestamp.as_nanos();
+        let timestamp_high = (timestamp >> 32) as u32;
         writer.write_u32::<B>(timestamp_high)?;
-        let timestamp_low = (self.timestamp & 0xFFFFFFFF) as u32;
+        let timestamp_low = (timestamp & 0xFFFFFFFF) as u32;
         writer.write_u32::<B>(timestamp_low)?;
 
-        writer.write_u32::<B>(self.captured_len)?;
+        writer.write_u32::<B>(self.data.len() as u32)?;
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
         writer.write_all(&[0_u8; 3][..pad_len])?;

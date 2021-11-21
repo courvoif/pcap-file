@@ -11,11 +11,8 @@ use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOpt
 ///Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SectionHeaderBlock<'a> {
-
-    /// Magic number, whose value is 0x1A2B3C4D.
-    /// This number can be used to distinguish sections that have been saved
-    /// on little-endian machines from the ones saved on big-endian machines.
-    pub magic: u32,
+    /// Endianness of the section.
+    pub endianness: Endianness,
 
     /// Major version of the format.
     /// Current value is 1.
@@ -37,23 +34,24 @@ pub struct SectionHeaderBlock<'a> {
 
 impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
     fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
-
         if slice.len() < 16 {
             return Err(PcapError::InvalidField("SectionHeaderBlock: block length < 16"));
         }
 
         let magic = slice.read_u32::<BigEndian>()?;
+        let endianness = match magic {
+            0x1A2B3C4D => Endianness::Big,
+            0x4D3C2B1A => Endianness::Little,
+            _ => return Err(PcapError::InvalidField("SectionHeaderBlock: invalid magic number"))
+        };
 
-        let (rem, major_version, minor_version, section_length, options) = match magic {
-
-            0x1A2B3C4D => parse_inner::<BigEndian>(slice)?,
-            0x4D3C2B1A => parse_inner::<LittleEndian>(slice)?,
-
-            _ => unreachable!()
+        let (rem, major_version, minor_version, section_length, options) = match endianness {
+            Endianness::Big => parse_inner::<BigEndian>(slice)?,
+            Endianness::Little => parse_inner::<LittleEndian>(slice)?
         };
 
         let block = SectionHeaderBlock {
-            magic,
+            endianness,
             major_version,
             minor_version,
             section_length,
@@ -64,7 +62,6 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
 
         #[allow(clippy::type_complexity)]
         fn parse_inner<B: ByteOrder>(mut slice: &[u8]) -> Result<(&[u8], u16, u16, i64, Vec<SectionHeaderOption>), PcapError> {
-
             let maj_ver = slice.read_u16::<B>()?;
             let min_ver = slice.read_u16::<B>()?;
             let sec_len = slice.read_i64::<B>()?;
@@ -75,8 +72,11 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+        match self.endianness {
+            Endianness::Big => writer.write_u32::<BigEndian>(0x1A2B3C4D)?,
+            Endianness::Little => writer.write_u32::<LittleEndian>(0x1A2B3C4D)?
+        };
 
-        writer.write_u32::<BigEndian>(self.magic)?;
         writer.write_u16::<B>(self.major_version)?;
         writer.write_u16::<B>(self.minor_version)?;
         writer.write_i64::<B>(self.section_length)?;
@@ -91,32 +91,10 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
     }
 }
 
-impl<'a> SectionHeaderBlock<'a> {
-
-    pub fn endianness(&self) -> Endianness {
-
-        match self.magic {
-
-            0x1A2B3C4D => Endianness::Big,
-            0x4D3C2B1A => Endianness::Little,
-            _ => unreachable!()
-        }
-    }
-
-    pub fn set_endianness(&mut self, endianness: Endianness) {
-
-        self.magic = match endianness {
-
-            Endianness::Big => 0x1A2B3C4D,
-            Endianness::Little => 0x4D3C2B1A
-        };
-    }
-}
-
 impl Default for SectionHeaderBlock<'static> {
     fn default() -> Self {
         Self {
-            magic: 0xA1B2C3D4,
+            endianness: Endianness::Big,
             major_version: 1,
             minor_version: 0,
             section_length: -1,
@@ -125,10 +103,8 @@ impl Default for SectionHeaderBlock<'static> {
     }
 }
 
-
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum SectionHeaderOption<'a> {
-
     /// Comment associated with the current block
     Comment(Cow<'a, str>),
 
@@ -153,11 +129,8 @@ pub enum SectionHeaderOption<'a> {
 
 
 impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
-
     fn from_slice<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
-
         let opt = match code {
-
             1 => SectionHeaderOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => SectionHeaderOption::Hardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
             3 => SectionHeaderOption::OS(Cow::Borrowed(std::str::from_utf8(slice)?)),
@@ -173,7 +146,6 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-        
         match self {
             SectionHeaderOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             SectionHeaderOption::Hardware(a) => a.write_opt_to::<B, W>(2, writer),

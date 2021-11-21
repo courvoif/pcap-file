@@ -5,7 +5,7 @@ use byteorder::{ByteOrder, BigEndian, LittleEndian, NativeEndian};
 use crate::{Endianness, errors::*, pcap::PcapHeader, pcap::PcapPacket, TsResolution};
 
 
-/// This struct wraps another writer and uses it to write a Pcap formated stream.
+/// Writes a pcap to a writer.
 ///
 /// # Examples
 ///
@@ -37,10 +37,11 @@ pub struct PcapWriter<W: Write> {
 }
 
 impl<W: Write> PcapWriter<W> {
-    /// Creates a new `PcapWriter` from an existing writer in the choosen endianess.
+    /// Creates a new `PcapWriter` from an existing writer.
+    ///
     /// Defaults to the native endianness of the CPU.
     ///
-    /// Automatically writes this default global pcap header to the file:
+    /// Writes this default global pcap header to the file:
     ///
     /// ```rust, ignore
     /// PcapHeader {
@@ -69,7 +70,7 @@ impl<W: Write> PcapWriter<W> {
     /// let file_out = File::create("out.pcap").expect("Error creating file");
     /// let mut pcap_writer = PcapWriter::new(file_out);
     /// ```
-    pub fn new(writer: W) -> ResultParsing<PcapWriter<W>> {
+    pub fn new(writer: W) -> PcapResult<PcapWriter<W>> {
         // Get endianness of current processor
         let tmp = NativeEndian::read_u16(&[0x42, 0x00]);
         let endianness = match tmp {
@@ -89,7 +90,7 @@ impl<W: Write> PcapWriter<W> {
     /// The endianness and the timestamp resolution are defined by the magic number of the header.
     /// It is possible to change them with 'set_endianess()' and 'set_ts_resolution()'
     ///
-    /// It Automatically writes the pcap header to the file.
+    /// It writes the pcap header to the file.
     ///
     /// # Errors
     ///
@@ -120,7 +121,7 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// let mut pcap_writer = PcapWriter::with_header(file, header);
     /// ```
-    pub fn with_header(mut writer: W, header: PcapHeader) -> ResultParsing<PcapWriter<W>> {
+    pub fn with_header(mut writer: W, header: PcapHeader) -> PcapResult<PcapWriter<W>> {
         header.write_to(&mut writer)?;
 
         Ok(
@@ -157,7 +158,7 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// pcap_writer.write_packet(&packet).unwrap();
     /// ```
-    pub fn write_packet(&mut self, packet: &PcapPacket) -> ResultParsing<()> {
+    pub fn write_packet(&mut self, packet: &PcapPacket) -> PcapResult<()> {
         if packet.data.len() > self.snaplen as usize {
             return Err(PcapError::InvalidField("Packet.len > PcapHeader.snap_len"))
         }

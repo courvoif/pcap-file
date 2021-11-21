@@ -47,7 +47,7 @@ impl<'a> PcapPacket<'a> {
     }
 
     /// Parse a new borrowed `Packet` from a slice.
-    pub fn from_slice<B: ByteOrder>(slice: &'a [u8], ts_resolution: TsResolution, snap_len: u32) -> ResultParsing<(&'a [u8], PcapPacket<'a>)> {
+    pub fn from_slice<B: ByteOrder>(slice: &'a [u8], ts_resolution: TsResolution, snap_len: u32) -> PcapResult<(&'a [u8], PcapPacket<'a>)> {
         let (slice, header) = PacketHeader::from_slice::<B>(slice, ts_resolution, snap_len)?;
         let len = header.incl_len as usize;
 
@@ -69,7 +69,7 @@ impl<'a> PcapPacket<'a> {
     /// Write a `Packet` to a writer.
     ///
     /// Writes 24B in the writer on success.
-    pub fn write_to< W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> ResultParsing<()> {
+    pub fn write_to< W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> PcapResult<()> {
         let ts_sec = self.timestamp.as_secs();
         let ts_nsec = self.timestamp.subsec_nanos();
         let incl_len = self.data.len();
@@ -115,7 +115,7 @@ struct PacketHeader {
 
 impl PacketHeader {
     /// Creates a new `PacketHeader` from a slice.
-    pub(crate) fn from_slice<B: ByteOrder>(mut slice: &[u8], ts_resolution: TsResolution, snap_len: u32) -> ResultParsing<(&[u8], PacketHeader)> {
+    pub(crate) fn from_slice<B: ByteOrder>(mut slice: &[u8], ts_resolution: TsResolution, snap_len: u32) -> PcapResult<(&[u8], PacketHeader)> {
         // Check header length
         if slice.len() < 16 {
             return Err(PcapError::IncompleteBuffer(16 - slice.len()));
@@ -161,7 +161,7 @@ impl PacketHeader {
     /// Write a `PcapHeader` to a writer.
     ///
     /// Writes 24B in the writer on success.
-    pub(crate) fn write_to< W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> ResultParsing<()> {
+    pub(crate) fn write_to< W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> PcapResult<()> {
         let mut ts_unsec = self.ts_nsec;
         if ts_resolution == TsResolution::MicroSecond {
             ts_unsec /= 1000;

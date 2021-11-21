@@ -21,9 +21,6 @@ pub struct InterfaceDescriptionBlock<'a> {
     /// [tcpdump.org link-layer header types registry.](http://www.tcpdump.org/linktypes.html).
     pub linktype: DataLink,
 
-    /// Not used - MUST be filled with 0 by pcap file writers, and MUST be ignored by pcapng file readers.
-    pub reserved: u16,
-
     /// Maximum number of octets captured from each packet.
     /// The portion of each packet that exceeds this value will not be stored in the file.
     /// A value of zero indicates no limit.
@@ -35,19 +32,22 @@ pub struct InterfaceDescriptionBlock<'a> {
 
 impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
     fn from_slice<B:ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
-
         if slice.len() < 8 {
             return Err(PcapError::InvalidField("InterfaceDescriptionBlock: block length < 8"));
         }
 
         let linktype = (slice.read_u16::<B>()? as u32).into();
+
         let reserved = slice.read_u16::<B>()?;
+        if reserved != 0 {
+            return Err(PcapError::InvalidField("InterfaceDescriptionBlock: reserved != 0"));
+        }
+
         let snaplen = slice.read_u32::<B>()?;
         let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(slice)?;
 
         let block = InterfaceDescriptionBlock {
             linktype,
-            reserved,
             snaplen,
             options
         };
@@ -58,7 +58,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
 
         writer.write_u16::<B>(u32::from(self.linktype) as u16)?;
-        writer.write_u16::<B>(self.reserved)?;
+        writer.write_u16::<B>(0)?;
         writer.write_u32::<B>(self.snaplen)?;
 
         let opt_len = InterfaceDescriptionOption::write_opts_to::<B, W>(&self.options, writer)?;
@@ -76,7 +76,6 @@ impl InterfaceDescriptionBlock<'static> {
 
         Self {
             linktype,
-            reserved: 0,
             snaplen,
             options: vec![]
         }

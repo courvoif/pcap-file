@@ -3,7 +3,9 @@ use byteorder::{BigEndian, LittleEndian};
 use crate::{Endianness, errors::*, pcap::PcapPacket, pcap::PcapHeader};
 
 
-/// Parser for a Pcap formatted stream.
+/// Parses a Pcap from a slice of bytes.
+///
+/// You can match on [PcapError::IncompleteBuffer](enum.PcapError.html) to known if the parser need more data.
 ///
 /// # Examples
 ///
@@ -44,7 +46,7 @@ pub struct PcapParser {
 impl PcapParser {
     /// Creates a new `PcapParser`.
     /// Returns the parser and the remainder.
-    pub fn new(slice: &[u8]) -> ResultParsing<(&[u8], PcapParser)> {
+    pub fn new(slice: &[u8]) -> PcapResult<(&[u8], PcapParser)> {
         let (slice, header) = PcapHeader::from_slice(slice)?;
 
         let parser = PcapParser {
@@ -55,7 +57,7 @@ impl PcapParser {
     }
 
     /// Returns the next packet and the remainder.
-    pub fn next_packet<'a>(&self, slice: &'a[u8]) -> ResultParsing<(&'a [u8], PcapPacket<'a>)> {
+    pub fn next_packet<'a>(&self, slice: &'a[u8]) -> PcapResult<(&'a [u8], PcapPacket<'a>)> {
         match self.header.endianness {
             Endianness::Big => PcapPacket::from_slice::<BigEndian>(slice, self.header.ts_resolution, self.header.snaplen),
             Endianness::Little => PcapPacket::from_slice::<LittleEndian>(slice, self.header.ts_resolution, self.header.snaplen)

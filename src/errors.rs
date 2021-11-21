@@ -1,10 +1,10 @@
 use thiserror::Error;
 
-pub(crate) type ResultParsing<T> = Result<T, PcapError>;
+pub(crate) type PcapResult<T> = Result<T, PcapError>;
 
+/// Error enum for all the errors in this crate.
 #[derive(Error, Debug)]
 pub enum PcapError {
-
     #[error("Need at least {0} more bytes")]
     IncompleteBuffer(usize),
 

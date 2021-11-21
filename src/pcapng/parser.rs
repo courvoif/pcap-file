@@ -4,9 +4,9 @@ use crate::pcapng::blocks::{Block, EnhancedPacketBlock, InterfaceDescriptionBloc
 use crate::Endianness;
 use crate::pcapng::SectionHeaderBlock;
 
-/// Parser for a PcapNg formated stream.
+/// Parses a PcapNg from a slice of bytes.
 ///
-/// You can match on PcapError::IncompleteBuffer to known if the parser need more data
+/// You can match on [PcapError::IncompleteBuffer](enum.PcapError.html) to known if the parser need more data.
 ///
 /// # Examples
 ///
@@ -44,7 +44,7 @@ pub struct PcapNgParser {
 }
 
 impl PcapNgParser {
-    /// Creates a new `PcapNgParser`.
+    /// Creates a new [PcapNgParser](struct.PcapNgParser.html).
     ///
     /// Parses the first block which must be a valid SectionHeaderBlock
     pub fn new(src: &[u8]) -> Result<(&[u8], Self), PcapError> {
@@ -62,11 +62,10 @@ impl PcapNgParser {
         Ok((rem, parser))
     }
 
-    /// Returns the remainder and the next block
+    /// Returns the remainder and the next [Block](enum.Block.html)
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
         // Read next Block
-        let endianess = self.section.endianness();
-        let (rem, block) = match endianess {
+        let (rem, block) = match self.section.endianness {
             Endianness::Big => Block::from_slice::<BigEndian>(src)?,
             Endianness::Little => Block::from_slice::<LittleEndian>(src)?
         };
@@ -85,17 +84,17 @@ impl PcapNgParser {
         Ok((rem, block))
     }
 
-    /// Returns the current SectionHeaderBlock
+    /// Returns the current [SectionHeaderBlock](struct.SectionHeaderBlock.html)
     pub fn section(&self) -> &SectionHeaderBlock<'static> {
         &self.section
     }
 
-    /// Returns the current interfaces
+    /// Returns the current [InterfaceDescriptionBlocks](struct.InterfaceDescriptionBlock.html)
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
         &self.interfaces[..]
     }
 
-    /// Returns the InterfaceDescriptionBlock corresponding to the given packet
+    /// Returns the [InterfaceDescriptionBlock](struct.InterfaceDescriptionBlock.html) corresponding to the given packet
     pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock> {
         self.interfaces.get(packet.interface_id as usize)
     }

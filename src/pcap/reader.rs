@@ -6,7 +6,7 @@ use std::ops::Not;
 use crate::read_buffer::ReadBuffer;
 
 
-/// Wraps another reader and uses it to read a Pcap formated stream.
+/// Reads a pcap from a reader.
 ///
 /// It implements the Iterator trait in order to read one packet at a time
 ///
@@ -68,7 +68,7 @@ impl <R:Read> PcapReader<R>{
         self.reader.into_inner()
     }
 
-    /// Returns the next packet and the remainder.
+    /// Returns the next packet
     pub fn next_packet(&mut self) -> Option<Result<PcapPacket, PcapError>> {
         match self.reader.is_empty() {
             Ok(empty) => {
@@ -85,6 +85,7 @@ impl <R:Read> PcapReader<R>{
         }
     }
 
+    /// Returns the global header of the pcap
     pub fn header(&self) -> PcapHeader {
         self.parser.header()
     }

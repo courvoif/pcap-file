@@ -7,7 +7,7 @@ use byteorder::{ByteOrder, NativeEndian, BigEndian, LittleEndian};
 use crate::Endianness;
 
 
-/// Wraps a writer and uses it to write a PcapNg.
+/// Writes a PcapNg to a writer.
 ///
 /// # Examples
 ///
@@ -37,11 +37,37 @@ pub struct PcapNgWriter<W: Write> {
 }
 
 impl<W: Write> PcapNgWriter<W> {
-
+    /// Creates a new `PcapNgWriter` from an existing writer.
+    /// Defaults to the native endianness of the CPU.
+    ///
+    /// Writes this global pcap header to the file:
+    /// ```rust, ignore
+    /// Self {
+    ///     endianness: Endianness::Native,
+    ///     major_version: 1,
+    ///     minor_version: 0,
+    ///     section_length: -1,
+    ///     options: vec![]
+    /// }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Return an error if the writer can't be written to.
+    ///
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use std::fs::File;
+    /// use pcap_file::pcap::PcapWriter;
+    ///
+    /// let file_out = File::create("out.pcap").expect("Error creating file");
+    /// let mut pcap_writer = PcapWriter::new(file_out);
+    /// ```
     pub fn new(writer: W) -> PcapWriteResult<Self> {
-
+        // Get endianness of the current processor
         let tmp = NativeEndian::read_u16(&[0x42, 0x00]);
-
         let endianness = match tmp {
             0x4200 => Endianness::Big,
             0x0042 => Endianness::Little,
@@ -51,16 +77,17 @@ impl<W: Write> PcapNgWriter<W> {
         Self::with_endianness(writer, endianness)
     }
 
+    /// Creates a new `PcapNgWriter` from an existing writer with the given endianness
     pub fn with_endianness(writer: W, endianness: Endianness) -> PcapWriteResult<Self> {
-
         let mut section = SectionHeaderBlock::default();
-        section.set_endianness(endianness);
+        section.endianness = endianness;
 
         Self::with_section_header(writer, section)
     }
 
+    /// Creates a new `PcapNgWriter` from an existing writer with the given section header
     pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'static>) -> PcapWriteResult<Self> {
-        match section.endianness() {
+        match section.endianness {
             Endianness::Big => section.clone().into_block().write_to::<BigEndian, _>(&mut writer)?,
             Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer)?,
         };
@@ -74,6 +101,43 @@ impl<W: Write> PcapNgWriter<W> {
         )
     }
 
+    /// Writes a `Block`.
+    ///
+    /// # Examples
+    /// ```rust,no_run
+    /// use std::borrow::Cow;
+    /// use std::fs::File;
+    /// use std::time::Duration;
+    /// use pcap_file::DataLink;
+    /// use pcap_file::pcapng::{
+    ///     InterfaceDescriptionBlock,
+    ///     EnhancedPacketBlock,
+    ///     PcapNgWriter,
+    ///     PcapNgBlock
+    /// };
+    ///
+    /// let data = [0u8; 10];
+    ///
+    /// let interface = InterfaceDescriptionBlock {
+    ///     linktype: DataLink::ETHERNET,
+    ///     snaplen: 0xFFFF,
+    ///     options: vec![]
+    /// };
+    ///
+    /// let packet = EnhancedPacketBlock {
+    ///     interface_id: 0,
+    ///     timestamp: Duration::from_secs(0),
+    ///     original_len: data.len() as u32,
+    ///     data: Cow::Borrowed(&data),
+    ///     options: vec![]
+    /// };
+    ///
+    /// let file = File::create("out.pcap").expect("Error creating file");
+    /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
+    ///
+    /// pcap_ng_writer.write_block(&interface.into_block()).unwrap();
+    /// pcap_ng_writer.write_block(&packet.into_block()).unwrap();
+    /// ```
     pub fn write_block(&mut self, block: &Block) -> PcapWriteResult<usize> {
         match block {
             Block::SectionHeader(a) => {
@@ -97,7 +161,7 @@ impl<W: Write> PcapNgWriter<W> {
             _ => ()
         }
 
-        match self.section.endianness() {
+        match self.section.endianness {
             Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(|e| e.into()),
             Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(|e| e.into())
         }
