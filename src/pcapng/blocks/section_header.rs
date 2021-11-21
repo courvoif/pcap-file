@@ -6,7 +6,7 @@ use derive_into_owned::IntoOwned;
 
 use crate::Endianness;
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, Block};
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, Block};
 
 ///Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -36,9 +36,6 @@ pub struct SectionHeaderBlock<'a> {
 
 
 impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
-
-    const BLOCK_TYPE: BlockType = BlockType::SectionHeader;
-
     fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         if slice.len() < 16 {
@@ -89,7 +86,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         Ok(16 + opt_len)
     }
 
-    fn into_parsed(self) -> Block<'a> {
+    fn into_block(self) -> Block<'a> {
         Block::SectionHeader(self)
     }
 }

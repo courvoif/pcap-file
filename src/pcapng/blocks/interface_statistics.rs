@@ -5,7 +5,7 @@ use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, BlockType, Block};
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, Block};
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -26,9 +26,6 @@ pub struct InterfaceStatisticsBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
-
-    const BLOCK_TYPE: BlockType = BlockType::InterfaceStatistics;
-
     fn from_slice<B:ByteOrder>(mut slice: &'a [u8]) -> Result<(&[u8], Self), PcapError> {
 
         if slice.len() < 12 {
@@ -57,7 +54,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         Ok(12 + opt_len)
     }
 
-    fn into_parsed(self) -> Block<'a> {
+    fn into_block(self) -> Block<'a> {
         Block::InterfaceStatistics(self)
     }
 }

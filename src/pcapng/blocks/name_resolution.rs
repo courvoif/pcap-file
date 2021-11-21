@@ -6,7 +6,7 @@ use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo, PcapNgBlock, BlockType, Block};
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo, PcapNgBlock, Block};
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
 /// (present in the captured packets) and their corresponding canonical names and it is optional.
@@ -21,9 +21,6 @@ pub struct NameResolutionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
-
-    const BLOCK_TYPE: BlockType = BlockType::NameResolution;
-
     fn from_slice<B:ByteOrder>(mut slice: &'a[u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         let mut records = Vec::new();
@@ -63,7 +60,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         Ok(len)
     }
 
-    fn into_parsed(self) -> Block<'a> {
+    fn into_block(self) -> Block<'a> {
         Block::NameResolution(self)
     }
 }

@@ -2,7 +2,7 @@ use std::io::Write;
 
 use byteorder::{ByteOrder, BigEndian, LittleEndian, NativeEndian};
 
-use crate::{DataLink, Endianness, errors::*, pcap::PcapHeader, pcap::PcapPacket, TsResolution};
+use crate::{Endianness, errors::*, pcap::PcapHeader, pcap::PcapPacket, TsResolution};
 
 
 /// This struct wraps another writer and uses it to write a Pcap formated stream.

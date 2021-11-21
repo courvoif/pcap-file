@@ -60,19 +60,18 @@ impl<W: Write> PcapNgWriter<W> {
         let mut section = SectionHeaderBlock::default();
         section.set_endianness(endianness);
 
-        Self::with_section_header(writer, &section)
+        Self::with_section_header(writer, section)
     }
 
-    pub fn with_section_header(mut writer: W,  section: &SectionHeaderBlock) -> PcapWriteResult<Self> {
-
+    pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'static>) -> PcapWriteResult<Self> {
         match section.endianness() {
-            Endianness::Big => section.write_block_to::<BigEndian, _>(&mut writer)?,
-            Endianness::Little => section.write_block_to::<LittleEndian, _>(&mut writer)?,
+            Endianness::Big => section.clone().into_block().write_to::<BigEndian, _>(&mut writer)?,
+            Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer)?,
         };
 
         Ok(
             Self {
-                section: section.clone().into_owned(),
+                section,
                 interfaces: vec![],
                 writer,
             }
@@ -80,63 +79,31 @@ impl<W: Write> PcapNgWriter<W> {
     }
 
     pub fn write_block(&mut self, block: &Block) -> PcapWriteResult<usize> {
-
-        match self.section.endianness() {
-            Endianness::Big => self.write_block_inner::<BigEndian>(block),
-            Endianness::Little => self.write_block_inner::<LittleEndian>(block),
-        }
-    }
-
-    fn write_block_inner<B: ByteOrder>(&mut self, block: &Block) -> PcapWriteResult<usize> {
-
         match block {
-
             Block::SectionHeader(a) => {
-
                 self.section = a.clone().into_owned();
                 self.interfaces.clear();
-                match self.section.endianness() {
-                    Endianness::Big => Ok(a.write_block_to::<BigEndian, _>(&mut self.writer)?),
-                    Endianness::Little => Ok(a.write_block_to::<LittleEndian, _>(&mut self.writer)?),
-                }
             },
             Block::InterfaceDescription(a) => {
-
                 self.interfaces.push(a.clone().into_owned());
-                Ok(a.write_block_to::<B, _>(&mut self.writer)?)
-            },
-            Block::Packet(a) => {
-                Ok(a.write_block_to::<B, _>(&mut self.writer)?)
-            },
-            Block::SimplePacket(a) => {
-                Ok(a.write_block_to::<B, _>(&mut self.writer)?)
-            },
-            Block::NameResolution(a) => {
-                Ok(a.write_block_to::<B, _>(&mut self.writer)?)
             },
             Block::InterfaceStatistics(a) => {
-
                 if a.interface_id as usize >= self.interfaces.len() {
-                    Err(PcapWriteError::InvalidInterfaceId(a.interface_id))
-                }
-                else {
-                    Ok(a.write_block_to::<B, _>(&mut self.writer)?)
+                    return Err(PcapWriteError::InvalidInterfaceId(a.interface_id));
                 }
             },
             Block::EnhancedPacket(a) => {
                 if a.interface_id as usize >= self.interfaces.len() {
-                    Err(PcapWriteError::InvalidInterfaceId(a.interface_id))
-                }
-                else {
-                    Ok(a.write_block_to::<B, _>(&mut self.writer)?)
+                    return Err(PcapWriteError::InvalidInterfaceId(a.interface_id));
                 }
             },
-            Block::SystemdJournalExport(a) => {
-                Ok(a.write_block_to::<B, _>(&mut self.writer)?)
-            },
-            Block::Unknown(a) => {
-                Ok(a.write_block_to::<B, _>(&mut self.writer)?)
-            },
+
+            _ => ()
+        }
+
+        match self.section.endianness() {
+            Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(|e| e.into()),
+            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(|e| e.into())
         }
     }
 
@@ -163,18 +130,11 @@ pub type PcapWriteResult<T> = Result<T, PcapWriteError>;
 
 #[derive(Error, Debug)]
 pub enum PcapWriteError {
-
     #[error("Io error")]
     Io(#[source] std::io::Error),
 
     #[error("No corresponding interface id: {0}")]
-    InvalidInterfaceId(u32),
-
-    #[error("The file doesn't have a Section Header yet")]
-    NoSectionHeader,
-
-    #[error("The endianness of this block is different than the one of the current section")]
-    WrongBlockEndianness,
+    InvalidInterfaceId(u32)
 }
 
 impl From<std::io::Error> for PcapWriteError {

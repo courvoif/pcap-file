@@ -5,7 +5,7 @@ use byteorder::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{PcapNgBlock, BlockType, Block};
+use crate::pcapng::{PcapNgBlock, Block};
 
 /// The systemd Journal Export Block is a lightweight containter for systemd Journal Export Format entry data.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -16,9 +16,6 @@ pub struct SystemdJournalExportBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
-
-    const BLOCK_TYPE: BlockType = BlockType::SystemdJournalExport;
-
     fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
 
         let packet = SystemdJournalExportBlock {
@@ -38,7 +35,7 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
         Ok(self.journal_entry.len() + pad_len)
     }
 
-    fn into_parsed(self) -> Block<'a> {
+    fn into_block(self) -> Block<'a> {
         Block::SystemdJournalExport(self)
     }
 }

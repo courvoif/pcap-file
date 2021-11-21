@@ -25,9 +25,10 @@ use derive_into_owned::IntoOwned;
 /// PcapNg Block
 #[derive(Clone, Debug)]
 pub(crate) struct RawBlock<'a> {
-    pub(crate) type_: BlockType,
+    pub(crate) type_: u32,
     pub(crate) initial_len: u32,
     pub(crate) body: &'a [u8],
+    #[allow(dead_code)]
     pub(crate) trailer_len: u32
 }
 
@@ -38,10 +39,10 @@ impl<'a> RawBlock<'a> {
             return Err(PcapError::IncompleteBuffer(12 - slice.len()));
         }
 
-        let type_ = slice.read_u32::<B>()?.into();
+        let type_ = slice.read_u32::<B>()?;
 
         //Special case for the section header because we don't know the endianness yet
-        if type_ == BlockType::SectionHeader {
+        if type_ == 0x0A0D0D0A {
             let mut initial_len = slice.read_u32::<BigEndian>()?;
 
             let mut tmp_slice = slice;
@@ -132,60 +133,6 @@ impl<'a> RawBlock<'a> {
             Ok((rem, block))
         }
     }
-
-    pub fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-        writer.write_u32::<B>(self.type_.into())?;
-        writer.write_u32::<B>(self.initial_len)?;
-        writer.write_all(self.body)?;
-        writer.write_u32::<B>(self.trailer_len)?;
-
-        Ok(12 + self.body.len())
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum BlockType {
-    SectionHeader,
-    InterfaceDescription,
-    Packet,
-    SimplePacket,
-    NameResolution,
-    InterfaceStatistics,
-    EnhancedPacket,
-    SystemdJournalExport,
-    Unknown(u32)
-}
-
-impl From<u32> for BlockType {
-    fn from(src: u32) -> Self {
-        match src {
-            0x0A0D0D0A => BlockType::SectionHeader,
-            0x00000001 => BlockType::InterfaceDescription,
-            0x00000002 => BlockType::Packet,
-            0x00000003 => BlockType::SimplePacket,
-            0x00000004 => BlockType::NameResolution,
-            0x00000005 => BlockType::InterfaceStatistics,
-            0x00000006 => BlockType::EnhancedPacket,
-            0x00000009 => BlockType::SystemdJournalExport,
-            _ => BlockType::Unknown(src),
-        }
-    }
-}
-
-impl From<BlockType> for u32 {
-    fn from(block: BlockType) -> Self {
-        match block {
-            BlockType::SectionHeader => 0x0A0D0D0A,
-            BlockType::InterfaceDescription => 0x00000001,
-            BlockType::Packet => 0x00000002,
-            BlockType::SimplePacket => 0x00000003,
-            BlockType::NameResolution => 0x00000004,
-            BlockType::InterfaceStatistics => 0x00000005,
-            BlockType::EnhancedPacket => 0x00000006,
-            BlockType::SystemdJournalExport => 0x00000009,
-            BlockType::Unknown(c) => c,
-        }
-    }
 }
 
 /// PcapNg parsed blocks
@@ -208,35 +155,35 @@ impl<'a> Block<'a> {
         let (rem, raw_block) = RawBlock::from_slice::<B>(slice)?;
 
         let block = match raw_block.type_ {
-            BlockType::SectionHeader => {
+            0x0A0D0D0A => {
                 let (_, block) = SectionHeaderBlock::from_slice::<BigEndian>(raw_block.body)?;
                 Block::SectionHeader(block)
             },
-            BlockType::InterfaceDescription => {
+            0x00000001 => {
                 let (_, block) = InterfaceDescriptionBlock::from_slice::<B>(raw_block.body)?;
                 Block::InterfaceDescription(block)
             },
-            BlockType::Packet => {
+            0x00000002 => {
                 let (_, block) = PacketBlock::from_slice::<B>(raw_block.body)?;
                 Block::Packet(block)
             },
-            BlockType::SimplePacket => {
+            0x00000003 => {
                 let (_, block) = SimplePacketBlock::from_slice::<B>(raw_block.body)?;
                 Block::SimplePacket(block)
             },
-            BlockType::NameResolution => {
+            0x00000004 => {
                 let (_, block) = NameResolutionBlock::from_slice::<B>(raw_block.body)?;
                 Block::NameResolution(block)
             },
-            BlockType::InterfaceStatistics => {
+            0x00000005 => {
                 let (_, block) = InterfaceStatisticsBlock::from_slice::<B>(raw_block.body)?;
                 Block::InterfaceStatistics(block)
             },
-            BlockType::EnhancedPacket => {
+            0x00000006 => {
                 let (_, block) = EnhancedPacketBlock::from_slice::<B>(raw_block.body)?;
                 Block::EnhancedPacket(block)
             },
-            BlockType::SystemdJournalExport => {
+            0x00000009 => {
                 let (_, block) = SystemdJournalExportBlock::from_slice::<B>(raw_block.body)?;
                 Block::SystemdJournalExport(block)
             },
@@ -244,6 +191,50 @@ impl<'a> Block<'a> {
         };
 
         Ok((rem, block))
+    }
+
+    /// Writes the `Block` to a writer.
+    ///
+    /// Uses the endianness of the header.
+    pub fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+        return match self {
+            Self::SectionHeader(b) => inner_write_to::<B, _, W>(b, 0x0A0D0D0A, writer),
+            Self::InterfaceDescription(b) =>  inner_write_to::<B, _, W>(b, 0x00000001, writer),
+            Self::Packet(b) =>  inner_write_to::<B, _, W>(b, 0x00000002, writer),
+            Self::SimplePacket(b) =>  inner_write_to::<B, _, W>(b, 0x00000003, writer),
+            Self::NameResolution(b) =>  inner_write_to::<B, _, W>(b, 0x00000004, writer),
+            Self::InterfaceStatistics(b) =>  inner_write_to::<B, _, W>(b, 0x00000005, writer),
+            Self::EnhancedPacket(b) =>  inner_write_to::<B, _, W>(b, 0x00000006, writer),
+            Self::SystemdJournalExport(b) =>  inner_write_to::<B, _, W>(b, 0x00000009, writer),
+            Self::Unknown(b) =>  inner_write_to::<B, _, W>(b, b.type_, writer),
+        };
+
+        fn inner_write_to<'a, B:ByteOrder, BL: PcapNgBlock<'a>, W: Write>(block: &BL, block_code: u32, writer: &mut W) -> IoResult<usize> {
+            let len = block.write_to::<B, _>(&mut std::io::sink()).unwrap() + 12;
+            let pad_len = (4 - (len % 4)) % 4;
+
+            writer.write_u32::<B>( block_code)?;
+            writer.write_u32::<B>(len as u32)?;
+            block.write_to::<B, _>(writer)?;
+            writer.write_all(&[0_u8; 4][..pad_len])?;
+            writer.write_u32::<B>(len as u32)?;
+
+            Ok(len)
+        }
+    }
+
+    pub fn block_type_code(&self) -> u32 {
+        match self {
+            Self::SectionHeader(_) => 0x0A0D0D0A,
+            Self::InterfaceDescription(_) => 0x00000001,
+            Self::Packet(_) => 0x00000002,
+            Self::SimplePacket(_) => 0x00000003,
+            Self::NameResolution(_) => 0x00000004,
+            Self::InterfaceStatistics(_) => 0x00000005,
+            Self::EnhancedPacket(_) => 0x00000006,
+            Self::SystemdJournalExport(_) => 0x00000009,
+            Self::Unknown(c) => c.type_,
+        }
     }
 
     pub fn into_enhanced_packet(self) -> Option<EnhancedPacketBlock<'a>> {
@@ -304,25 +295,9 @@ impl<'a> Block<'a> {
 }
 
 pub(crate) trait PcapNgBlock<'a> {
-
-    const BLOCK_TYPE: BlockType;
-
     fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&[u8], Self), PcapError> where Self: std::marker::Sized;
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize>;
-
-    fn write_block_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
-        let len = self.write_to::<B, _>(&mut std::io::sink()).unwrap() + 12;
-
-        writer.write_u32::<B>( Self::BLOCK_TYPE.into())?;
-        writer.write_u32::<B>(len as u32)?;
-        self.write_to::<B, _>(writer)?;
-        writer.write_u32::<B>(len as u32)?;
-
-        Ok(len)
-    }
-
-    fn into_parsed(self) -> Block<'a>;
+    fn into_block(self) -> Block<'a>;
 }
 
 
