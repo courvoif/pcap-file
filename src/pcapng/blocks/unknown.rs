@@ -1,10 +1,11 @@
-use derive_into_owned::IntoOwned;
-use crate::pcapng::{Block, PcapNgBlock};
 use std::borrow::Cow;
-use byteorder::ByteOrder;
-use std::io::Write;
-use std::io::Result as IoResult;
+use std::io::{Result as IoResult, Write};
+
+use byteorder_slice::ByteOrder;
+use derive_into_owned::IntoOwned;
+
 use crate::PcapError;
+use crate::pcapng::{Block, PcapNgBlock};
 
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct UnknownBlock<'a> {

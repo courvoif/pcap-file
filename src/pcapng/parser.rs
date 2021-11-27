@@ -1,8 +1,10 @@
-use byteorder::{BigEndian, LittleEndian};
-use crate::errors::PcapError;
-use crate::pcapng::blocks::{Block, EnhancedPacketBlock, InterfaceDescriptionBlock};
+use byteorder_slice::{BigEndian, LittleEndian};
+
 use crate::Endianness;
+use crate::errors::PcapError;
 use crate::pcapng::SectionHeaderBlock;
+use crate::pcapng::blocks::{Block, EnhancedPacketBlock, InterfaceDescriptionBlock};
+
 
 /// Parses a PcapNg from a slice of bytes.
 ///

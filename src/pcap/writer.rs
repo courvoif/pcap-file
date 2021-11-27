@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use byteorder::{ByteOrder, BigEndian, LittleEndian, NativeEndian};
+use byteorder_slice::{BigEndian, LittleEndian, NativeEndian, ByteOrder};
 
 use crate::{Endianness, errors::*, pcap::PcapHeader, pcap::PcapPacket, TsResolution};
 
@@ -79,8 +79,10 @@ impl<W: Write> PcapWriter<W> {
             _ => unreachable!()
         };
 
-        let mut header = PcapHeader::default();
-        header.endianness = endianness;
+        let header = PcapHeader {
+            endianness,
+            ..Default::default()
+        };
 
         PcapWriter::with_header(writer, header)
     }

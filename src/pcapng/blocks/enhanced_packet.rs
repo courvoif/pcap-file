@@ -1,13 +1,14 @@
 use std::borrow::Cow;
-use std::io::Result as IoResult;
-use std::io::Write;
+use std::time::Duration;
+use std::io::{Result as IoResult, Write};
 
-use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
+use byteorder_slice::{ByteOrder, ReadSlice};
+use byteorder_slice::byteorder::WriteBytesExt;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
 use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, Block};
-use std::time::Duration;
+
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]

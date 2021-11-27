@@ -1,10 +1,10 @@
 use std::io::Write;
 
+use byteorder_slice::{BigEndian, LittleEndian, NativeEndian, ByteOrder};
 use thiserror::Error;
 
-use crate::pcapng::{InterfaceDescriptionBlock, SectionHeaderBlock, PcapNgBlock, Block};
-use byteorder::{ByteOrder, NativeEndian, BigEndian, LittleEndian};
 use crate::Endianness;
+use crate::pcapng::{InterfaceDescriptionBlock, SectionHeaderBlock, PcapNgBlock, Block};
 
 
 /// Writes a PcapNg to a writer.
@@ -79,8 +79,10 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Creates a new `PcapNgWriter` from an existing writer with the given endianness
     pub fn with_endianness(writer: W, endianness: Endianness) -> PcapWriteResult<Self> {
-        let mut section = SectionHeaderBlock::default();
-        section.endianness = endianness;
+        let section = SectionHeaderBlock {
+            endianness,
+            ..Default::default()
+        };
 
         Self::with_section_header(writer, section)
     }

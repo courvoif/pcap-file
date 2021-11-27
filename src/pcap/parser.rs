@@ -1,4 +1,5 @@
-use byteorder::{BigEndian, LittleEndian};
+use byteorder_slice::{BigEndian, LittleEndian};
+
 
 use crate::{Endianness, errors::*, pcap::PcapPacket, pcap::PcapHeader};
 

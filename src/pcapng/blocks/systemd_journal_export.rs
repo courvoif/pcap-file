@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
-use byteorder::ByteOrder;
+use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;

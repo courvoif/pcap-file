@@ -1,5 +1,5 @@
-use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
-
+use byteorder_slice::{ByteOrder, ReadSlice};
+use byteorder_slice::byteorder::WriteBytesExt;
 use derive_into_owned::IntoOwned;
 
 use crate::{

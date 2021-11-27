@@ -1,7 +1,7 @@
 use std::io::{Result as IoResult, Write};
 
-use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
-use byteorder::WriteBytesExt;
+use byteorder_slice::{BigEndian, LittleEndian, ByteOrder, ReadSlice};
+use byteorder_slice::byteorder::WriteBytesExt;
 
 use crate::Endianness;
 use crate::errors::PcapError;
