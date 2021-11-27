@@ -1,6 +1,6 @@
 [package]
 name = "pcap-file"
-edition = "2018"
+edition = "2021"
 version = "2.0.0-alpha1"
 authors = ["Courvoif <courvoif@pm.me>"]
 description = "A crate to read and write Pcap and PcapNg"
