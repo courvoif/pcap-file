@@ -2,7 +2,8 @@ use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 
 use crate::{
     errors::*,
-    TsResolution
+    TsResolution,
+    pcap::PcapHeader
 };
 
 use std::{
@@ -40,7 +41,7 @@ impl PacketHeader {
     }
 
     /// Create a new `PacketHeader` from a reader.
-    pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R, ts_resolution: TsResolution) -> ResultParsing<PacketHeader> {
+    pub fn from_reader<R: Read, B: ByteOrder>(pcap_header: &PcapHeader, reader: &mut R, ts_resolution: TsResolution) -> ResultParsing<PacketHeader> {
         // Read and validate timestamps
         let ts_sec = reader.read_u32::<B>()?;
         let mut ts_nsec = reader.read_u32::<B>()?;
@@ -54,12 +55,12 @@ impl PacketHeader {
         let incl_len = reader.read_u32::<B>()?;
         let orig_len = reader.read_u32::<B>()?;
 
-        if incl_len > 0xFFFF {
-            return Err(PcapError::InvalidField("PacketHeader incl_len > 0xFFFF"));
+        if incl_len > pcap_header.snaplen {
+            return Err(PcapError::InvalidField("PacketHeader incl_len > snaplen"));
         }
 
-        if orig_len > 0xFFFF {
-            return Err(PcapError::InvalidField("PacketHeader orig_len > 0xFFFF"));
+        if orig_len > pcap_header.snaplen {
+            return Err(PcapError::InvalidField("PacketHeader orig_len > snaplen"));
         }
 
         if incl_len > orig_len {
@@ -79,14 +80,14 @@ impl PacketHeader {
     }
 
     /// Create a new `PacketHeader` from a slice.
-    pub fn from_slice<B: ByteOrder>(mut slice: &[u8], ts_resolution: TsResolution) -> ResultParsing<(&[u8], PacketHeader)> {
+    pub fn from_slice<'a, B: ByteOrder>(pcap_header: &PcapHeader, mut slice: &'a [u8], ts_resolution: TsResolution) -> ResultParsing<(&'a [u8], PacketHeader)> {
 
         //Header len
         if slice.len() < 16 {
             return Err(PcapError::IncompleteBuffer(16 - slice.len()));
         }
 
-        let header = Self::from_reader::<_, B>(&mut slice, ts_resolution)?;
+        let header = Self::from_reader::<_, B>(pcap_header, &mut slice, ts_resolution)?;
 
         Ok((slice, header))
     }
@@ -159,9 +160,9 @@ impl<'a> Packet<'a> {
     }
 
     /// Create a new owned `Packet` from a reader.
-    pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R, ts_resolution: TsResolution) -> ResultParsing<Packet<'static>> {
+    pub fn from_reader<R: Read, B: ByteOrder>(pcap_header: &PcapHeader, reader: &mut R, ts_resolution: TsResolution) -> ResultParsing<Packet<'static>> {
 
-        let header = PacketHeader::from_reader::<R, B>(reader, ts_resolution)?;
+        let header = PacketHeader::from_reader::<R, B>(pcap_header, reader, ts_resolution)?;
 
         let mut bytes = vec![0_u8; header.incl_len as usize];
         reader.read_exact(&mut bytes)?;
@@ -176,9 +177,9 @@ impl<'a> Packet<'a> {
     }
 
     /// Create a new borrowed `Packet` from a slice.
-    pub fn from_slice<B: ByteOrder>(slice: &'a[u8], ts_resolution: TsResolution) -> ResultParsing<(&'a[u8], Packet<'a>)> {
+    pub fn from_slice<B: ByteOrder>(pcap_header: &PcapHeader, slice: &'a[u8], ts_resolution: TsResolution) -> ResultParsing<(&'a[u8], Packet<'a>)> {
 
-        let (slice, header) = PacketHeader::from_slice::<B>(slice, ts_resolution)?;
+        let (slice, header) = PacketHeader::from_slice::<B>(pcap_header, slice, ts_resolution)?;
         let len = header.incl_len as usize;
 
         if slice.len() < len {
