@@ -108,8 +108,8 @@ impl <T:Read> Iterator for PcapReader<T> {
 
         Some(
             match self.header.endianness() {
-                Endianness::Big => Packet::from_reader::<_, BigEndian>(&mut self.reader, ts_resolution),
-                Endianness::Little => Packet::from_reader::<_, LittleEndian>(&mut self.reader, ts_resolution)
+                Endianness::Big => Packet::from_reader::<_, BigEndian>(&self.header, &mut self.reader, ts_resolution),
+                Endianness::Little => Packet::from_reader::<_, LittleEndian>(&self.header, &mut self.reader, ts_resolution)
             }
         )
     }
