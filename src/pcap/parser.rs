@@ -68,8 +68,8 @@ impl PcapParser {
         let ts_resolution = self.header.ts_resolution();
 
         match self.header.endianness() {
-            Endianness::Big => Packet::from_slice::<BigEndian>(slice, ts_resolution),
-            Endianness::Little => Packet::from_slice::<LittleEndian>(slice, ts_resolution)
+            Endianness::Big => Packet::from_slice::<BigEndian>(&self.header, slice, ts_resolution),
+            Endianness::Little => Packet::from_slice::<LittleEndian>(&self.header, slice, ts_resolution)
         }
     }
 }
