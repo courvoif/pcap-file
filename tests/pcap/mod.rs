@@ -1,8 +1,10 @@
 extern crate pcap_file;
 
-use std::{borrow::Cow, time::Duration};
+use std::borrow::Cow;
+use std::time::Duration;
 
-use pcap_file::{TsResolution, pcap::{PcapHeader, PcapPacket, PcapReader, PcapWriter}};
+use pcap_file::pcap::{PcapHeader, PcapPacket, PcapReader, PcapWriter};
+use pcap_file::TsResolution;
 
 static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
 
@@ -42,7 +44,7 @@ fn read_write() {
 
 #[test]
 fn big_endian() {
-    let data  = include_bytes!("big_endian.pcap");
+    let data = include_bytes!("big_endian.pcap");
 
     ////// Global header test //////
     let pcap_header_truth = PcapHeader {
@@ -50,7 +52,7 @@ fn big_endian() {
         version_minor: 4,
         ts_correction: 0,
         ts_accuracy: 0,
-        snaplen: 0xffff,
+        snaplen: 0xFFFF,
         datalink: pcap_file::DataLink::ETHERNET,
         ts_resolution: TsResolution::MicroSecond,
         endianness: pcap_file::Endianness::Big,
@@ -69,7 +71,7 @@ fn big_endian() {
     let pkt_truth = PcapPacket {
         timestamp: Duration::new(1335958313, 152630000),
         orig_len: 98,
-        data: Cow::Borrowed(&data_truth[..])
+        data: Cow::Borrowed(&data_truth[..]),
     };
 
     let pkt = pcap_reader.next_packet().unwrap().unwrap();
@@ -81,7 +83,7 @@ fn big_endian() {
 
 #[test]
 fn little_endian() {
-    let data  = include_bytes!("little_endian.pcap");
+    let data = include_bytes!("little_endian.pcap");
 
     ////// Global header test //////
     let pcap_header_truth = PcapHeader {
@@ -108,7 +110,7 @@ fn little_endian() {
     let pkt_truth = PcapPacket {
         timestamp: Duration::new(1331901000, 0),
         orig_len: 117,
-        data: Cow::Borrowed(&data_truth[..])
+        data: Cow::Borrowed(&data_truth[..]),
     };
 
     let pkt = pcap_reader.next_packet().unwrap().unwrap();

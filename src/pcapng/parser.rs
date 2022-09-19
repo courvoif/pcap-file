@@ -1,9 +1,9 @@
 use byteorder_slice::{BigEndian, LittleEndian};
 
-use crate::Endianness;
 use crate::errors::PcapError;
-use crate::pcapng::SectionHeaderBlock;
 use crate::pcapng::blocks::{Block, EnhancedPacketBlock, InterfaceDescriptionBlock};
+use crate::pcapng::SectionHeaderBlock;
+use crate::Endianness;
 
 
 /// Parses a PcapNg from a slice of bytes.
@@ -14,10 +14,11 @@ use crate::pcapng::blocks::{Block, EnhancedPacketBlock, InterfaceDescriptionBloc
 ///
 /// ```rust,no_run
 /// use std::fs::File;
+///
 /// use pcap_file::pcapng::PcapNgParser;
 /// use pcap_file::PcapError;
 ///
-/// let data = vec![0_8;100];
+/// let data = vec![0_8; 100];
 /// let mut src = &data[..];
 ///
 /// let (rem, mut pcapng_parser) = PcapNgParser::new(src).unwrap();
@@ -36,13 +37,13 @@ use crate::pcapng::blocks::{Block, EnhancedPacketBlock, InterfaceDescriptionBloc
 ///         },
 ///         Err(_) => {
 ///             // Handle parsing error
-///         }
+///         },
 ///     }
 /// }
 /// ```
 pub struct PcapNgParser {
     section: SectionHeaderBlock<'static>,
-    interfaces: Vec<InterfaceDescriptionBlock<'static>>
+    interfaces: Vec<InterfaceDescriptionBlock<'static>>,
 }
 
 impl PcapNgParser {
@@ -53,13 +54,10 @@ impl PcapNgParser {
         let (rem, section) = Block::from_slice::<BigEndian>(src)?;
         let section = match section {
             Block::SectionHeader(section) => section.into_owned(),
-            _ => return Err(PcapError::InvalidField("PcapNg: SectionHeader invalid or missing"))
+            _ => return Err(PcapError::InvalidField("PcapNg: SectionHeader invalid or missing")),
         };
 
-        let parser = PcapNgParser {
-            section,
-            interfaces: vec![]
-        };
+        let parser = PcapNgParser { section, interfaces: vec![] };
 
         Ok((rem, parser))
     }
@@ -69,7 +67,7 @@ impl PcapNgParser {
         // Read next Block
         let (rem, block) = match self.section.endianness {
             Endianness::Big => Block::from_slice::<BigEndian>(src)?,
-            Endianness::Little => Block::from_slice::<LittleEndian>(src)?
+            Endianness::Little => Block::from_slice::<LittleEndian>(src)?,
         };
 
         match &block {
@@ -77,10 +75,8 @@ impl PcapNgParser {
                 self.section = section.clone().into_owned();
                 self.interfaces.clear();
             },
-            Block::InterfaceDescription(interface) => {
-                self.interfaces.push(interface.clone().into_owned())
-            },
-            _ => {}
+            Block::InterfaceDescription(interface) => self.interfaces.push(interface.clone().into_owned()),
+            _ => {},
         }
 
         Ok((rem, block))

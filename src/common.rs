@@ -4,14 +4,14 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum TsResolution {
     MicroSecond,
-    NanoSecond
+    NanoSecond,
 }
 
 /// Endianness of the pcap
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Endianness {
     Big,
-    Little
+    Little,
 }
 
 impl Endianness {
@@ -19,7 +19,7 @@ impl Endianness {
     pub fn is_little(self) -> bool {
         match self {
             Endianness::Big => false,
-            Endianness::Little => true
+            Endianness::Little => true,
         }
     }
 
@@ -27,13 +27,13 @@ impl Endianness {
     pub fn is_big(self) -> bool {
         match self {
             Endianness::Big => true,
-            Endianness::Little => false
+            Endianness::Little => false,
         }
     }
 
     /// Return the endianness of the given ByteOrder
     pub fn from_byteorder<B: ByteOrder>() -> Self {
-        if B::read_u32(&[0,0,0,1]) == 1 {
+        if B::read_u32(&[0, 0, 0, 1]) == 1 {
             Endianness::Big
         }
         else {
@@ -52,7 +52,7 @@ impl Endianness {
 }
 
 pub(crate) trait RuntimeByteorder: ByteOrder {
-   fn endianness() -> Endianness;
+    fn endianness() -> Endianness;
 }
 
 impl RuntimeByteorder for BigEndian {
@@ -68,7 +68,6 @@ impl RuntimeByteorder for LittleEndian {
 }
 
 
-
 /// Data link type
 ///
 /// The link-layer header type specifies the first protocol of the packet.
@@ -77,7 +76,6 @@ impl RuntimeByteorder for LittleEndian {
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DataLink {
-
     NULL,
     ETHERNET,
     AX25,
@@ -186,13 +184,11 @@ pub enum DataLink {
     USB_DARWIN,
     SDLC,
 
-    Unknown(u32)
+    Unknown(u32),
 }
 
 impl From<u32> for DataLink {
-
     fn from(n: u32) -> DataLink {
-
         match n {
             0 => DataLink::NULL,
             1 => DataLink::ETHERNET,
@@ -302,17 +298,14 @@ impl From<u32> for DataLink {
             266 => DataLink::USB_DARWIN,
             268 => DataLink::SDLC,
 
-            _ => DataLink::Unknown(n)
+            _ => DataLink::Unknown(n),
         }
     }
 }
 
 impl From<DataLink> for u32 {
-
     fn from(link: DataLink) -> u32 {
-
         match link {
-
             DataLink::NULL => 0,
             DataLink::ETHERNET => 1,
             DataLink::AX25 => 3,
@@ -421,7 +414,7 @@ impl From<DataLink> for u32 {
             DataLink::USB_DARWIN => 266,
             DataLink::SDLC => 268,
 
-            DataLink::Unknown(n) => n
+            DataLink::Unknown(n) => n,
         }
     }
 }

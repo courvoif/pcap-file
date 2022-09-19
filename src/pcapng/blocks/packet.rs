@@ -1,18 +1,18 @@
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
-use byteorder_slice::{ByteOrder, result::ReadSlice};
 use byteorder_slice::byteorder::WriteBytesExt;
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, Block};
+use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct PacketBlock<'a> {
-
     /// It specifies the interface this packet comes from.
     pub interface_id: u16,
 
@@ -35,12 +35,11 @@ pub struct PacketBlock<'a> {
     pub data: Cow<'a, [u8]>,
 
     /// Options
-    pub options: Vec<PacketOption<'a>>
+    pub options: Vec<PacketOption<'a>>,
 }
 
 impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
-
         if slice.len() < 20 {
             return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
         }
@@ -69,14 +68,13 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
             captured_len,
             original_len,
             data: Cow::Borrowed(data),
-            options
+            options,
         };
 
         Ok((slice, block))
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
         writer.write_u16::<B>(self.interface_id)?;
         writer.write_u16::<B>(self.drop_count)?;
         writer.write_u64::<B>(self.timestamp)?;
@@ -99,7 +97,6 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
 
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum PacketOption<'a> {
-
     /// Comment associated with the current block
     Comment(Cow<'a, str>),
 
@@ -116,20 +113,17 @@ pub enum PacketOption<'a> {
     CustomUtf8(CustomUtf8Option<'a>),
 
     /// Unknown option
-    Unknown(UnknownOption<'a>)
+    Unknown(UnknownOption<'a>),
 }
 
 
 impl<'a> PcapNgOption<'a> for PacketOption<'a> {
-
     fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
-
         let opt = match code {
-
             1 => PacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => {
                 if slice.len() != 4 {
-                    return Err(PcapError::InvalidField("PacketOption: Flags length != 4"))
+                    return Err(PcapError::InvalidField("PacketOption: Flags length != 4"));
                 }
                 PacketOption::Flags(slice.read_u32::<B>()?)
             },
@@ -138,15 +132,13 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
             2988 | 19372 => PacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
             2989 | 19373 => PacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
 
-            _ => PacketOption::Unknown(UnknownOption::new(code, length, slice))
+            _ => PacketOption::Unknown(UnknownOption::new(code, length, slice)),
         };
 
         Ok(opt)
     }
 
-
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-        
         match self {
             PacketOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             PacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
@@ -157,5 +149,3 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         }
     }
 }
-
-

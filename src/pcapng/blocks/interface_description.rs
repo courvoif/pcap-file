@@ -1,22 +1,21 @@
 #![allow(clippy::cast_lossless)]
 
 use std::borrow::Cow;
-use std::io::Result as IoResult;
-use std::io::Write;
+use std::io::{Result as IoResult, Write};
 
-use byteorder_slice::{ByteOrder, result::ReadSlice};
 use byteorder_slice::byteorder::WriteBytesExt;
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
-use crate::DataLink;
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, Block};
+use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
+use crate::DataLink;
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct InterfaceDescriptionBlock<'a> {
-
     /// A value that defines the link layer type of this interface.
     /// The list of Standardized Link Layer Type codes is available in the
     /// [tcpdump.org link-layer header types registry.](http://www.tcpdump.org/linktypes.html).
@@ -28,11 +27,11 @@ pub struct InterfaceDescriptionBlock<'a> {
     pub snaplen: u32,
 
     /// Options
-    pub options: Vec<InterfaceDescriptionOption<'a>>
+    pub options: Vec<InterfaceDescriptionOption<'a>>,
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
-    fn from_slice<B:ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 8 {
             return Err(PcapError::InvalidField("InterfaceDescriptionBlock: block length < 8"));
         }
@@ -47,17 +46,12 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         let snaplen = slice.read_u32::<B>()?;
         let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(slice)?;
 
-        let block = InterfaceDescriptionBlock {
-            linktype,
-            snaplen,
-            options
-        };
+        let block = InterfaceDescriptionBlock { linktype, snaplen, options };
 
         Ok((slice, block))
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
         writer.write_u16::<B>(u32::from(self.linktype) as u16)?;
         writer.write_u16::<B>(0)?;
         writer.write_u32::<B>(self.snaplen)?;
@@ -72,20 +66,13 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
 }
 
 impl InterfaceDescriptionBlock<'static> {
-
     pub fn new(linktype: DataLink, snaplen: u32) -> Self {
-
-        Self {
-            linktype,
-            snaplen,
-            options: vec![]
-        }
+        Self { linktype, snaplen, options: vec![] }
     }
 }
 
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceDescriptionOption<'a> {
-
     Comment(Cow<'a, str>),
 
     /// The if_name option is a UTF-8 string containing the name of the device used to capture data.
@@ -140,76 +127,73 @@ pub enum InterfaceDescriptionOption<'a> {
     CustomUtf8(CustomUtf8Option<'a>),
 
     /// Unknown option
-    Unknown(UnknownOption<'a>)
+    Unknown(UnknownOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
-
     fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
-
         let opt = match code {
-
             1 => InterfaceDescriptionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => InterfaceDescriptionOption::IfName(Cow::Borrowed(std::str::from_utf8(slice)?)),
             3 => InterfaceDescriptionOption::IfDescription(Cow::Borrowed(std::str::from_utf8(slice)?)),
             4 => {
                 if slice.len() != 8 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfIpv4Addr length != 8"))
+                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfIpv4Addr length != 8"));
                 }
                 InterfaceDescriptionOption::IfIpv4Addr(Cow::Borrowed(slice))
             },
             5 => {
                 if slice.len() != 17 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfIpv6Addr length != 17"))
+                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfIpv6Addr length != 17"));
                 }
                 InterfaceDescriptionOption::IfIpv6Addr(Cow::Borrowed(slice))
             },
             6 => {
                 if slice.len() != 6 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfMacAddr length != 6"))
+                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfMacAddr length != 6"));
                 }
                 InterfaceDescriptionOption::IfMacAddr(Cow::Borrowed(slice))
             },
             7 => {
                 if slice.len() != 8 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfEuIAddr length != 8"))
+                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfEuIAddr length != 8"));
                 }
                 InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>()?)
             },
             8 => {
                 if slice.len() != 8 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfSpeed length != 8"))
+                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfSpeed length != 8"));
                 }
                 InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>()?)
             },
             9 => {
                 if slice.len() != 1 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsResol length != 1"))
+                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsResol length != 1"));
                 }
                 InterfaceDescriptionOption::IfTsResol(slice.read_u8()?)
             },
             10 => {
                 if slice.len() != 1 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTzone length != 1"))
+                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTzone length != 1"));
                 }
                 InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>()?)
             },
             11 => {
                 if slice.is_empty() {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFilter is empty"))
+                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFilter is empty"));
                 }
                 InterfaceDescriptionOption::IfFilter(Cow::Borrowed(slice))
             },
             12 => InterfaceDescriptionOption::IfOs(Cow::Borrowed(std::str::from_utf8(slice)?)),
             13 => {
                 if slice.len() != 1 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFcsLen length != 1"))
+                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFcsLen length != 1"));
                 }
                 InterfaceDescriptionOption::IfFcsLen(slice.read_u8()?)
             },
             14 => {
                 if slice.len() != 8 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsOffset length != 8"))
+                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsOffset length != 8"));
                 }
                 InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>()?)
             },
@@ -218,14 +202,13 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             2988 | 19372 => InterfaceDescriptionOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
             2989 | 19373 => InterfaceDescriptionOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
 
-            _ => InterfaceDescriptionOption::Unknown(UnknownOption::new(code, length, slice))
+            _ => InterfaceDescriptionOption::Unknown(UnknownOption::new(code, length, slice)),
         };
 
         Ok(opt)
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
         match self {
             InterfaceDescriptionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             InterfaceDescriptionOption::IfName(a) => a.write_opt_to::<B, W>(2, writer),

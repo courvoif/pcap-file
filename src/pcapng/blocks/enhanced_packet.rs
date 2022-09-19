@@ -1,19 +1,19 @@
 use std::borrow::Cow;
-use std::time::Duration;
 use std::io::{Result as IoResult, Write};
+use std::time::Duration;
 
-use byteorder_slice::{ByteOrder, result::ReadSlice};
 use byteorder_slice::byteorder::WriteBytesExt;
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, Block};
+use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
 
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct EnhancedPacketBlock<'a> {
-
     /// It specifies the interface this packet comes from.
     /// The correct interface will be the one whose Interface Description Block
     /// (within the current Section of the file) is identified by the same number of this field.
@@ -29,7 +29,7 @@ pub struct EnhancedPacketBlock<'a> {
     pub data: Cow<'a, [u8]>,
 
     /// Options
-    pub options: Vec<EnhancedPacketOption<'a>>
+    pub options: Vec<EnhancedPacketOption<'a>>,
 }
 
 impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
@@ -61,14 +61,13 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
             timestamp: Duration::from_nanos(timestamp),
             original_len,
             data: Cow::Borrowed(data),
-            options
+            options,
         };
 
         Ok((slice, block))
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
         let pad_len = (4 - (&self.data.len() % 4)) % 4;
 
         writer.write_u32::<B>(self.interface_id)?;
@@ -96,7 +95,6 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum EnhancedPacketOption<'a> {
-
     /// Comment associated with the current block
     Comment(Cow<'a, str>),
 
@@ -119,26 +117,23 @@ pub enum EnhancedPacketOption<'a> {
     CustomUtf8(CustomUtf8Option<'a>),
 
     /// Unknown option
-    Unknown(UnknownOption<'a>)
+    Unknown(UnknownOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
-
     fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
-
         let opt = match code {
-
             1 => EnhancedPacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => {
                 if slice.len() != 4 {
-                    return Err(PcapError::InvalidField("EnhancedPacketOption: Flags length != 4"))
+                    return Err(PcapError::InvalidField("EnhancedPacketOption: Flags length != 4"));
                 }
                 EnhancedPacketOption::Flags(slice.read_u32::<B>()?)
             },
             3 => EnhancedPacketOption::Hash(Cow::Borrowed(slice)),
             4 => {
                 if slice.len() != 8 {
-                    return Err(PcapError::InvalidField("EnhancedPacketOption: DropCount length != 8"))
+                    return Err(PcapError::InvalidField("EnhancedPacketOption: DropCount length != 8"));
                 }
                 EnhancedPacketOption::DropCount(slice.read_u64::<B>()?)
             },
@@ -146,7 +141,7 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
             2988 | 19372 => EnhancedPacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
             2989 | 19373 => EnhancedPacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
 
-            _ => EnhancedPacketOption::Unknown(UnknownOption::new(code, length, slice))
+            _ => EnhancedPacketOption::Unknown(UnknownOption::new(code, length, slice)),
         };
 
         Ok(opt)

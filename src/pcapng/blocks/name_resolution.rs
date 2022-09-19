@@ -1,29 +1,27 @@
 use std::borrow::Cow;
-use std::io::{Result as IoResult};
-use std::io::Write;
+use std::io::{Result as IoResult, Write};
 
-use byteorder_slice::{ByteOrder, result::ReadSlice};
 use byteorder_slice::byteorder::WriteBytesExt;
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo, PcapNgBlock, Block};
+use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
 /// (present in the captured packets) and their corresponding canonical names and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct NameResolutionBlock<'a> {
-
     /// Records
     pub records: Vec<Record<'a>>,
 
     /// Options
-    pub options: Vec<NameResolutionOption<'a>>
+    pub options: Vec<NameResolutionOption<'a>>,
 }
 
 impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
-    fn from_slice<B:ByteOrder>(mut slice: &'a[u8]) -> Result<(&'a [u8], Self), PcapError> {
-
+    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         let mut records = Vec::new();
 
         loop {
@@ -32,28 +30,24 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
 
             match record {
                 Record::End => break,
-                _ => records.push(record)
+                _ => records.push(record),
             }
         }
 
         let (rem, options) = NameResolutionOption::opts_from_slice::<B>(slice)?;
 
-        let block = NameResolutionBlock {
-            records,
-            options
-        };
+        let block = NameResolutionBlock { records, options };
 
         Ok((rem, block))
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
         let mut len = 0;
 
         for record in &self.records {
             len += record.write_to::<B, _>(writer)?;
         }
-        len +=  Record::End.write_to::<B, _>(writer)?;
+        len += Record::End.write_to::<B, _>(writer)?;
 
 
         len += NameResolutionOption::write_opts_to::<B, _>(&self.options, writer)?;
@@ -71,13 +65,11 @@ pub enum Record<'a> {
     End,
     Ipv4(Ipv4Record<'a>),
     Ipv6(Ipv6Record<'a>),
-    Unknown(UnknownRecord<'a>)
+    Unknown(UnknownRecord<'a>),
 }
 
 impl<'a> Record<'a> {
-
-    pub fn from_slice<B:ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a[u8], Self), PcapError> {
-
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         let type_ = slice.read_u16::<B>()?;
         let length = slice.read_u16::<B>()?;
         let pad_len = (4 - length % 4) % 4;
@@ -88,7 +80,6 @@ impl<'a> Record<'a> {
         let value = &slice[..length as usize];
 
         let record = match type_ {
-
             0 => {
                 if length != 0 {
                     return Err(PcapError::InvalidField("NameResolutionBlock: nrb_record_end length != 0"));
@@ -106,10 +97,10 @@ impl<'a> Record<'a> {
                 Record::Ipv6(record)
             },
 
-            _=> {
+            _ => {
                 let record = UnknownRecord::new(type_, length, value);
                 Record::Unknown(record)
-            }
+            },
         };
 
         let len = length as usize + pad_len as usize;
@@ -118,11 +109,8 @@ impl<'a> Record<'a> {
     }
 
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
         match self {
-
             Record::End => {
-
                 writer.write_u16::<B>(0)?;
                 writer.write_u16::<B>(0)?;
 
@@ -130,7 +118,6 @@ impl<'a> Record<'a> {
             },
 
             Record::Ipv4(a) => {
-
                 let len = a.write_to::<B, _>(&mut std::io::sink()).unwrap();
                 let pad_len = (4 - len % 4) % 4;
 
@@ -140,11 +127,9 @@ impl<'a> Record<'a> {
                 writer.write_all(&[0_u8; 3][..pad_len])?;
 
                 Ok(4 + len + pad_len)
-
             },
 
             Record::Ipv6(a) => {
-
                 let len = a.write_to::<B, _>(&mut std::io::sink()).unwrap();
                 let pad_len = (4 - len % 4) % 4;
 
@@ -157,7 +142,6 @@ impl<'a> Record<'a> {
             },
 
             Record::Unknown(a) => {
-
                 let len = a.value.len();
                 let pad_len = (4 - len % 4) % 4;
 
@@ -175,13 +159,11 @@ impl<'a> Record<'a> {
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct Ipv4Record<'a> {
     pub ip_addr: Cow<'a, [u8]>,
-    pub names: Vec<Cow<'a, str>>
+    pub names: Vec<Cow<'a, str>>,
 }
 
 impl<'a> Ipv4Record<'a> {
-
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, PcapError> {
-
         if slice.len() < 6 {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv4Record len < 6"));
         }
@@ -191,32 +173,26 @@ impl<'a> Ipv4Record<'a> {
 
         let mut names = vec![];
         for name in slice.split(|&b| b == 0) {
-
             if name.is_empty() {
                 break;
             }
-            names.push( Cow::Borrowed(std::str::from_utf8(name)?));
+            names.push(Cow::Borrowed(std::str::from_utf8(name)?));
         }
 
-        if names.is_empty()  {
+        if names.is_empty() {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv4Record without any name"));
         }
 
-        let record = Ipv4Record {
-            ip_addr: Cow::Borrowed(ip_addr),
-            names
-        };
+        let record = Ipv4Record { ip_addr: Cow::Borrowed(ip_addr), names };
 
         Ok(record)
     }
 
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
         let mut len = 4;
 
         writer.write_all(&self.ip_addr)?;
         for name in &self.names {
-
             writer.write_all(name.as_bytes())?;
             writer.write_u8(0)?;
 
@@ -231,13 +207,11 @@ impl<'a> Ipv4Record<'a> {
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct Ipv6Record<'a> {
     pub ip_addr: Cow<'a, [u8]>,
-    pub names: Vec<Cow<'a, str>>
+    pub names: Vec<Cow<'a, str>>,
 }
 
 impl<'a> Ipv6Record<'a> {
-
-    pub fn from_slice(mut slice: &'a[u8]) -> Result<Self, PcapError> {
-
+    pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, PcapError> {
         if slice.len() < 18 {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv6Record len < 18"));
         }
@@ -247,12 +221,11 @@ impl<'a> Ipv6Record<'a> {
 
         let mut names = vec![];
         for name in slice.split(|&b| b == 0) {
-
-            if name.is_empty()  {
+            if name.is_empty() {
                 break;
             }
 
-            names.push( Cow::Borrowed(std::str::from_utf8(name)?));
+            names.push(Cow::Borrowed(std::str::from_utf8(name)?));
         }
 
         if names.is_empty() {
@@ -260,21 +233,16 @@ impl<'a> Ipv6Record<'a> {
         }
 
 
-        let record = Ipv6Record {
-            ip_addr: Cow::Borrowed(ip_addr),
-            names
-        };
+        let record = Ipv6Record { ip_addr: Cow::Borrowed(ip_addr), names };
 
         Ok(record)
     }
 
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
         let mut len = 16;
 
         writer.write_all(&self.ip_addr)?;
         for name in &self.names {
-
             writer.write_all(name.as_bytes())?;
             writer.write_u8(0)?;
 
@@ -290,17 +258,12 @@ impl<'a> Ipv6Record<'a> {
 pub struct UnknownRecord<'a> {
     pub type_: u16,
     pub length: u16,
-    pub value: Cow<'a, [u8]>
+    pub value: Cow<'a, [u8]>,
 }
 
 impl<'a> UnknownRecord<'a> {
-
-    fn new(type_: u16, length: u16, value: &'a[u8]) -> Self {
-        UnknownRecord {
-            type_,
-            length,
-            value: Cow::Borrowed(value)
-        }
+    fn new(type_: u16, length: u16, value: &'a [u8]) -> Self {
+        UnknownRecord { type_, length, value: Cow::Borrowed(value) }
     }
 }
 
@@ -326,27 +289,24 @@ pub enum NameResolutionOption<'a> {
     CustomUtf8(CustomUtf8Option<'a>),
 
     /// Unknown option
-    Unknown(UnknownOption<'a>)
+    Unknown(UnknownOption<'a>),
 }
 
 
 impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
-
     fn from_slice<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
-
         let opt = match code {
-
             1 => NameResolutionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => NameResolutionOption::NsDnsName(Cow::Borrowed(std::str::from_utf8(slice)?)),
             3 => {
                 if slice.len() != 4 {
-                    return Err(PcapError::InvalidField("NameResolutionOption: NsDnsIpv4Addr length != 4"))
+                    return Err(PcapError::InvalidField("NameResolutionOption: NsDnsIpv4Addr length != 4"));
                 }
                 NameResolutionOption::NsDnsIpv4Addr(Cow::Borrowed(slice))
             },
             4 => {
                 if slice.len() != 16 {
-                    return Err(PcapError::InvalidField("NameResolutionOption: NsDnsIpv6Addr length != 16"))
+                    return Err(PcapError::InvalidField("NameResolutionOption: NsDnsIpv6Addr length != 16"));
                 }
                 NameResolutionOption::NsDnsIpv6Addr(Cow::Borrowed(slice))
             },
@@ -354,15 +314,13 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
             2988 | 19372 => NameResolutionOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
             2989 | 19373 => NameResolutionOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
 
-            _ => NameResolutionOption::Unknown(UnknownOption::new(code, length, slice))
+            _ => NameResolutionOption::Unknown(UnknownOption::new(code, length, slice)),
         };
 
         Ok(opt)
     }
 
-
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-        
         match self {
             NameResolutionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             NameResolutionOption::NsDnsName(a) => a.write_opt_to::<B, W>(2, writer),
@@ -374,4 +332,3 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         }
     }
 }
-

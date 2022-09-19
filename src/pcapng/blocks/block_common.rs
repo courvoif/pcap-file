@@ -1,14 +1,17 @@
 use std::io::{Result as IoResult, Write};
 
-use byteorder_slice::{BigEndian, LittleEndian, ByteOrder, result::ReadSlice};
 use byteorder_slice::byteorder::WriteBytesExt;
-
-use crate::Endianness;
-use crate::errors::PcapError;
-use crate::pcapng::blocks::{EnhancedPacketBlock, InterfaceDescriptionBlock, InterfaceStatisticsBlock, NameResolutionBlock, SectionHeaderBlock, SimplePacketBlock, SystemdJournalExportBlock};
-use crate::pcapng::{PacketBlock, UnknownBlock};
-
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use derive_into_owned::IntoOwned;
+
+use crate::errors::PcapError;
+use crate::pcapng::blocks::{
+    EnhancedPacketBlock, InterfaceDescriptionBlock, InterfaceStatisticsBlock, NameResolutionBlock, SectionHeaderBlock, SimplePacketBlock,
+    SystemdJournalExportBlock,
+};
+use crate::pcapng::{PacketBlock, UnknownBlock};
+use crate::Endianness;
 
 //   0               1               2               3
 //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -28,7 +31,7 @@ pub struct RawBlock<'a> {
     pub type_: u32,
     pub initial_len: u32,
     pub body: &'a [u8],
-    pub trailer_len: u32
+    pub trailer_len: u32,
 }
 
 impl<'a> RawBlock<'a> {
@@ -51,7 +54,7 @@ impl<'a> RawBlock<'a> {
             let endianness = match magic {
                 0x1A2B3C4D => Endianness::Big,
                 0x4D3C2B1A => Endianness::Little,
-                _ => return Err(PcapError::InvalidField("SectionHeaderBlock: invalid magic number"))
+                _ => return Err(PcapError::InvalidField("SectionHeaderBlock: invalid magic number")),
             };
 
             if endianness == Endianness::Little {
@@ -63,7 +66,7 @@ impl<'a> RawBlock<'a> {
             }
 
             if initial_len < 12 {
-                return Err(PcapError::InvalidField("Block: initial_len < 12"))
+                return Err(PcapError::InvalidField("Block: initial_len < 12"));
             }
 
             //Check if there is enough data for the body and the trailer_len
@@ -74,23 +77,18 @@ impl<'a> RawBlock<'a> {
             let body_len = initial_len - 12;
             let body = &slice[..body_len as usize];
 
-            let mut rem = &slice[body_len as usize ..];
+            let mut rem = &slice[body_len as usize..];
 
             let trailer_len = match endianness {
                 Endianness::Big => rem.read_u32::<BigEndian>()?,
-                Endianness::Little => rem.read_u32::<LittleEndian>()?
+                Endianness::Little => rem.read_u32::<LittleEndian>()?,
             };
 
             if initial_len != trailer_len {
-                return Err(PcapError::InvalidField("Block: initial_length != trailer_length"))
+                return Err(PcapError::InvalidField("Block: initial_length != trailer_length"));
             }
 
-            let block = RawBlock {
-                type_,
-                initial_len,
-                body,
-                trailer_len
-            };
+            let block = RawBlock { type_, initial_len, body, trailer_len };
 
             Ok((rem, block))
         }
@@ -103,7 +101,7 @@ impl<'a> RawBlock<'a> {
             }
 
             if initial_len < 12 {
-                return Err(PcapError::InvalidField("Block: initial_len < 12"))
+                return Err(PcapError::InvalidField("Block: initial_len < 12"));
             }
 
             //Check if there is enough data for the body and the trailer_len
@@ -114,20 +112,15 @@ impl<'a> RawBlock<'a> {
             let body_len = initial_len - 12;
             let body = &slice[..body_len as usize];
 
-            let mut rem = &slice[body_len as usize ..];
+            let mut rem = &slice[body_len as usize..];
 
             let trailer_len = rem.read_u32::<B>()?;
 
             if initial_len != trailer_len {
-                return Err(PcapError::InvalidField("Block initial_length != trailer_length"))
+                return Err(PcapError::InvalidField("Block initial_length != trailer_length"));
             }
 
-            let block = RawBlock {
-                type_,
-                initial_len,
-                body,
-                trailer_len
-            };
+            let block = RawBlock { type_, initial_len, body, trailer_len };
 
             Ok((rem, block))
         }
@@ -145,7 +138,7 @@ pub enum Block<'a> {
     InterfaceStatistics(InterfaceStatisticsBlock<'a>),
     EnhancedPacket(EnhancedPacketBlock<'a>),
     SystemdJournalExport(SystemdJournalExportBlock<'a>),
-    Unknown(UnknownBlock<'a>)
+    Unknown(UnknownBlock<'a>),
 }
 
 impl<'a> Block<'a> {
@@ -186,7 +179,7 @@ impl<'a> Block<'a> {
                 let (_, block) = SystemdJournalExportBlock::from_slice::<B>(raw_block.body)?;
                 Block::SystemdJournalExport(block)
             },
-            type_ => Block::Unknown(UnknownBlock::new(type_, raw_block.initial_len, raw_block.body))
+            type_ => Block::Unknown(UnknownBlock::new(type_, raw_block.initial_len, raw_block.body)),
         };
 
         Ok((rem, block))
@@ -195,26 +188,26 @@ impl<'a> Block<'a> {
     /// Writes the `Block` to a writer.
     ///
     /// Uses the endianness of the header.
-    pub fn write_to<B:ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         return match self {
             Self::SectionHeader(b) => inner_write_to::<B, _, W>(b, 0x0A0D0D0A, writer),
-            Self::InterfaceDescription(b) =>  inner_write_to::<B, _, W>(b, 0x00000001, writer),
-            Self::Packet(b) =>  inner_write_to::<B, _, W>(b, 0x00000002, writer),
-            Self::SimplePacket(b) =>  inner_write_to::<B, _, W>(b, 0x00000003, writer),
-            Self::NameResolution(b) =>  inner_write_to::<B, _, W>(b, 0x00000004, writer),
-            Self::InterfaceStatistics(b) =>  inner_write_to::<B, _, W>(b, 0x00000005, writer),
-            Self::EnhancedPacket(b) =>  inner_write_to::<B, _, W>(b, 0x00000006, writer),
-            Self::SystemdJournalExport(b) =>  inner_write_to::<B, _, W>(b, 0x00000009, writer),
-            Self::Unknown(b) =>  inner_write_to::<B, _, W>(b, b.type_, writer),
+            Self::InterfaceDescription(b) => inner_write_to::<B, _, W>(b, 0x00000001, writer),
+            Self::Packet(b) => inner_write_to::<B, _, W>(b, 0x00000002, writer),
+            Self::SimplePacket(b) => inner_write_to::<B, _, W>(b, 0x00000003, writer),
+            Self::NameResolution(b) => inner_write_to::<B, _, W>(b, 0x00000004, writer),
+            Self::InterfaceStatistics(b) => inner_write_to::<B, _, W>(b, 0x00000005, writer),
+            Self::EnhancedPacket(b) => inner_write_to::<B, _, W>(b, 0x00000006, writer),
+            Self::SystemdJournalExport(b) => inner_write_to::<B, _, W>(b, 0x00000009, writer),
+            Self::Unknown(b) => inner_write_to::<B, _, W>(b, b.type_, writer),
         };
 
-        fn inner_write_to<'a, B:ByteOrder, BL: PcapNgBlock<'a>, W: Write>(block: &BL, block_code: u32, writer: &mut W) -> IoResult<usize> {
+        fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(block: &BL, block_code: u32, writer: &mut W) -> IoResult<usize> {
             let data_len = block.write_to::<B, _>(&mut std::io::sink()).unwrap();
             let pad_len = (4 - (data_len % 4)) % 4;
 
             let block_len = data_len + pad_len + 12;
 
-            writer.write_u32::<B>( block_code)?;
+            writer.write_u32::<B>(block_code)?;
             writer.write_u32::<B>(block_len as u32)?;
             block.write_to::<B, _>(writer)?;
             writer.write_all(&[0_u8; 3][..pad_len])?;
@@ -241,64 +234,64 @@ impl<'a> Block<'a> {
     pub fn into_enhanced_packet(self) -> Option<EnhancedPacketBlock<'a>> {
         match self {
             Block::EnhancedPacket(a) => Some(a),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn into_interface_description(self) -> Option<InterfaceDescriptionBlock<'a>> {
         match self {
             Block::InterfaceDescription(a) => Some(a),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn into_interface_statistics(self) -> Option<InterfaceStatisticsBlock<'a>> {
         match self {
             Block::InterfaceStatistics(a) => Some(a),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn into_name_resolution(self) -> Option<NameResolutionBlock<'a>> {
         match self {
             Block::NameResolution(a) => Some(a),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn into_packet(self) -> Option<PacketBlock<'a>> {
         match self {
             Block::Packet(a) => Some(a),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn into_section_header(self) -> Option<SectionHeaderBlock<'a>> {
         match self {
             Block::SectionHeader(a) => Some(a),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn into_simple_packet(self) -> Option<SimplePacketBlock<'a>> {
         match self {
             Block::SimplePacket(a) => Some(a),
-            _ => None
+            _ => None,
         }
     }
 
     pub fn into_systemd_journal_export(self) -> Option<SystemdJournalExportBlock<'a>> {
         match self {
             Block::SystemdJournalExport(a) => Some(a),
-            _ => None
+            _ => None,
         }
     }
 }
 
 pub trait PcapNgBlock<'a> {
-    fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&[u8], Self), PcapError> where Self: std::marker::Sized;
+    fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&[u8], Self), PcapError>
+    where
+        Self: std::marker::Sized;
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize>;
     fn into_block(self) -> Block<'a>;
 }
-
-

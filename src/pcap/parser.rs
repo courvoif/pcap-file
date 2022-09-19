@@ -1,7 +1,8 @@
 use byteorder_slice::{BigEndian, LittleEndian};
 
-
-use crate::{Endianness, errors::*, pcap::PcapPacket, pcap::PcapHeader};
+use crate::errors::*;
+use crate::pcap::{PcapHeader, PcapPacket};
+use crate::Endianness;
 
 
 /// Parses a Pcap from a slice of bytes.
@@ -34,14 +35,14 @@ use crate::{Endianness, errors::*, pcap::PcapPacket, pcap::PcapHeader};
 ///                 break;
 ///             }
 ///         },
-///         Err(PcapError::IncompleteBuffer(needed)) => {},// Load more data into src
-///         Err(_) => {}// Parsing error
+///         Err(PcapError::IncompleteBuffer(needed)) => {}, // Load more data into src
+///         Err(_) => {},                                   // Parsing error
 ///     }
 /// }
 /// ```
 #[derive(Debug)]
 pub struct PcapParser {
-    header: PcapHeader
+    header: PcapHeader,
 }
 
 impl PcapParser {
@@ -50,18 +51,16 @@ impl PcapParser {
     pub fn new(slice: &[u8]) -> PcapResult<(&[u8], PcapParser)> {
         let (slice, header) = PcapHeader::from_slice(slice)?;
 
-        let parser = PcapParser {
-            header
-        };
+        let parser = PcapParser { header };
 
         Ok((slice, parser))
     }
 
     /// Returns the next packet and the remainder.
-    pub fn next_packet<'a>(&self, slice: &'a[u8]) -> PcapResult<(&'a [u8], PcapPacket<'a>)> {
+    pub fn next_packet<'a>(&self, slice: &'a [u8]) -> PcapResult<(&'a [u8], PcapPacket<'a>)> {
         match self.header.endianness {
             Endianness::Big => PcapPacket::from_slice::<BigEndian>(slice, self.header.ts_resolution, self.header.snaplen),
-            Endianness::Little => PcapPacket::from_slice::<LittleEndian>(slice, self.header.ts_resolution, self.header.snaplen)
+            Endianness::Little => PcapPacket::from_slice::<LittleEndian>(slice, self.header.ts_resolution, self.header.snaplen),
         }
     }
 

@@ -1,8 +1,10 @@
 use std::io::Write;
 
-use byteorder_slice::{BigEndian, LittleEndian, NativeEndian, ByteOrder};
+use byteorder_slice::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
 
-use crate::{Endianness, errors::*, pcap::PcapHeader, pcap::PcapPacket, TsResolution};
+use crate::errors::*;
+use crate::pcap::{PcapHeader, PcapPacket};
+use crate::{Endianness, TsResolution};
 
 
 /// Writes a pcap to a writer.
@@ -11,6 +13,7 @@ use crate::{Endianness, errors::*, pcap::PcapHeader, pcap::PcapPacket, TsResolut
 ///
 /// ```rust,no_run
 /// use std::fs::File;
+///
 /// use pcap_file::pcap::{PcapReader, PcapWriter};
 ///
 /// let file_in = File::open("test.pcap").expect("Error opening file");
@@ -33,7 +36,7 @@ pub struct PcapWriter<W: Write> {
     endianness: Endianness,
     snaplen: u32,
     ts_resolution: TsResolution,
-    writer: W
+    writer: W,
 }
 
 impl<W: Write> PcapWriter<W> {
@@ -65,6 +68,7 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// ```rust,no_run
     /// use std::fs::File;
+    ///
     /// use pcap_file::pcap::PcapWriter;
     ///
     /// let file_out = File::create("out.pcap").expect("Error creating file");
@@ -76,13 +80,10 @@ impl<W: Write> PcapWriter<W> {
         let endianness = match tmp {
             0x4200 => Endianness::Big,
             0x0042 => Endianness::Little,
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
-        let header = PcapHeader {
-            endianness,
-            ..Default::default()
-        };
+        let header = PcapHeader { endianness, ..Default::default() };
 
         PcapWriter::with_header(writer, header)
     }
@@ -103,10 +104,9 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// ```rust,no_run
     /// use std::fs::File;
-    /// use pcap_file::{
-    ///     DataLink, Endianness, TsResolution,
-    ///     pcap::{PcapHeader, PcapWriter},
-    /// };
+    ///
+    /// use pcap_file::pcap::{PcapHeader, PcapWriter};
+    /// use pcap_file::{DataLink, Endianness, TsResolution};
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     ///
@@ -118,7 +118,7 @@ impl<W: Write> PcapWriter<W> {
     ///     snaplen: 65535,
     ///     datalink: DataLink::ETHERNET,
     ///     ts_resolution: TsResolution::MicroSecond,
-    ///     endianness: Endianness::Big
+    ///     endianness: Endianness::Big,
     /// };
     ///
     /// let mut pcap_writer = PcapWriter::with_header(file, header);
@@ -126,14 +126,12 @@ impl<W: Write> PcapWriter<W> {
     pub fn with_header(mut writer: W, header: PcapHeader) -> PcapResult<PcapWriter<W>> {
         header.write_to(&mut writer)?;
 
-        Ok(
-            PcapWriter {
-                endianness: header.endianness,
-                snaplen: header.snaplen,
-                ts_resolution: header.ts_resolution,
-                writer
-            }
-        )
+        Ok(PcapWriter {
+            endianness: header.endianness,
+            snaplen: header.snaplen,
+            ts_resolution: header.ts_resolution,
+            writer,
+        })
     }
 
     /// Consumes the `PcapWriter`, returning the wrapped writer.
@@ -147,10 +145,8 @@ impl<W: Write> PcapWriter<W> {
     /// ```rust,no_run
     /// use std::fs::File;
     /// use std::time::Duration;
-    /// use pcap_file::pcap::{
-    ///     PcapPacket,
-    ///     PcapWriter
-    /// };
+    ///
+    /// use pcap_file::pcap::{PcapPacket, PcapWriter};
     ///
     /// let data = [0u8; 10];
     /// let packet = PcapPacket::new(Duration::new(1, 0), data.len() as u32, &data);
@@ -162,7 +158,7 @@ impl<W: Write> PcapWriter<W> {
     /// ```
     pub fn write_packet(&mut self, packet: &PcapPacket) -> PcapResult<()> {
         if packet.data.len() > self.snaplen as usize {
-            return Err(PcapError::InvalidField("Packet.len > PcapHeader.snap_len"))
+            return Err(PcapError::InvalidField("Packet.len > PcapHeader.snap_len"));
         }
 
         match self.endianness {

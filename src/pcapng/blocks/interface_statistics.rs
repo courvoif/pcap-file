@@ -1,17 +1,17 @@
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
-use byteorder_slice::{ByteOrder, result::ReadSlice};
 use byteorder_slice::byteorder::WriteBytesExt;
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo, Block};
+use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct InterfaceStatisticsBlock<'a> {
-
     /// Specifies the interface these statistics refers to.
     /// The correct interface will be the one whose Interface Description Block (within the current Section of the file)
     /// is identified by same number of this field.
@@ -23,12 +23,11 @@ pub struct InterfaceStatisticsBlock<'a> {
     pub timestamp: u64,
 
     /// Options
-    pub options: Vec<InterfaceStatisticsOption<'a>>
+    pub options: Vec<InterfaceStatisticsOption<'a>>,
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
-    fn from_slice<B:ByteOrder>(mut slice: &'a [u8]) -> Result<(&[u8], Self), PcapError> {
-
+    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&[u8], Self), PcapError> {
         if slice.len() < 12 {
             return Err(PcapError::InvalidField("InterfaceStatisticsBlock: block length < 12"));
         }
@@ -37,17 +36,12 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         let timestamp = slice.read_u64::<B>()?;
         let (slice, options) = InterfaceStatisticsOption::opts_from_slice::<B>(slice)?;
 
-        let block = InterfaceStatisticsBlock {
-            interface_id,
-            timestamp,
-            options
-        };
+        let block = InterfaceStatisticsBlock { interface_id, timestamp, options };
 
         Ok((slice, block))
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-
         writer.write_u32::<B>(self.interface_id)?;
         writer.write_u64::<B>(self.timestamp)?;
 
@@ -62,7 +56,6 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
 
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceStatisticsOption<'a> {
-
     /// The opt_comment option is a UTF-8 string containing human-readable comment text
     /// that is associated to the current block.
     Comment(Cow<'a, str>),
@@ -100,15 +93,12 @@ pub enum InterfaceStatisticsOption<'a> {
     CustomUtf8(CustomUtf8Option<'a>),
 
     /// Unknown option
-    Unknown(UnknownOption<'a>)
+    Unknown(UnknownOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
-    
     fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
-        
         let opt = match code {
-
             1 => InterfaceStatisticsOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => InterfaceStatisticsOption::IsbStartTime(slice.read_u64::<B>()?),
             3 => InterfaceStatisticsOption::IsbEndTime(slice.read_u64::<B>()?),
@@ -121,14 +111,13 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
             2988 | 19372 => InterfaceStatisticsOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
             2989 | 19373 => InterfaceStatisticsOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
 
-            _ => InterfaceStatisticsOption::Unknown(UnknownOption::new(code, length, slice))
+            _ => InterfaceStatisticsOption::Unknown(UnknownOption::new(code, length, slice)),
         };
 
         Ok(opt)
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-        
         match self {
             InterfaceStatisticsOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             InterfaceStatisticsOption::IsbStartTime(a) => a.write_opt_to::<B, W>(2, writer),
@@ -144,4 +133,3 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         }
     }
 }
-

@@ -27,13 +27,13 @@ impl From<std::io::Error> for PcapError {
     }
 }
 
-impl From< std::str::Utf8Error> for PcapError {
+impl From<std::str::Utf8Error> for PcapError {
     fn from(err: std::str::Utf8Error) -> Self {
         PcapError::Utf8Error(err)
     }
 }
 
-impl From< std::string::FromUtf8Error> for PcapError {
+impl From<std::string::FromUtf8Error> for PcapError {
     fn from(err: std::string::FromUtf8Error) -> Self {
         PcapError::FromUtf8Error(err)
     }

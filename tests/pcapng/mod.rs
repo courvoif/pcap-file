@@ -1,7 +1,8 @@
-use pcap_file::pcapng::{PcapNgParser, PcapNgReader, PcapNgWriter};
 use std::fs::File;
-use glob::glob;
 use std::io::Read;
+
+use glob::glob;
+use pcap_file::pcapng::{PcapNgParser, PcapNgReader, PcapNgWriter};
 
 #[test]
 fn reader() {
@@ -39,7 +40,7 @@ fn parser() {
                 break;
             }
 
-            let (rem, _) =  pcapng_parser.next_block(src).expect(&format!("Error on block {} on file: {:?}", i, entry));
+            let (rem, _) = pcapng_parser.next_block(src).expect(&format!("Error on block {} on file: {:?}", i, entry));
             src = rem;
 
             i += 1;
@@ -55,12 +56,14 @@ fn writer() {
 
         let pcapng_in = std::fs::read(&entry).unwrap();
         let mut pcapng_reader = PcapNgReader::new(&pcapng_in[..]).unwrap();
-        let mut pcapng_writer = PcapNgWriter::with_section_header( Vec::new(), pcapng_reader.section().clone()).unwrap();
+        let mut pcapng_writer = PcapNgWriter::with_section_header(Vec::new(), pcapng_reader.section().clone()).unwrap();
 
         let mut idx = 0;
         while let Some(block) = pcapng_reader.next_block() {
             let block = block.unwrap();
-            pcapng_writer.write_block(&block).expect(&format!("Error writing block, file: {:?}, block n°{}, block: {:?}", entry, idx, block));
+            pcapng_writer
+                .write_block(&block)
+                .expect(&format!("Error writing block, file: {:?}, block n°{}, block: {:?}", entry, idx, block));
             idx += 1;
         }
 

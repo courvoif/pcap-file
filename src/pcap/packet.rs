@@ -1,17 +1,14 @@
-use byteorder_slice::{ByteOrder, result::ReadSlice};
+use std::borrow::Cow;
+use std::io::Write;
+use std::time::Duration;
+
 use byteorder_slice::byteorder::WriteBytesExt;
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
-use crate::{
-    errors::*,
-    TsResolution
-};
-
-use std::{
-    borrow::Cow,
-    io::Write,
-    time::Duration
-};
+use crate::errors::*;
+use crate::TsResolution;
 
 
 /// Pcap packet with its header and data.
@@ -24,26 +21,18 @@ pub struct PcapPacket<'a> {
     /// Original length of the packet when captured on the wire
     pub orig_len: u32,
     /// Payload, owned or borrowed, of the packet
-    pub data: Cow<'a, [u8]>
+    pub data: Cow<'a, [u8]>,
 }
 
 impl<'a> PcapPacket<'a> {
     /// Create a new borrowed `Packet` with the given parameters.
     pub fn new(timestamp: Duration, orig_len: u32, data: &'a [u8]) -> PcapPacket<'a> {
-        PcapPacket {
-            timestamp,
-            orig_len,
-            data: Cow::Borrowed(data),
-        }
+        PcapPacket { timestamp, orig_len, data: Cow::Borrowed(data) }
     }
 
     /// Create a new owned `Packet` with the given parameters.
     pub fn new_owned(timestamp: Duration, orig_len: u32, data: Vec<u8>) -> PcapPacket<'static> {
-        PcapPacket {
-            timestamp,
-            orig_len,
-            data: Cow::Owned(data)
-        }
+        PcapPacket { timestamp, orig_len, data: Cow::Owned(data) }
     }
 
     /// Parse a new borrowed `Packet` from a slice.
@@ -58,7 +47,7 @@ impl<'a> PcapPacket<'a> {
         let packet = PcapPacket {
             timestamp: Duration::new(header.ts_sec as u64, header.ts_nsec),
             orig_len: header.orig_len,
-            data : Cow::Borrowed(&slice[..len])
+            data: Cow::Borrowed(&slice[..len]),
         };
 
         let slice = &slice[len..];
@@ -69,7 +58,7 @@ impl<'a> PcapPacket<'a> {
     /// Write a `Packet` to a writer.
     ///
     /// Writes 24B in the writer on success.
-    pub fn write_to< W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> PcapResult<()> {
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> PcapResult<()> {
         let ts_sec = self.timestamp.as_secs();
         let ts_nsec = self.timestamp.subsec_nanos();
         let incl_len = self.data.len();
@@ -87,12 +76,7 @@ impl<'a> PcapPacket<'a> {
             return Err(PcapError::InvalidField("PcapPacket: incl_len > orig_len"));
         }
 
-        let header = PacketHeader {
-            ts_sec: ts_sec as u32,
-            ts_nsec,
-            incl_len: incl_len as u32,
-            orig_len
-        };
+        let header = PacketHeader { ts_sec: ts_sec as u32, ts_nsec, incl_len: incl_len as u32, orig_len };
         header.write_to::<_, B>(writer, ts_resolution)?;
         writer.write_all(&self.data)?;
 
@@ -110,12 +94,16 @@ struct PacketHeader {
     /// Number of octets of the packet saved in file
     incl_len: u32,
     /// Original length of the packet on the wire
-    orig_len: u32
+    orig_len: u32,
 }
 
 impl PacketHeader {
     /// Creates a new `PacketHeader` from a slice.
-    pub(crate) fn from_slice<B: ByteOrder>(mut slice: &[u8], ts_resolution: TsResolution, snap_len: u32) -> PcapResult<(&[u8], PacketHeader)> {
+    pub(crate) fn from_slice<B: ByteOrder>(
+        mut slice: &[u8],
+        ts_resolution: TsResolution,
+        snap_len: u32,
+    ) -> PcapResult<(&[u8], PacketHeader)> {
         // Check header length
         if slice.len() < 16 {
             return Err(PcapError::IncompleteBuffer(16 - slice.len()));
@@ -127,7 +115,9 @@ impl PacketHeader {
         let ts_sec = slice.read_u32::<B>()?;
         let mut ts_nsec = slice.read_u32::<B>()?;
         if ts_resolution == TsResolution::MicroSecond {
-            ts_nsec = ts_nsec.checked_mul(1000).ok_or(PcapError::InvalidField("Packet Header ts_microsecond can't be converted to nanosecond"))?;
+            ts_nsec = ts_nsec
+                .checked_mul(1000)
+                .ok_or(PcapError::InvalidField("Packet Header ts_microsecond can't be converted to nanosecond"))?;
         }
         if ts_nsec >= 1_000_000_000 {
             return Err(PcapError::InvalidField("Packet Header ts_nanosecond >= 1_000_000_000"));
@@ -148,12 +138,7 @@ impl PacketHeader {
             return Err(PcapError::InvalidField("PacketHeader incl_len > orig_len"));
         }
 
-        let header = PacketHeader {
-            ts_sec,
-            ts_nsec,
-            incl_len,
-            orig_len
-        };
+        let header = PacketHeader { ts_sec, ts_nsec, incl_len, orig_len };
 
         Ok((slice, header))
     }
@@ -161,7 +146,7 @@ impl PacketHeader {
     /// Write a `PcapHeader` to a writer.
     ///
     /// Writes 24B in the writer on success.
-    pub(crate) fn write_to< W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> PcapResult<()> {
+    pub(crate) fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> PcapResult<()> {
         let mut ts_unsec = self.ts_nsec;
         if ts_resolution == TsResolution::MicroSecond {
             ts_unsec /= 1000;
