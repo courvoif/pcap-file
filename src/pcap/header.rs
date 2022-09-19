@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use byteorder_slice::{BigEndian, LittleEndian, ByteOrder, ReadSlice};
+use byteorder_slice::{BigEndian, LittleEndian, ByteOrder, result::ReadSlice};
 use byteorder_slice::byteorder::WriteBytesExt;
 
 use crate::{DataLink, Endianness, TsResolution};

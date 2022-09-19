@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
-use byteorder_slice::{BigEndian, LittleEndian, ByteOrder, ReadSlice};
+use byteorder_slice::{BigEndian, LittleEndian, ByteOrder, result::ReadSlice};
 use byteorder_slice::byteorder::WriteBytesExt;
 use derive_into_owned::IntoOwned;
 

@@ -1,6 +1,6 @@
 use std::io::{Result as IoResult, Write};
 
-use byteorder_slice::{BigEndian, LittleEndian, ByteOrder, ReadSlice};
+use byteorder_slice::{BigEndian, LittleEndian, ByteOrder, result::ReadSlice};
 use byteorder_slice::byteorder::WriteBytesExt;
 
 use crate::Endianness;
@@ -24,17 +24,16 @@ use derive_into_owned::IntoOwned;
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// PcapNg Block
 #[derive(Clone, Debug)]
-pub(crate) struct RawBlock<'a> {
-    pub(crate) type_: u32,
-    pub(crate) initial_len: u32,
-    pub(crate) body: &'a [u8],
-    #[allow(dead_code)]
-    pub(crate) trailer_len: u32
+pub struct RawBlock<'a> {
+    pub type_: u32,
+    pub initial_len: u32,
+    pub body: &'a [u8],
+    pub trailer_len: u32
 }
 
 impl<'a> RawBlock<'a> {
     /// Create an "borrowed" `Block` from a slice
-    pub(crate) fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 12 {
             return Err(PcapError::IncompleteBuffer(12 - slice.len()));
         }

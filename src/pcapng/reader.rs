@@ -1,10 +1,9 @@
 use std::io::Read;
-use std::ops::Not;
 
-use crate::PcapNgParser;
 use crate::errors::PcapError;
-use crate::pcapng::{Block, SectionHeaderBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
+use crate::pcapng::{Block, EnhancedPacketBlock, InterfaceDescriptionBlock, SectionHeaderBlock};
 use crate::read_buffer::ReadBuffer;
+use crate::PcapNgParser;
 
 /// Reads a PcapNg from a reader.
 ///
@@ -12,6 +11,7 @@ use crate::read_buffer::ReadBuffer;
 ///
 /// ```rust,no_run
 /// use std::fs::File;
+///
 /// use pcap_file::pcapng::PcapNgReader;
 ///
 /// let file_in = File::open("test.pcapng").expect("Error opening file");
@@ -27,7 +27,7 @@ use crate::read_buffer::ReadBuffer;
 /// ```
 pub struct PcapNgReader<R: Read> {
     parser: PcapNgParser,
-    reader: ReadBuffer<R>
+    reader: ReadBuffer<R>,
 }
 
 impl<R: Read> PcapNgReader<R> {
@@ -35,29 +35,21 @@ impl<R: Read> PcapNgReader<R> {
     /// Parses the first block which must be a valid SectionHeaderBlock
     pub fn new(reader: R) -> Result<PcapNgReader<R>, PcapError> {
         let mut reader = ReadBuffer::new(reader);
-        let parser = reader.parse_with(PcapNgParser::new)?;
-
-        Ok(
-            Self {
-                parser,
-                reader
-            }
-        )
+        let parser = unsafe { reader.parse_with(PcapNgParser::new)? };
+        Ok(Self { parser, reader })
     }
 
     /// Returns the next [Block](enum.Block.html)
     pub fn next_block(&mut self) -> Option<Result<Block, PcapError>> {
-        match self.reader.is_empty() {
-            Ok(empty) => {
-                if empty.not() {
-                    let parser = &mut self.parser;
-                    Some(self.reader.parse_with(move |src| parser.next_block(src)))
+        match self.reader.has_data_left() {
+            Ok(has_data) => {
+                if has_data {
+                    Some(unsafe { self.reader.parse_with(|src| self.parser.next_block(src)) })
                 }
                 else {
                     None
                 }
             },
-
             Err(e) => Some(Err(e.into())),
         }
     }

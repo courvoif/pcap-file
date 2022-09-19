@@ -15,7 +15,7 @@ pub enum Endianness {
 }
 
 impl Endianness {
-
+    /// True if LitlleEndian
     pub fn is_little(self) -> bool {
         match self {
             Endianness::Big => false,
@@ -23,6 +23,7 @@ impl Endianness {
         }
     }
 
+    /// True if BigEndian
     pub fn is_big(self) -> bool {
         match self {
             Endianness::Big => true,
@@ -30,14 +31,23 @@ impl Endianness {
         }
     }
 
-    pub fn new<B: ByteOrder>() -> Self {
-
+    /// Return the endianness of the given ByteOrder
+    pub fn from_byteorder<B: ByteOrder>() -> Self {
         if B::read_u32(&[0,0,0,1]) == 1 {
             Endianness::Big
         }
         else {
             Endianness::Little
         }
+    }
+
+    /// Return the native endianness of the system
+    pub fn native() -> Self {
+        #[cfg(target_endian = "big")]
+        return Endianness::Big;
+
+        #[cfg(target_endian = "little")]
+        return Endianness::Little;
     }
 }
 

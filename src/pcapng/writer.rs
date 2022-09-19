@@ -1,10 +1,10 @@
 use std::io::Write;
 
-use byteorder_slice::{BigEndian, LittleEndian, NativeEndian, ByteOrder};
+use byteorder_slice::{BigEndian, LittleEndian};
 use thiserror::Error;
 
+use crate::pcapng::{Block, InterfaceDescriptionBlock, PcapNgBlock, SectionHeaderBlock};
 use crate::Endianness;
-use crate::pcapng::{InterfaceDescriptionBlock, SectionHeaderBlock, PcapNgBlock, Block};
 
 
 /// Writes a PcapNg to a writer.
@@ -13,6 +13,7 @@ use crate::pcapng::{InterfaceDescriptionBlock, SectionHeaderBlock, PcapNgBlock, 
 ///
 /// ```rust,no_run
 /// use std::fs::File;
+///
 /// use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 ///
 /// let file_in = File::open("test.pcapng").expect("Error opening file");
@@ -33,7 +34,7 @@ use crate::pcapng::{InterfaceDescriptionBlock, SectionHeaderBlock, PcapNgBlock, 
 pub struct PcapNgWriter<W: Write> {
     section: SectionHeaderBlock<'static>,
     interfaces: Vec<InterfaceDescriptionBlock<'static>>,
-    writer: W
+    writer: W,
 }
 
 impl<W: Write> PcapNgWriter<W> {
@@ -60,6 +61,7 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// ```rust,no_run
     /// use std::fs::File;
+    ///
     /// use pcap_file::pcap::PcapWriter;
     ///
     /// let file_out = File::create("out.pcap").expect("Error creating file");
@@ -67,22 +69,18 @@ impl<W: Write> PcapNgWriter<W> {
     /// ```
     pub fn new(writer: W) -> PcapWriteResult<Self> {
         // Get endianness of the current processor
-        let tmp = NativeEndian::read_u16(&[0x42, 0x00]);
-        let endianness = match tmp {
-            0x4200 => Endianness::Big,
-            0x0042 => Endianness::Little,
-            _ => unreachable!()
-        };
+        #[cfg(target_endian = "big")]
+        let endianness = Endianness::Big;
+
+        #[cfg(target_endian = "little")]
+        let endianness = Endianness::Little;
 
         Self::with_endianness(writer, endianness)
     }
 
     /// Creates a new `PcapNgWriter` from an existing writer with the given endianness
     pub fn with_endianness(writer: W, endianness: Endianness) -> PcapWriteResult<Self> {
-        let section = SectionHeaderBlock {
-            endianness,
-            ..Default::default()
-        };
+        let section = SectionHeaderBlock { endianness, ..Default::default() };
 
         Self::with_section_header(writer, section)
     }
@@ -94,13 +92,7 @@ impl<W: Write> PcapNgWriter<W> {
             Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer)?,
         };
 
-        Ok(
-            Self {
-                section,
-                interfaces: vec![],
-                writer,
-            }
-        )
+        Ok(Self { section, interfaces: vec![], writer })
     }
 
     /// Writes a `Block`.
@@ -110,20 +102,18 @@ impl<W: Write> PcapNgWriter<W> {
     /// use std::borrow::Cow;
     /// use std::fs::File;
     /// use std::time::Duration;
-    /// use pcap_file::DataLink;
+    ///
     /// use pcap_file::pcapng::{
-    ///     InterfaceDescriptionBlock,
-    ///     EnhancedPacketBlock,
-    ///     PcapNgWriter,
-    ///     PcapNgBlock
+    ///     EnhancedPacketBlock, InterfaceDescriptionBlock, PcapNgBlock, PcapNgWriter,
     /// };
+    /// use pcap_file::DataLink;
     ///
     /// let data = [0u8; 10];
     ///
     /// let interface = InterfaceDescriptionBlock {
     ///     linktype: DataLink::ETHERNET,
     ///     snaplen: 0xFFFF,
-    ///     options: vec![]
+    ///     options: vec![],
     /// };
     ///
     /// let packet = EnhancedPacketBlock {
@@ -131,7 +121,7 @@ impl<W: Write> PcapNgWriter<W> {
     ///     timestamp: Duration::from_secs(0),
     ///     original_len: data.len() as u32,
     ///     data: Cow::Borrowed(&data),
-    ///     options: vec![]
+    ///     options: vec![],
     /// };
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
@@ -160,12 +150,12 @@ impl<W: Write> PcapNgWriter<W> {
                 }
             },
 
-            _ => ()
+            _ => (),
         }
 
         match self.section.endianness {
             Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(|e| e.into()),
-            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(|e| e.into())
+            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(|e| e.into()),
         }
     }
 
@@ -196,7 +186,7 @@ pub enum PcapWriteError {
     Io(#[source] std::io::Error),
 
     #[error("No corresponding interface id: {0}")]
-    InvalidInterfaceId(u32)
+    InvalidInterfaceId(u32),
 }
 
 impl From<std::io::Error> for PcapWriteError {

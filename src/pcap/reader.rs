@@ -1,9 +1,9 @@
-use crate::{errors::*, pcap::PcapPacket, pcap::PcapHeader, PcapParser};
-
 use std::io::Read;
-use std::ops::Not;
 
+use crate::errors::*;
+use crate::pcap::{PcapHeader, PcapPacket};
 use crate::read_buffer::ReadBuffer;
+use crate::PcapParser;
 
 
 /// Reads a pcap from a reader.
@@ -14,6 +14,7 @@ use crate::read_buffer::ReadBuffer;
 ///
 /// ```rust,no_run
 /// use std::fs::File;
+///
 /// use pcap_file::pcap::PcapReader;
 ///
 /// let file_in = File::open("test.pcap").expect("Error opening file");
@@ -30,10 +31,10 @@ use crate::read_buffer::ReadBuffer;
 #[derive(Debug)]
 pub struct PcapReader<R: Read> {
     parser: PcapParser,
-    reader: ReadBuffer<R>
+    reader: ReadBuffer<R>,
 }
 
-impl <R:Read> PcapReader<R>{
+impl<R: Read> PcapReader<R> {
     /// Create a new PcapReader from an existing reader.
     /// This function read the global pcap header of the file to verify its integrity.
     ///
@@ -46,6 +47,7 @@ impl <R:Read> PcapReader<R>{
     /// # Examples
     /// ```rust,no_run
     /// use std::fs::File;
+    ///
     /// use pcap_file::pcap::PcapReader;
     ///
     /// let file_in = File::open("test.pcap").expect("Error opening file");
@@ -53,14 +55,9 @@ impl <R:Read> PcapReader<R>{
     /// ```
     pub fn new(reader: R) -> Result<PcapReader<R>, PcapError> {
         let mut reader = ReadBuffer::new(reader);
-        let parser = reader.parse_with(PcapParser::new)?;
+        let parser = unsafe { reader.parse_with(PcapParser::new)? };
 
-        Ok(
-            PcapReader {
-                parser,
-                reader
-            }
-        )
+        Ok(PcapReader { parser, reader })
     }
 
     /// Consumes the `PcapReader`, returning the wrapped reader.
@@ -70,17 +67,15 @@ impl <R:Read> PcapReader<R>{
 
     /// Returns the next packet
     pub fn next_packet(&mut self) -> Option<Result<PcapPacket, PcapError>> {
-        match self.reader.is_empty() {
-            Ok(empty) => {
-                if empty.not() {
-                    let parser = &mut self.parser;
-                    Some(self.reader.parse_with(move |src| parser.next_packet(src)))
+        match self.reader.has_data_left() {
+            Ok(has_data) => {
+                if has_data {
+                    Some(unsafe { self.reader.parse_with(|src| self.parser.next_packet(src)) })
                 }
                 else {
                     None
                 }
             },
-
             Err(e) => Some(Err(e.into())),
         }
     }
