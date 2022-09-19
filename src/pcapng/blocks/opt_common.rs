@@ -8,7 +8,10 @@ use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
 
+
+/// Common fonctions of the PcapNg options
 pub(crate) trait PcapNgOption<'a> {
+    /// Parse an option from a slice
     fn from_slice<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError>
     where
         Self: std::marker::Sized;
@@ -54,9 +57,10 @@ pub(crate) trait PcapNgOption<'a> {
         Err(PcapError::InvalidField("Invalid option"))
     }
 
-
+    /// Write the option to a writer
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize>;
 
+    /// Write all options in a block
     fn write_opts_to<B: ByteOrder, W: Write>(opts: &[Self], writer: &mut W) -> IoResult<usize>
     where
         Self: std::marker::Sized,
@@ -78,49 +82,60 @@ pub(crate) trait PcapNgOption<'a> {
     }
 }
 
+/// Unknown options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct UnknownOption<'a> {
+    /// Option code
     pub code: u16,
+    /// Option length
     pub length: u16,
+    /// Option value
     pub value: Cow<'a, [u8]>,
 }
 
 impl<'a> UnknownOption<'a> {
+    /// Creates a new [`UnknownOption`]
     pub fn new(code: u16, length: u16, value: &'a [u8]) -> Self {
         UnknownOption { code, length, value: Cow::Borrowed(value) }
     }
 }
 
+/// Custom binary option
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct CustomBinaryOption<'a> {
+    /// Option code
     pub code: u16,
+    /// Option PEN identifier
     pub pen: u32,
+    /// Option value
     pub value: Cow<'a, [u8]>,
 }
 
 impl<'a> CustomBinaryOption<'a> {
+    /// Parse an [`CustomBinaryOption`] from a slice
     pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
         let pen = src.read_u32::<B>()?;
-
         let opt = CustomBinaryOption { code, pen, value: Cow::Borrowed(src) };
-
         Ok(opt)
     }
 }
 
+/// Custom string (UTF-8) option
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct CustomUtf8Option<'a> {
+    /// Option code
     pub code: u16,
+    /// Option PEN identifier
     pub pen: u32,
+    /// Option value
     pub value: Cow<'a, str>,
 }
 
 impl<'a> CustomUtf8Option<'a> {
+    /// Parse a [`CustomUtf8Option`] from a slice
     pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
         let pen = src.read_u32::<B>()?;
-
         let opt = CustomUtf8Option { code, pen, value: Cow::Borrowed(std::str::from_utf8(src)?) };
-
         Ok(opt)
     }
 }

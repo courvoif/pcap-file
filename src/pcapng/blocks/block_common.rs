@@ -28,9 +28,13 @@ use crate::Endianness;
 /// PcapNg Block
 #[derive(Clone, Debug)]
 pub struct RawBlock<'a> {
+    /// Type field
     pub type_: u32,
+    /// Initial length field
     pub initial_len: u32,
+    /// Body of the block
     pub body: &'a [u8],
+    /// Trailer length field
     pub trailer_len: u32,
 }
 
@@ -130,14 +134,23 @@ impl<'a> RawBlock<'a> {
 /// PcapNg parsed blocks
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum Block<'a> {
+    /// Section Header block
     SectionHeader(SectionHeaderBlock<'a>),
+    /// Interface Description block
     InterfaceDescription(InterfaceDescriptionBlock<'a>),
+    /// Packet block
     Packet(PacketBlock<'a>),
+    /// Simple packet block
     SimplePacket(SimplePacketBlock<'a>),
+    /// Name Resolution block
     NameResolution(NameResolutionBlock<'a>),
+    /// Interface statistics block
     InterfaceStatistics(InterfaceStatisticsBlock<'a>),
+    /// Enhanced packet block
     EnhancedPacket(EnhancedPacketBlock<'a>),
+    /// Systemd Journal Export block
     SystemdJournalExport(SystemdJournalExportBlock<'a>),
+    /// Unknown block
     Unknown(UnknownBlock<'a>),
 }
 
@@ -217,6 +230,7 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Returns the code of the block
     pub fn block_type_code(&self) -> u32 {
         match self {
             Self::SectionHeader(_) => 0x0A0D0D0A,
@@ -231,6 +245,7 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Downcast the current block into an [`EnhancedPacketBlock`], if possible
     pub fn into_enhanced_packet(self) -> Option<EnhancedPacketBlock<'a>> {
         match self {
             Block::EnhancedPacket(a) => Some(a),
@@ -238,6 +253,7 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Downcast the current block into an [`InterfaceDescriptionBlock`], if possible
     pub fn into_interface_description(self) -> Option<InterfaceDescriptionBlock<'a>> {
         match self {
             Block::InterfaceDescription(a) => Some(a),
@@ -245,6 +261,7 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Downcast the current block into an [`InterfaceStatisticsBlock`], if possible
     pub fn into_interface_statistics(self) -> Option<InterfaceStatisticsBlock<'a>> {
         match self {
             Block::InterfaceStatistics(a) => Some(a),
@@ -252,6 +269,7 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Downcast the current block into an [`NameResolutionBlock`], if possible
     pub fn into_name_resolution(self) -> Option<NameResolutionBlock<'a>> {
         match self {
             Block::NameResolution(a) => Some(a),
@@ -259,6 +277,7 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Downcast the current block into an [`PacketBlock`], if possible
     pub fn into_packet(self) -> Option<PacketBlock<'a>> {
         match self {
             Block::Packet(a) => Some(a),
@@ -266,6 +285,7 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Downcast the current block into an [`SectionHeaderBlock`], if possible
     pub fn into_section_header(self) -> Option<SectionHeaderBlock<'a>> {
         match self {
             Block::SectionHeader(a) => Some(a),
@@ -273,6 +293,7 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Downcast the current block into an [`SimplePacketBlock`], if possible
     pub fn into_simple_packet(self) -> Option<SimplePacketBlock<'a>> {
         match self {
             Block::SimplePacket(a) => Some(a),
@@ -280,6 +301,7 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Downcast the current block into an [`SystemdJournalExportBlock`], if possible
     pub fn into_systemd_journal_export(self) -> Option<SystemdJournalExportBlock<'a>> {
         match self {
             Block::SystemdJournalExport(a) => Some(a),
@@ -288,10 +310,17 @@ impl<'a> Block<'a> {
     }
 }
 
+
+/// Common interface for the PcapNg blocks
 pub trait PcapNgBlock<'a> {
+    /// Parse a new block from a slice
     fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&[u8], Self), PcapError>
     where
         Self: std::marker::Sized;
+
+    /// Write the content of a block into a writer
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize>;
+
+    /// Convert a block into the [`Block`] enumeration
     fn into_block(self) -> Block<'a>;
 }

@@ -3,14 +3,18 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 /// Timestamp resolution of the pcap
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum TsResolution {
+    /// Microsecond resolution
     MicroSecond,
+    /// Nanosecond resolution
     NanoSecond,
 }
 
 /// Endianness of the pcap
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Endianness {
+    /// Big endian
     Big,
+    /// Little endian
     Little,
 }
 
@@ -74,6 +78,7 @@ impl RuntimeByteorder for LittleEndian {
 ///
 /// See [http://www.tcpdump.org/linktypes.html](http://www.tcpdump.org/linktypes.html)
 #[allow(non_camel_case_types)]
+#[allow(missing_docs)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DataLink {
     NULL,

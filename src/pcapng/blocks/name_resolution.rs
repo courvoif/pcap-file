@@ -15,7 +15,6 @@ use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, Pc
 pub struct NameResolutionBlock<'a> {
     /// Records
     pub records: Vec<Record<'a>>,
-
     /// Options
     pub options: Vec<NameResolutionOption<'a>>,
 }
@@ -60,15 +59,21 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
     }
 }
 
+/// Resolution block record types
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum Record<'a> {
+    /// End of the records
     End,
+    /// Ipv4 records
     Ipv4(Ipv4Record<'a>),
+    /// Ipv6 records
     Ipv6(Ipv6Record<'a>),
+    /// Unknown records
     Unknown(UnknownRecord<'a>),
 }
 
 impl<'a> Record<'a> {
+    /// Parse a [`Record`] from a slice
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         let type_ = slice.read_u16::<B>()?;
         let length = slice.read_u16::<B>()?;
@@ -108,6 +113,7 @@ impl<'a> Record<'a> {
         Ok((&slice[len..], record))
     }
 
+    /// Write a [`Record`] to a writer
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         match self {
             Record::End => {
@@ -156,13 +162,17 @@ impl<'a> Record<'a> {
     }
 }
 
+/// Ipv4 records
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct Ipv4Record<'a> {
+    /// IPv4 Addr
     pub ip_addr: Cow<'a, [u8]>,
+    /// Fqdn
     pub names: Vec<Cow<'a, str>>,
 }
 
 impl<'a> Ipv4Record<'a> {
+    /// Parse a [`Ipv4Record`] from a slice
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, PcapError> {
         if slice.len() < 6 {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv4Record len < 6"));
@@ -188,6 +198,7 @@ impl<'a> Ipv4Record<'a> {
         Ok(record)
     }
 
+    /// Write a [`Ipv4Record`] to a writter
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 4;
 
@@ -204,13 +215,18 @@ impl<'a> Ipv4Record<'a> {
     }
 }
 
+
+/// Ipv6 records
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct Ipv6Record<'a> {
+    /// Ipv6 addr
     pub ip_addr: Cow<'a, [u8]>,
+    /// Fqdn
     pub names: Vec<Cow<'a, str>>,
 }
 
 impl<'a> Ipv6Record<'a> {
+    /// Parse a [`Ipv6Record`] from a slice
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, PcapError> {
         if slice.len() < 18 {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv6Record len < 18"));
@@ -238,6 +254,7 @@ impl<'a> Ipv6Record<'a> {
         Ok(record)
     }
 
+    /// Write a [`Ipv6Record`] to a writter
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 16;
 
@@ -254,19 +271,26 @@ impl<'a> Ipv6Record<'a> {
     }
 }
 
+/// Unknown records
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct UnknownRecord<'a> {
+    /// Records type
     pub type_: u16,
+    /// Record length
     pub length: u16,
+    /// Record body
     pub value: Cow<'a, [u8]>,
 }
 
 impl<'a> UnknownRecord<'a> {
+    /// Creates a new [`UnknownRecord`]
     fn new(type_: u16, length: u16, value: &'a [u8]) -> Self {
         UnknownRecord { type_, length, value: Cow::Borrowed(value) }
     }
 }
 
+
+/// The Name Resolution Block (NRB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum NameResolutionOption<'a> {
     /// The opt_comment option is a UTF-8 string containing human-readable comment text

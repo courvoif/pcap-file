@@ -93,6 +93,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
     }
 }
 
+/// The Enhanced Packet Block (EPB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum EnhancedPacketOption<'a> {
     /// Comment associated with the current block

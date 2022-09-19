@@ -54,6 +54,8 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
     }
 }
 
+
+/// The Interface Statistics Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceStatisticsOption<'a> {
     /// The opt_comment option is a UTF-8 string containing human-readable comment text

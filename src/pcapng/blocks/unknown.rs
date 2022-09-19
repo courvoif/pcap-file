@@ -7,14 +7,20 @@ use derive_into_owned::IntoOwned;
 use crate::pcapng::{Block, PcapNgBlock};
 use crate::PcapError;
 
+
+/// Unknown block
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct UnknownBlock<'a> {
+    /// Block type
     pub type_: u32,
+    /// Block length
     pub length: u32,
+    /// Block value
     pub value: Cow<'a, [u8]>,
 }
 
 impl<'a> UnknownBlock<'a> {
+    /// Creates a new [`UnknownBlock`]
     pub fn new(type_: u32, length: u32, value: &'a [u8]) -> Self {
         UnknownBlock { type_, length, value: Cow::Borrowed(value) }
     }

@@ -1,10 +1,9 @@
 use std::io::Write;
 
 use byteorder_slice::{BigEndian, LittleEndian};
-use thiserror::Error;
 
 use crate::pcapng::{Block, InterfaceDescriptionBlock, PcapNgBlock, SectionHeaderBlock};
-use crate::Endianness;
+use crate::{Endianness, PcapError, PcapResult};
 
 
 /// Writes a PcapNg to a writer.
@@ -67,7 +66,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// let file_out = File::create("out.pcap").expect("Error creating file");
     /// let mut pcap_writer = PcapWriter::new(file_out);
     /// ```
-    pub fn new(writer: W) -> PcapWriteResult<Self> {
+    pub fn new(writer: W) -> PcapResult<Self> {
         // Get endianness of the current processor
         #[cfg(target_endian = "big")]
         let endianness = Endianness::Big;
@@ -79,14 +78,14 @@ impl<W: Write> PcapNgWriter<W> {
     }
 
     /// Creates a new `PcapNgWriter` from an existing writer with the given endianness
-    pub fn with_endianness(writer: W, endianness: Endianness) -> PcapWriteResult<Self> {
+    pub fn with_endianness(writer: W, endianness: Endianness) -> PcapResult<Self> {
         let section = SectionHeaderBlock { endianness, ..Default::default() };
 
         Self::with_section_header(writer, section)
     }
 
     /// Creates a new `PcapNgWriter` from an existing writer with the given section header
-    pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'static>) -> PcapWriteResult<Self> {
+    pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'static>) -> PcapResult<Self> {
         match section.endianness {
             Endianness::Big => section.clone().into_block().write_to::<BigEndian, _>(&mut writer)?,
             Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer)?,
@@ -130,7 +129,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// pcap_ng_writer.write_block(&interface.into_block()).unwrap();
     /// pcap_ng_writer.write_block(&packet.into_block()).unwrap();
     /// ```
-    pub fn write_block(&mut self, block: &Block) -> PcapWriteResult<usize> {
+    pub fn write_block(&mut self, block: &Block) -> PcapResult<usize> {
         match block {
             Block::SectionHeader(a) => {
                 self.section = a.clone().into_owned();
@@ -141,12 +140,12 @@ impl<W: Write> PcapNgWriter<W> {
             },
             Block::InterfaceStatistics(a) => {
                 if a.interface_id as usize >= self.interfaces.len() {
-                    return Err(PcapWriteError::InvalidInterfaceId(a.interface_id));
+                    return Err(PcapError::InvalidInterfaceId(a.interface_id));
                 }
             },
             Block::EnhancedPacket(a) => {
                 if a.interface_id as usize >= self.interfaces.len() {
-                    return Err(PcapWriteError::InvalidInterfaceId(a.interface_id));
+                    return Err(PcapError::InvalidInterfaceId(a.interface_id));
                 }
             },
 
@@ -174,23 +173,5 @@ impl<W: Write> PcapNgWriter<W> {
     /// You should not be used unless you really know what you're doing
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.writer
-    }
-}
-
-
-pub type PcapWriteResult<T> = Result<T, PcapWriteError>;
-
-#[derive(Error, Debug)]
-pub enum PcapWriteError {
-    #[error("Io error")]
-    Io(#[source] std::io::Error),
-
-    #[error("No corresponding interface id: {0}")]
-    InvalidInterfaceId(u32),
-}
-
-impl From<std::io::Error> for PcapWriteError {
-    fn from(err: std::io::Error) -> Self {
-        PcapWriteError::Io(err)
     }
 }

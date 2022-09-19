@@ -1,4 +1,5 @@
 #![allow(clippy::unreadable_literal)]
+#![deny(missing_docs)]
 
 //! Provides parsers, readers and writers for Pcap and PcapNg files.
 //!

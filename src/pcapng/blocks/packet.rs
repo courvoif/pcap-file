@@ -95,6 +95,8 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     }
 }
 
+
+/// Packet Block option
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum PacketOption<'a> {
     /// Comment associated with the current block

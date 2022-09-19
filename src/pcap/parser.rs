@@ -64,6 +64,7 @@ impl PcapParser {
         }
     }
 
+    /// Returns the header of the pcap file
     pub fn header(&self) -> PcapHeader {
         self.header
     }

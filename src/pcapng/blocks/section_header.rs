@@ -10,7 +10,7 @@ use crate::errors::PcapError;
 use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::Endianness;
 
-///Section Header Block: it defines the most important characteristics of the capture file.
+/// Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SectionHeaderBlock<'a> {
     /// Endianness of the section.
@@ -30,6 +30,7 @@ pub struct SectionHeaderBlock<'a> {
     /// large files. Length of -1i64 means that the length is unspecified.
     pub section_length: i64,
 
+    /// Options
     pub options: Vec<SectionHeaderOption<'a>>,
 }
 
@@ -99,6 +100,8 @@ impl Default for SectionHeaderBlock<'static> {
     }
 }
 
+
+/// Section Header Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum SectionHeaderOption<'a> {
     /// Comment associated with the current block

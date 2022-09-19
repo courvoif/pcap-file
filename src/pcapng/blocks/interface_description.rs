@@ -66,13 +66,17 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
 }
 
 impl InterfaceDescriptionBlock<'static> {
+    /// Creates a new [`InterfaceDescriptionBlock`]
     pub fn new(linktype: DataLink, snaplen: u32) -> Self {
         Self { linktype, snaplen, options: vec![] }
     }
 }
 
+/// The Interface Description Block (IDB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceDescriptionOption<'a> {
+    /// The opt_comment option is a UTF-8 string containing human-readable comment text
+    /// that is associated to the current block.
     Comment(Cow<'a, str>),
 
     /// The if_name option is a UTF-8 string containing the name of the device used to capture data.
