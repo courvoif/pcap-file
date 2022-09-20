@@ -158,7 +158,7 @@ impl<W: Write> PcapWriter<W> {
     /// ```
     pub fn write_packet(&mut self, packet: &PcapPacket) -> PcapResult<()> {
         if packet.data.len() > self.snaplen as usize {
-            return Err(PcapError::InvalidField("Packet.len > PcapHeader.snap_len"));
+            return Err(PcapError::InvalidPacketLength);
         }
 
         match self.endianness {
