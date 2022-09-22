@@ -1,3 +1,5 @@
+//! Simple Packet Block (SPB).
+
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
@@ -7,7 +9,9 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{Block, PcapNgBlock};
+
+use super::block_common::{PcapNgBlock, Block};
+
 
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
 /// Its presence is optional.
@@ -25,7 +29,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         if slice.len() < 4 {
             return Err(PcapError::InvalidField("SimplePacketBlock: block length < 4"));
         }
-        let original_len = slice.read_u32::<B>()?;
+        let original_len = slice.read_u32::<B>().unwrap();
 
         let packet = SimplePacketBlock { original_len, data: Cow::Borrowed(slice) };
 

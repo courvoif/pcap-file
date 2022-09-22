@@ -1,3 +1,5 @@
+//! Packet Block.
+
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
@@ -7,7 +9,10 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
+
+use super::block_common::{PcapNgBlock, Block};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
+
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
@@ -44,11 +49,11 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
             return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
         }
 
-        let interface_id = slice.read_u16::<B>()?;
-        let drop_count = slice.read_u16::<B>()?;
-        let timestamp = slice.read_u64::<B>()?;
-        let captured_len = slice.read_u32::<B>()?;
-        let original_len = slice.read_u32::<B>()?;
+        let interface_id = slice.read_u16::<B>().unwrap();
+        let drop_count = slice.read_u16::<B>().unwrap();
+        let timestamp = slice.read_u64::<B>().unwrap();
+        let captured_len = slice.read_u32::<B>().unwrap();
+        let original_len = slice.read_u32::<B>().unwrap();
 
         let pad_len = (4 - (captured_len as usize % 4)) % 4;
         let tot_len = captured_len as usize + pad_len;
@@ -127,7 +132,7 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
                 if slice.len() != 4 {
                     return Err(PcapError::InvalidField("PacketOption: Flags length != 4"));
                 }
-                PacketOption::Flags(slice.read_u32::<B>()?)
+                PacketOption::Flags(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
             },
             3 => PacketOption::Hash(Cow::Borrowed(slice)),
 

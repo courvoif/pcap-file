@@ -3,9 +3,8 @@ use std::io::Read;
 use crate::errors::*;
 use crate::pcap::{PcapHeader, PcapPacket};
 use crate::read_buffer::ReadBuffer;
-use crate::PcapParser;
 
-use super::RawPcapPacket;
+use super::{RawPcapPacket, PcapParser};
 
 
 /// Reads a pcap from a reader.
@@ -78,7 +77,7 @@ impl<R: Read> PcapReader<R> {
                     None
                 }
             },
-            Err(e) => Some(Err(e.into())),
+            Err(e) => Some(Err(PcapError::IoError(e))),
         }
     }
 
@@ -93,7 +92,7 @@ impl<R: Read> PcapReader<R> {
                     None
                 }
             },
-            Err(e) => Some(Err(e.into())),
+            Err(e) => Some(Err(PcapError::IoError(e))),
         }
     }
 

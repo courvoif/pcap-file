@@ -33,8 +33,8 @@ pub(crate) trait PcapNgOption<'a> {
                 return Err(PcapError::InvalidField("Option: slice.len() < 4"));
             }
 
-            let code = slice.read_u16::<B>()?;
-            let length = slice.read_u16::<B>()? as usize;
+            let code = slice.read_u16::<B>().unwrap();
+            let length = slice.read_u16::<B>().unwrap() as usize;
             let pad_len = (4 - (length % 4)) % 4;
 
             if code == 0 {
@@ -114,7 +114,7 @@ pub struct CustomBinaryOption<'a> {
 impl<'a> CustomBinaryOption<'a> {
     /// Parse an [`CustomBinaryOption`] from a slice
     pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
-        let pen = src.read_u32::<B>()?;
+        let pen = src.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?;
         let opt = CustomBinaryOption { code, pen, value: Cow::Borrowed(src) };
         Ok(opt)
     }
@@ -134,7 +134,7 @@ pub struct CustomUtf8Option<'a> {
 impl<'a> CustomUtf8Option<'a> {
     /// Parse a [`CustomUtf8Option`] from a slice
     pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
-        let pen = src.read_u32::<B>()?;
+        let pen = src.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?;
         let opt = CustomUtf8Option { code, pen, value: Cow::Borrowed(std::str::from_utf8(src)?) };
         Ok(opt)
     }

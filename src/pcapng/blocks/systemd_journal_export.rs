@@ -1,3 +1,5 @@
+//! Systemd Journal Export Block.
+
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
@@ -5,9 +7,11 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{Block, PcapNgBlock};
 
-/// The systemd Journal Export Block is a lightweight containter for systemd Journal Export Format entry data.
+use super::block_common::{PcapNgBlock, Block};
+
+
+/// The Systemd Journal Export Block is a lightweight containter for systemd Journal Export Format entry data.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SystemdJournalExportBlock<'a> {
     /// A journal entry as described in the Journal Export Format documentation.
@@ -17,7 +21,6 @@ pub struct SystemdJournalExportBlock<'a> {
 impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
     fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         let packet = SystemdJournalExportBlock { journal_entry: Cow::Borrowed(slice) };
-
         Ok((&[], packet))
     }
 

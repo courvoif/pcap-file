@@ -1,11 +1,14 @@
+//! Unknown Block.
+
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
-use crate::pcapng::{Block, PcapNgBlock};
 use crate::PcapError;
+
+use super::block_common::{PcapNgBlock, Block};
 
 
 /// Unknown block

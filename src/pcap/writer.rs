@@ -63,18 +63,6 @@ impl<W: Write> PcapWriter<W> {
     /// # Errors
     ///
     /// Return an error if the writer can't be written to.
-    ///
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use std::fs::File;
-    ///
-    /// use pcap_file::pcap::PcapWriter;
-    ///
-    /// let file_out = File::create("out.pcap").expect("Error creating file");
-    /// let mut pcap_writer = PcapWriter::new(file_out);
-    /// ```
     pub fn new(writer: W) -> PcapResult<PcapWriter<W>> {
         // Get endianness of current processor
         let tmp = NativeEndian::read_u16(&[0x42, 0x00]);

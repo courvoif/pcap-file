@@ -1,3 +1,5 @@
+//! Interface Statistics Block.
+
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
@@ -7,7 +9,10 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
+
+use super::block_common::{PcapNgBlock, Block};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
+
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -32,8 +37,8 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
             return Err(PcapError::InvalidField("InterfaceStatisticsBlock: block length < 12"));
         }
 
-        let interface_id = slice.read_u32::<B>()? as u32;
-        let timestamp = slice.read_u64::<B>()?;
+        let interface_id = slice.read_u32::<B>().unwrap();
+        let timestamp = slice.read_u64::<B>().unwrap();
         let (slice, options) = InterfaceStatisticsOption::opts_from_slice::<B>(slice)?;
 
         let block = InterfaceStatisticsBlock { interface_id, timestamp, options };
@@ -102,13 +107,13 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
     fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => InterfaceStatisticsOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
-            2 => InterfaceStatisticsOption::IsbStartTime(slice.read_u64::<B>()?),
-            3 => InterfaceStatisticsOption::IsbEndTime(slice.read_u64::<B>()?),
-            4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>()?),
-            5 => InterfaceStatisticsOption::IsbIfDrop(slice.read_u64::<B>()?),
-            6 => InterfaceStatisticsOption::IsbFilterAccept(slice.read_u64::<B>()?),
-            7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>()?),
-            8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>()?),
+            2 => InterfaceStatisticsOption::IsbStartTime(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            3 => InterfaceStatisticsOption::IsbEndTime(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            5 => InterfaceStatisticsOption::IsbIfDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            6 => InterfaceStatisticsOption::IsbFilterAccept(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
 
             2988 | 19372 => InterfaceStatisticsOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
             2989 | 19373 => InterfaceStatisticsOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),

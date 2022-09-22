@@ -7,8 +7,8 @@ pub type PcapResult<T> = Result<T, PcapError>;
 #[derive(Error, Debug)]
 pub enum PcapError {
     /// Buffer too small
-    #[error("Need at least {0} more bytes")]
-    IncompleteBuffer(usize),
+    #[error("Need more bytes")]
+    IncompleteBuffer,
 
     /// Generic IO error
     #[error("Error reading bytes")]
@@ -29,12 +29,6 @@ pub enum PcapError {
     /// Invalid interface ID (only for Pcap NG)
     #[error("No corresponding interface id: {0}")]
     InvalidInterfaceId(u32),
-}
-
-impl From<std::io::Error> for PcapError {
-    fn from(err: std::io::Error) -> Self {
-        PcapError::IoError(err)
-    }
 }
 
 impl From<std::str::Utf8Error> for PcapError {

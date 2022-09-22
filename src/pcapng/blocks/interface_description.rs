@@ -1,5 +1,8 @@
 #![allow(clippy::cast_lossless)]
 
+//! Interface Description Block (IDB).
+
+
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
@@ -9,8 +12,10 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::DataLink;
+
+use super::block_common::{PcapNgBlock, Block};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.
@@ -36,14 +41,14 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
             return Err(PcapError::InvalidField("InterfaceDescriptionBlock: block length < 8"));
         }
 
-        let linktype = (slice.read_u16::<B>()? as u32).into();
+        let linktype = (slice.read_u16::<B>().unwrap() as u32).into();
 
-        let reserved = slice.read_u16::<B>()?;
+        let reserved = slice.read_u16::<B>().unwrap();
         if reserved != 0 {
             return Err(PcapError::InvalidField("InterfaceDescriptionBlock: reserved != 0"));
         }
 
-        let snaplen = slice.read_u32::<B>()?;
+        let snaplen = slice.read_u32::<B>().unwrap();
         let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(slice)?;
 
         let block = InterfaceDescriptionBlock { linktype, snaplen, options };
@@ -162,25 +167,25 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
                 if slice.len() != 8 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfEuIAddr length != 8"));
                 }
-                InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>()?)
+                InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
             },
             8 => {
                 if slice.len() != 8 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfSpeed length != 8"));
                 }
-                InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>()?)
+                InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
             },
             9 => {
                 if slice.len() != 1 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsResol length != 1"));
                 }
-                InterfaceDescriptionOption::IfTsResol(slice.read_u8()?)
+                InterfaceDescriptionOption::IfTsResol(slice.read_u8().map_err(|_| PcapError::IncompleteBuffer)?)
             },
             10 => {
                 if slice.len() != 1 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTzone length != 1"));
                 }
-                InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>()?)
+                InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
             },
             11 => {
                 if slice.is_empty() {
@@ -193,13 +198,13 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
                 if slice.len() != 1 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFcsLen length != 1"));
                 }
-                InterfaceDescriptionOption::IfFcsLen(slice.read_u8()?)
+                InterfaceDescriptionOption::IfFcsLen(slice.read_u8().map_err(|_| PcapError::IncompleteBuffer)?)
             },
             14 => {
                 if slice.len() != 8 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsOffset length != 8"));
                 }
-                InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>()?)
+                InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
             },
             15 => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
