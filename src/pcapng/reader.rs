@@ -35,7 +35,7 @@ impl<R: Read> PcapNgReader<R> {
     /// Parses the first block which must be a valid SectionHeaderBlock
     pub fn new(reader: R) -> Result<PcapNgReader<R>, PcapError> {
         let mut reader = ReadBuffer::new(reader);
-        let parser = unsafe { reader.parse_with(PcapNgParser::new)? };
+        let parser = reader.parse_with(PcapNgParser::new)?;
         Ok(Self { parser, reader })
     }
 
@@ -44,7 +44,7 @@ impl<R: Read> PcapNgReader<R> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
-                    Some(unsafe { self.reader.parse_with(|src| self.parser.next_block(src)) })
+                    Some(self.reader.parse_with(|src| self.parser.next_block(src)))
                 }
                 else {
                     None

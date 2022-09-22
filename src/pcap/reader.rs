@@ -55,7 +55,7 @@ impl<R: Read> PcapReader<R> {
     /// ```
     pub fn new(reader: R) -> Result<PcapReader<R>, PcapError> {
         let mut reader = ReadBuffer::new(reader);
-        let parser = unsafe { reader.parse_with(PcapParser::new)? };
+        let parser = reader.parse_with(PcapParser::new)?;
 
         Ok(PcapReader { parser, reader })
     }
@@ -70,7 +70,7 @@ impl<R: Read> PcapReader<R> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
-                    Some(unsafe { self.reader.parse_with(|src| self.parser.next_packet(src)) })
+                    Some(self.reader.parse_with(|src| self.parser.next_packet(src)))
                 }
                 else {
                     None

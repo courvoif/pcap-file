@@ -32,7 +32,7 @@ impl<R: Read> ReadBuffer<R> {
     /// Safety
     ///
     /// The parser must NOT keep a reference to the buffer in input.
-    pub unsafe fn parse_with<'a, 'b: 'a, 'c: 'a, F, O>(&'c mut self, mut parser: F) -> Result<O, PcapError>
+    pub fn parse_with<'a, 'b: 'a, 'c: 'a, F, O>(&'c mut self, mut parser: F) -> Result<O, PcapError>
     where
         F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), PcapError>,
         F: 'b,
@@ -40,7 +40,9 @@ impl<R: Read> ReadBuffer<R> {
     {
         loop {
             let buf = &self.buffer[self.pos..self.len];
-            let buf = std::mem::transmute(buf);
+
+            // Sound because 'b and 'c must outlive 'a so the buffer cannot be modified while someone has a ref on it
+            let buf: &'a [u8] = unsafe { std::mem::transmute(buf) };
 
             match parser(buf) {
                 Ok((rem, value)) => {
@@ -129,4 +131,31 @@ impl<R: Read> ReadBuffer<R> {
     }
 }
 
-impl<R: Read> ReadBuffer<R> {}
+#[cfg(test)]
+mod test {
+    /*
+    // Shouldn't compile
+    #[test]
+    fn parse_with_safety() {
+        let a = &[0_u8; 10];
+        let b = &mut &a[..];
+
+        let input = vec![1_u8; 100];
+        let input_read = &mut &input[..];
+        let mut reader = super::ReadBuffer::new(input_read);
+
+        unsafe {
+            reader.parse_with(|buf| {
+                *b = buf;
+                Ok((buf, ()))
+            });
+        }
+
+        unsafe {
+            reader.has_data_left();
+        }
+
+        println!("{:?}", b);
+    }
+    */
+}
