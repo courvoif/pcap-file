@@ -42,6 +42,24 @@ fn read_write() {
     assert_eq!(&DATA[..], &out[..]);
 }
 
+
+#[test]
+fn read_write_raw() {
+    let mut pcap_reader = PcapReader::new(&DATA[..]).unwrap();
+    let header = pcap_reader.header();
+
+    let mut out = Vec::new();
+    let mut pcap_writer = PcapWriter::with_header(out, header).unwrap();
+
+    while let Some(pkt) = pcap_reader.next_raw_packet() {
+        pcap_writer.write_raw_packet(&pkt.unwrap()).unwrap();
+    }
+
+    out = pcap_writer.into_writer();
+
+    assert_eq!(&DATA[..], &out[..]);
+}
+
 #[test]
 fn big_endian() {
     let data = include_bytes!("big_endian.pcap");

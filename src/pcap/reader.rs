@@ -5,6 +5,8 @@ use crate::pcap::{PcapHeader, PcapPacket};
 use crate::read_buffer::ReadBuffer;
 use crate::PcapParser;
 
+use super::RawPcapPacket;
+
 
 /// Reads a pcap from a reader.
 ///
@@ -65,12 +67,27 @@ impl<R: Read> PcapReader<R> {
         self.reader.into_inner()
     }
 
-    /// Returns the next packet
+    /// Returns the next [`PcapPacket`]
     pub fn next_packet(&mut self) -> Option<Result<PcapPacket, PcapError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
                     Some(self.reader.parse_with(|src| self.parser.next_packet(src)))
+                }
+                else {
+                    None
+                }
+            },
+            Err(e) => Some(Err(e.into())),
+        }
+    }
+
+    /// Returns the next [`RawPcapPacket`]
+    pub fn next_raw_packet(&mut self) -> Option<Result<RawPcapPacket, PcapError>> {
+        match self.reader.has_data_left() {
+            Ok(has_data) => {
+                if has_data {
+                    Some(self.reader.parse_with(|src| self.parser.next_raw_packet(src)))
                 }
                 else {
                     None

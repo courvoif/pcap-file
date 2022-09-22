@@ -4,6 +4,8 @@ use crate::errors::*;
 use crate::pcap::{PcapHeader, PcapPacket};
 use crate::Endianness;
 
+use super::RawPcapPacket;
+
 
 /// Parses a Pcap from a slice of bytes.
 ///
@@ -56,11 +58,19 @@ impl PcapParser {
         Ok((slice, parser))
     }
 
-    /// Returns the next packet and the remainder.
+    /// Returns the next [`PcapPacket`] and the remainder.
     pub fn next_packet<'a>(&self, slice: &'a [u8]) -> PcapResult<(&'a [u8], PcapPacket<'a>)> {
         match self.header.endianness {
             Endianness::Big => PcapPacket::from_slice::<BigEndian>(slice, self.header.ts_resolution, self.header.snaplen),
             Endianness::Little => PcapPacket::from_slice::<LittleEndian>(slice, self.header.ts_resolution, self.header.snaplen),
+        }
+    }
+
+    /// Returns the next packet and the remainder.
+    pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> PcapResult<(&'a [u8], RawPcapPacket<'a>)> {
+        match self.header.endianness {
+            Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),
+            Endianness::Little => RawPcapPacket::from_slice::<LittleEndian>(slice),
         }
     }
 

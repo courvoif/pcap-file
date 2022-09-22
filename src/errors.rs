@@ -29,10 +29,6 @@ pub enum PcapError {
     /// Invalid interface ID (only for Pcap NG)
     #[error("No corresponding interface id: {0}")]
     InvalidInterfaceId(u32),
-
-    /// Packet length > snaplen
-    #[error("The packet length is greater than the snaplen")]
-    InvalidPacketLength,
 }
 
 impl From<std::io::Error> for PcapError {
