@@ -3,9 +3,7 @@ use libfuzzer_sys::fuzz_target;
 use pcap_file::PcapReader;
 
 fuzz_target!(|data: &[u8]| {
-    if let Ok(pcap_reader) = PcapReader::new(data) {
-        for _ in pcap_reader {
-
-        }
+    if let Ok(mut pcap_reader) = PcapReader::new(data) {
+        while let Some(_packet) = pcap_reader.next_packet() {}
     }
 });

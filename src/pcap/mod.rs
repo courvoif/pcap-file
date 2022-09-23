@@ -1,3 +1,5 @@
+//! Contains the Pcap parser, reader and writer
+
 mod header;
 mod packet;
 mod parser;

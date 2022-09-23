@@ -12,19 +12,18 @@ It also provides several **parsers** for the Pcap file format.
 
 ### Example: PcapReader
 ```rust
- use std::fs::File;
- use pcap_file::pcap::PcapReader;
+use std::fs::File;
+use pcap_file::pcap::PcapReader;
 
- let file_in = File::open("test.pcap").expect("Error opening file");
- let pcap_reader = PcapReader::new(file_in).unwrap();
+let file_in = File::open("test.pcap").expect("Error opening file");
+let mut pcap_reader = PcapReader::new(file_in).unwrap();
 
- // Read test.pcap
- for pcap in pcap_reader {
+// Read test.pcap
+while let Some(pkt) = pcap_reader.next_packet() {
+    //Check if there is no error
+    let pkt = pkt.unwrap();
 
-     //Check if there is no error
-     let pcap = pcap.unwrap();
-
-     //Do something
+    //Do something
  }
 ```
 
@@ -40,18 +39,14 @@ use std::fs::File;
 use pcap_file::pcapng::PcapNgReader;
 
 let file_in = File::open("test.pcapng").expect("Error opening file");
-let pcapng_reader = PcapNgReader::new(file_in).unwrap();
+let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
 
 // Read test.pcapng
-for block in pcapng_reader {
-
-    //Check if there is no error
+while let Some(block) = pcapng_reader.next_block() {
+    // Check if there is no error
     let block = block.unwrap();
 
-    //Parse block content
-    let parsed_block = block.parsed().unwrap();
-
-    //Do something
+    //  Do something
 }
 ```
 

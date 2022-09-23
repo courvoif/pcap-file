@@ -1,16 +1,23 @@
-use crate::pcapng::blocks::opts_from_slice;
-use crate::errors::PcapError;
-use byteorder::{ByteOrder, ReadBytesExt};
-use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption};
+//! Packet Block.
+
 use std::borrow::Cow;
+use std::io::{Result as IoResult, Write};
+
+use byteorder_slice::byteorder::WriteBytesExt;
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
+
+use crate::errors::PcapError;
+
+use super::block_common::{PcapNgBlock, Block};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
 
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct PacketBlock<'a> {
-
     /// It specifies the interface this packet comes from.
     pub interface_id: u16,
 
@@ -33,22 +40,20 @@ pub struct PacketBlock<'a> {
     pub data: Cow<'a, [u8]>,
 
     /// Options
-    pub options: Vec<PacketOption<'a>>
+    pub options: Vec<PacketOption<'a>>,
 }
 
-impl<'a> PacketBlock<'a> {
-
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
-
+impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
+    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 20 {
             return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
         }
 
-        let interface_id = slice.read_u16::<B>()?;
-        let drop_count = slice.read_u16::<B>()?;
-        let timestamp = slice.read_u64::<B>()?;
-        let captured_len = slice.read_u32::<B>()?;
-        let original_len = slice.read_u32::<B>()?;
+        let interface_id = slice.read_u16::<B>().unwrap();
+        let drop_count = slice.read_u16::<B>().unwrap();
+        let timestamp = slice.read_u64::<B>().unwrap();
+        let captured_len = slice.read_u32::<B>().unwrap();
+        let original_len = slice.read_u32::<B>().unwrap();
 
         let pad_len = (4 - (captured_len as usize % 4)) % 4;
         let tot_len = captured_len as usize + pad_len;
@@ -60,7 +65,7 @@ impl<'a> PacketBlock<'a> {
         let data = &slice[..captured_len as usize];
         slice = &slice[tot_len..];
 
-        let (slice, options) = PacketOption::from_slice::<B>(slice)?;
+        let (slice, options) = PacketOption::opts_from_slice::<B>(slice)?;
         let block = PacketBlock {
             interface_id,
             drop_count,
@@ -68,16 +73,37 @@ impl<'a> PacketBlock<'a> {
             captured_len,
             original_len,
             data: Cow::Borrowed(data),
-            options
+            options,
         };
 
         Ok((slice, block))
     }
+
+    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+        writer.write_u16::<B>(self.interface_id)?;
+        writer.write_u16::<B>(self.drop_count)?;
+        writer.write_u64::<B>(self.timestamp)?;
+        writer.write_u32::<B>(self.captured_len)?;
+        writer.write_u32::<B>(self.original_len)?;
+        writer.write_all(&self.data)?;
+
+        let pad_len = (4 - (self.captured_len as usize % 4)) % 4;
+        writer.write_all(&[0_u8; 3][..pad_len])?;
+
+        let opt_len = PacketOption::write_opts_to::<B, _>(&self.options, writer)?;
+
+        Ok(20 + self.data.len() + pad_len + opt_len)
+    }
+
+    fn into_block(self) -> Block<'a> {
+        Block::Packet(self)
+    }
 }
 
-#[derive(Clone, Debug, IntoOwned)]
-pub enum PacketOption<'a> {
 
+/// Packet Block option
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
+pub enum PacketOption<'a> {
     /// Comment associated with the current block
     Comment(Cow<'a, str>),
 
@@ -94,36 +120,39 @@ pub enum PacketOption<'a> {
     CustomUtf8(CustomUtf8Option<'a>),
 
     /// Unknown option
-    Unknown(UnknownOption<'a>)
+    Unknown(UnknownOption<'a>),
 }
 
 
-impl<'a> PacketOption<'a> {
+impl<'a> PcapNgOption<'a> for PacketOption<'a> {
+    fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+        let opt = match code {
+            1 => PacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            2 => {
+                if slice.len() != 4 {
+                    return Err(PcapError::InvalidField("PacketOption: Flags length != 4"));
+                }
+                PacketOption::Flags(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
+            },
+            3 => PacketOption::Hash(Cow::Borrowed(slice)),
 
-    pub fn from_slice<B:ByteOrder>(slice: &'a [u8]) -> Result<(&'a[u8], Vec<Self>), PcapError> {
+            2988 | 19372 => PacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
+            2989 | 19373 => PacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
 
-        opts_from_slice::<B, _, _>(slice, |mut slice, code, length| {
+            _ => PacketOption::Unknown(UnknownOption::new(code, length, slice)),
+        };
 
-            let opt = match code {
+        Ok(opt)
+    }
 
-                1 => PacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
-                2 => {
-                    if slice.len() != 4 {
-                        return Err(PcapError::InvalidField("PacketOption: Flags length != 4"))
-                    }
-                    PacketOption::Flags(slice.read_u32::<B>()?)
-                },
-                3 => PacketOption::Hash(Cow::Borrowed(slice)),
-
-                2988 | 19372 => PacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-                2989 | 19373 => PacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-                _ => PacketOption::Unknown(UnknownOption::new(code, length, slice))
-            };
-
-            Ok(opt)
-        })
+    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+        match self {
+            PacketOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
+            PacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
+            PacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),
+            PacketOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
+            PacketOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
+            PacketOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
+        }
     }
 }
-
-

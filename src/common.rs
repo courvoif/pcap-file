@@ -1,45 +1,76 @@
-use byteorder::ByteOrder;
+use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
 /// Timestamp resolution of the pcap
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum TsResolution {
+    /// Microsecond resolution
     MicroSecond,
-    NanoSecond
+    /// Nanosecond resolution
+    NanoSecond,
 }
 
 /// Endianness of the pcap
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Endianness {
+    /// Big endian
     Big,
-    Little
+    /// Little endian
+    Little,
 }
 
 impl Endianness {
-
+    /// True if LitlleEndian
     pub fn is_little(self) -> bool {
         match self {
             Endianness::Big => false,
-            Endianness::Little => true
+            Endianness::Little => true,
         }
     }
 
+    /// True if BigEndian
     pub fn is_big(self) -> bool {
         match self {
             Endianness::Big => true,
-            Endianness::Little => false
+            Endianness::Little => false,
         }
     }
 
-    pub fn new<B: ByteOrder>() -> Self {
-
-        if B::read_u32(&[0,0,0,1]) == 1 {
+    /// Return the endianness of the given ByteOrder
+    pub fn from_byteorder<B: ByteOrder>() -> Self {
+        if B::read_u32(&[0, 0, 0, 1]) == 1 {
             Endianness::Big
         }
         else {
             Endianness::Little
         }
     }
+
+    /// Return the native endianness of the system
+    pub fn native() -> Self {
+        #[cfg(target_endian = "big")]
+        return Endianness::Big;
+
+        #[cfg(target_endian = "little")]
+        return Endianness::Little;
+    }
 }
+
+pub(crate) trait RuntimeByteorder: ByteOrder {
+    fn endianness() -> Endianness;
+}
+
+impl RuntimeByteorder for BigEndian {
+    fn endianness() -> Endianness {
+        Endianness::Big
+    }
+}
+
+impl RuntimeByteorder for LittleEndian {
+    fn endianness() -> Endianness {
+        Endianness::Little
+    }
+}
+
 
 /// Data link type
 ///
@@ -47,9 +78,9 @@ impl Endianness {
 ///
 /// See [http://www.tcpdump.org/linktypes.html](http://www.tcpdump.org/linktypes.html)
 #[allow(non_camel_case_types)]
+#[allow(missing_docs)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum DataLink {
-
     NULL,
     ETHERNET,
     AX25,
@@ -158,13 +189,11 @@ pub enum DataLink {
     USB_DARWIN,
     SDLC,
 
-    Unknown(u32)
+    Unknown(u32),
 }
 
 impl From<u32> for DataLink {
-
     fn from(n: u32) -> DataLink {
-
         match n {
             0 => DataLink::NULL,
             1 => DataLink::ETHERNET,
@@ -274,17 +303,14 @@ impl From<u32> for DataLink {
             266 => DataLink::USB_DARWIN,
             268 => DataLink::SDLC,
 
-            _ => DataLink::Unknown(n)
+            _ => DataLink::Unknown(n),
         }
     }
 }
 
 impl From<DataLink> for u32 {
-
     fn from(link: DataLink) -> u32 {
-
         match link {
-
             DataLink::NULL => 0,
             DataLink::ETHERNET => 1,
             DataLink::AX25 => 3,
@@ -393,7 +419,7 @@ impl From<DataLink> for u32 {
             DataLink::USB_DARWIN => 266,
             DataLink::SDLC => 268,
 
-            DataLink::Unknown(n) => n
+            DataLink::Unknown(n) => n,
         }
     }
 }

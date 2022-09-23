@@ -1,15 +1,22 @@
-use crate::pcapng::blocks::common::opts_from_slice;
-use crate::errors::PcapError;
-use byteorder::{ByteOrder, ReadBytesExt};
-use crate::pcapng::{UnknownOption, CustomUtf8Option, CustomBinaryOption};
+//! Interface Statistics Block.
+
 use std::borrow::Cow;
+use std::io::{Result as IoResult, Write};
+
+use byteorder_slice::byteorder::WriteBytesExt;
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
+
+use crate::errors::PcapError;
+
+use super::block_common::{PcapNgBlock, Block};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
 
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct InterfaceStatisticsBlock<'a> {
-
     /// Specifies the interface these statistics refers to.
     /// The correct interface will be the one whose Interface Description Block (within the current Section of the file)
     /// is identified by same number of this field.
@@ -21,34 +28,41 @@ pub struct InterfaceStatisticsBlock<'a> {
     pub timestamp: u64,
 
     /// Options
-    pub options: Vec<InterfaceStatisticsOption<'a>>
+    pub options: Vec<InterfaceStatisticsOption<'a>>,
 }
 
-impl<'a> InterfaceStatisticsBlock<'a> {
-
-    pub fn from_slice<B:ByteOrder>(mut slice: &'a[u8]) -> Result<(&'a[u8], Self), PcapError> {
-
+impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
+    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&[u8], Self), PcapError> {
         if slice.len() < 12 {
             return Err(PcapError::InvalidField("InterfaceStatisticsBlock: block length < 12"));
         }
 
-        let interface_id = slice.read_u32::<B>()? as u32;
-        let timestamp = slice.read_u64::<B>()?;
-        let (slice, options) = InterfaceStatisticsOption::from_slice::<B>(slice)?;
+        let interface_id = slice.read_u32::<B>().unwrap();
+        let timestamp = slice.read_u64::<B>().unwrap();
+        let (slice, options) = InterfaceStatisticsOption::opts_from_slice::<B>(slice)?;
 
-        let block = InterfaceStatisticsBlock {
-            interface_id,
-            timestamp,
-            options
-        };
+        let block = InterfaceStatisticsBlock { interface_id, timestamp, options };
 
         Ok((slice, block))
     }
+
+    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+        writer.write_u32::<B>(self.interface_id)?;
+        writer.write_u64::<B>(self.timestamp)?;
+
+        let opt_len = InterfaceStatisticsOption::write_opts_to::<B, _>(&self.options, writer)?;
+        Ok(12 + opt_len)
+    }
+
+    fn into_block(self) -> Block<'a> {
+        Block::InterfaceStatistics(self)
+    }
 }
 
-#[derive(Clone, Debug, IntoOwned)]
-pub enum InterfaceStatisticsOption<'a> {
 
+/// The Interface Statistics Block options
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
+pub enum InterfaceStatisticsOption<'a> {
     /// The opt_comment option is a UTF-8 string containing human-readable comment text
     /// that is associated to the current block.
     Comment(Cow<'a, str>),
@@ -86,34 +100,43 @@ pub enum InterfaceStatisticsOption<'a> {
     CustomUtf8(CustomUtf8Option<'a>),
 
     /// Unknown option
-    Unknown(UnknownOption<'a>)
+    Unknown(UnknownOption<'a>),
 }
 
-impl<'a> InterfaceStatisticsOption<'a> {
+impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
+    fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+        let opt = match code {
+            1 => InterfaceStatisticsOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            2 => InterfaceStatisticsOption::IsbStartTime(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            3 => InterfaceStatisticsOption::IsbEndTime(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            5 => InterfaceStatisticsOption::IsbIfDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            6 => InterfaceStatisticsOption::IsbFilterAccept(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
 
-    fn from_slice<B:ByteOrder>(slice: &'a[u8]) -> Result<(&'a [u8], Vec<Self>), PcapError> {
+            2988 | 19372 => InterfaceStatisticsOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
+            2989 | 19373 => InterfaceStatisticsOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
 
-        opts_from_slice::<B, _, _>(slice, |mut slice, code, length| {
+            _ => InterfaceStatisticsOption::Unknown(UnknownOption::new(code, length, slice)),
+        };
 
-            let opt = match code {
+        Ok(opt)
+    }
 
-                1 => InterfaceStatisticsOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
-                2 => InterfaceStatisticsOption::IsbStartTime(slice.read_u64::<B>()?),
-                3 => InterfaceStatisticsOption::IsbEndTime(slice.read_u64::<B>()?),
-                4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>()?),
-                5 => InterfaceStatisticsOption::IsbIfDrop(slice.read_u64::<B>()?),
-                6 => InterfaceStatisticsOption::IsbFilterAccept(slice.read_u64::<B>()?),
-                7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>()?),
-                8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>()?),
-
-                2988 | 19372 => InterfaceStatisticsOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-                2989 | 19373 => InterfaceStatisticsOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-                _ => InterfaceStatisticsOption::Unknown(UnknownOption::new(code, length, slice))
-            };
-
-            Ok(opt)
-        })
+    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+        match self {
+            InterfaceStatisticsOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
+            InterfaceStatisticsOption::IsbStartTime(a) => a.write_opt_to::<B, W>(2, writer),
+            InterfaceStatisticsOption::IsbEndTime(a) => a.write_opt_to::<B, W>(3, writer),
+            InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt_to::<B, W>(4, writer),
+            InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt_to::<B, W>(5, writer),
+            InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt_to::<B, W>(6, writer),
+            InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt_to::<B, W>(7, writer),
+            InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt_to::<B, W>(8, writer),
+            InterfaceStatisticsOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
+            InterfaceStatisticsOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
+            InterfaceStatisticsOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
+        }
     }
 }
-

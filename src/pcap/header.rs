@@ -1,19 +1,16 @@
-use crate::errors::*;
-
 use std::io::Write;
-use std::io::Read;
-use byteorder::{BigEndian, LittleEndian, ByteOrder, WriteBytesExt, ReadBytesExt};
 
+use byteorder_slice::byteorder::WriteBytesExt;
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
+
+use crate::errors::*;
 use crate::{DataLink, Endianness, TsResolution};
 
 
 /// Pcap Global Header
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PcapHeader {
-
-    /// Magic number
-    pub magic_number: u32,
-
     /// Major version number
     pub version_major: u16,
 
@@ -30,195 +27,113 @@ pub struct PcapHeader {
     pub snaplen: u32,
 
     /// DataLink type (first layer in the packet)
-    pub datalink: DataLink
+    pub datalink: DataLink,
+
+    /// Timestamp resolution of the pcap (microsecond or nanosecond)
+    pub ts_resolution: TsResolution,
+
+    /// Endianness of the pcap (excluding the packet data)
+    pub endianness: Endianness,
 }
 
 impl PcapHeader {
-
-    /// Creates a new `PcapHeader` from a reader
+    /// Creates a new [`PcapHeader`] from a slice of bytes
     ///
     /// Returns an error if the reader doesn't contain a valid pcap
     /// or if there is a reading error.
-    pub fn from_reader<R: Read>(reader: &mut R) -> ResultParsing<PcapHeader> {
+    ///
+    /// `PcapError::IncompleteBuffer` indicates that there is not enough data in the buffer
+    pub fn from_slice(mut slice: &[u8]) -> PcapResult<(&[u8], PcapHeader)> {
+        // Check that slice.len() > PcapHeader length
+        if slice.len() < 24 {
+            return Err(PcapError::IncompleteBuffer);
+        }
 
-        let magic_number = reader.read_u32::<BigEndian>()?;
+        let magic_number = slice.read_u32::<BigEndian>().unwrap();
 
         match magic_number {
-
-            0xa1b2c3d4 | 0xa1b23c4d => return init_pcap_header::<_, BigEndian>(reader, magic_number),
-            0xd4c3b2a1 | 0x4d3cb2a1 => return init_pcap_header::<_, LittleEndian>(reader, magic_number),
-            _ => return Err(PcapError::InvalidField("PcapHeader wrong magic number"))
+            0xA1B2C3D4 => return init_pcap_header::<BigEndian>(slice, TsResolution::MicroSecond, Endianness::Big),
+            0xA1B23C4D => return init_pcap_header::<BigEndian>(slice, TsResolution::NanoSecond, Endianness::Big),
+            0xD4C3B2A1 => return init_pcap_header::<LittleEndian>(slice, TsResolution::MicroSecond, Endianness::Little),
+            0x4D3CB2A1 => return init_pcap_header::<LittleEndian>(slice, TsResolution::NanoSecond, Endianness::Little),
+            _ => return Err(PcapError::InvalidField("PcapHeader: wrong magic number")),
         };
 
-        // Inner function used for the initialisation of the `PcapHeader`
-        fn init_pcap_header<R: Read, B: ByteOrder>(reader: &mut R, magic_number:u32) -> ResultParsing<PcapHeader> {
+        // Inner function used for the initialisation of the `PcapHeader`.
+        // Must check the srcclength before calling it.
+        fn init_pcap_header<B: ByteOrder>(
+            mut src: &[u8],
+            ts_resolution: TsResolution,
+            endianness: Endianness,
+        ) -> PcapResult<(&[u8], PcapHeader)> {
+            let header = PcapHeader {
+                version_major: src.read_u16::<B>().unwrap(),
+                version_minor: src.read_u16::<B>().unwrap(),
+                ts_correction: src.read_i32::<B>().unwrap(),
+                ts_accuracy: src.read_u32::<B>().unwrap(),
+                snaplen: src.read_u32::<B>().unwrap(),
+                datalink: DataLink::from(src.read_u32::<B>().unwrap()),
+                ts_resolution,
+                endianness,
+            };
 
-            Ok(
-                PcapHeader {
-
-                    magic_number,
-                    version_major : reader.read_u16::<B>()?,
-                    version_minor : reader.read_u16::<B>()?,
-                    ts_correction : reader.read_i32::<B>()?,
-                    ts_accuracy : reader.read_u32::<B>()?,
-                    snaplen : reader.read_u32::<B>()?,
-                    datalink : DataLink::from(reader.read_u32::<B>()?)
-                }
-            )
+            Ok((src, header))
         }
     }
 
-    /// Creates a new `PcapHeader` from a slice of bytes
-     ///
-     /// Returns an error if the reader doesn't contain a valid pcap
-     /// or if there is a reading error.
-     ///
-     /// `PcapError::IncompleteBuffer` indicates that there is not enough data in the buffer
-    pub fn from_slice(mut slice: &[u8]) -> ResultParsing<(&[u8], PcapHeader)> {
-
-        if slice.len() < 24 {
-            return Err(PcapError::IncompleteBuffer(24 - slice.len()))
-        }
-
-        let header = PcapHeader::from_reader(&mut slice)?;
-
-        Ok((slice, header))
-    }
-
-    /// Set the timestamp resolution to ts_resolution by modifying the magic_number
-    /// Preserve its endianness
-    pub fn set_ts_resolution(&mut self, ts_resolution: TsResolution) {
-        use TsResolution::*;
-
-        let mut new_magic: u32 = match ts_resolution {
-            MicroSecond => 0xa1b2c3d4,
-            NanoSecond => 0xa1b23c4d,
+    /// Write a [`PcapHeader`] to a writer.
+    ///
+    /// Uses the endianness of the header.
+    pub fn write_to<W: Write>(&self, writer: &mut W) -> PcapResult<usize> {
+        return match self.endianness {
+            Endianness::Big => write_header::<_, BigEndian>(self, writer),
+            Endianness::Little => write_header::<_, LittleEndian>(self, writer),
         };
 
-        if self.endianness().is_little() {
-            new_magic = new_magic.swap_bytes();
-        }
+        fn write_header<W: Write, B: ByteOrder>(header: &PcapHeader, writer: &mut W) -> PcapResult<usize> {
+            let magic_number = match header.ts_resolution {
+                TsResolution::MicroSecond => 0xA1B2C3D4,
+                TsResolution::NanoSecond => 0xA1B23C4D,
+            };
 
-        self.magic_number = new_magic;
-    }
+            writer.write_u32::<B>(magic_number).map_err(|e| PcapError::IoError(e))?;
+            writer.write_u16::<B>(header.version_major).map_err(|e| PcapError::IoError(e))?;
+            writer.write_u16::<B>(header.version_minor).map_err(|e| PcapError::IoError(e))?;
+            writer.write_i32::<B>(header.ts_correction).map_err(|e| PcapError::IoError(e))?;
+            writer.write_u32::<B>(header.ts_accuracy).map_err(|e| PcapError::IoError(e))?;
+            writer.write_u32::<B>(header.snaplen).map_err(|e| PcapError::IoError(e))?;
+            writer.write_u32::<B>(header.datalink.into()).map_err(|e| PcapError::IoError(e))?;
 
-    /// Change the endianness of the magic_number
-    pub fn set_endianness(&mut self, endianness: Endianness) {
-
-        if self.endianness() != endianness {
-            self.magic_number = self.magic_number.swap_bytes();
-        }
-    }
-
-    /// Write a `PcapHeader` to a writer.
-    ///
-    /// Writes 24o in the writer on success.
-    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> ResultParsing<()> {
-
-        //The magic number is always read in BigEndian so it's always written in BigEndian too
-        writer.write_u32::<BigEndian>(self.magic_number)?;
-        writer.write_u16::<B>(self.version_major)?;
-        writer.write_u16::<B>(self.version_minor)?;
-        writer.write_i32::<B>(self.ts_correction)?;
-        writer.write_u32::<B>(self.ts_accuracy)?;
-        writer.write_u32::<B>(self.snaplen)?;
-        writer.write_u32::<B>(self.datalink.into())?;
-
-        Ok(())
-    }
-
-    /// Return the endianness of the pcap
-    ///
-    /// # Panics
-    ///
-    /// Panics if the magic number is invalid
-    pub fn endianness(&self) -> Endianness {
-
-        match self.magic_number {
-
-            0xa1b2c3d4 | 0xa1b23c4d => Endianness::Big,
-            0xd4c3b2a1 | 0x4d3cb2a1 => Endianness::Little,
-            _ => unreachable!("Wrong magic number, can't get the header's endianness")
-        }
-    }
-
-    /// Return the timestamp resolution of the pcap
-    ///
-    /// # Panics
-    ///
-    /// Panics if the magic number is invalid
-    pub fn ts_resolution(&self) -> TsResolution {
-
-        match self.magic_number {
-
-            0xa1b2c3d4 | 0xd4c3b2a1 => TsResolution::MicroSecond,
-            0xa1b23c4d | 0x4d3cb2a1 => TsResolution::NanoSecond,
-            _ => unreachable!("Wrong magic number, can't get the header's timestamp resolution")
-        }
-    }
-
-    ///////// Deprecated /////////
-
-    /// Convert a `PcapHeader` to a `Vec<u8>`.
-    #[deprecated(since="1.0.0", note="Please use `write_to` instead")]
-    pub fn to_array<B: ByteOrder>(&self) -> ResultParsing<Vec<u8>> {
-
-        let mut out = Vec::with_capacity(24);
-
-        self.write_to::<_, B>(&mut out)?;
-
-        Ok(out)
-    }
-
-    /// Creates a new `PcapHeader` with the following parameters:
-    ///
-    /// ```rust,ignore
-    /// PcapHeader {
-    ///
-    ///     magic_number : 0xa1b2c3d4,
-    ///     version_major : 2,
-    ///     version_minor : 4,
-    ///     ts_correction : 0,
-    ///     ts_accuracy : 0,
-    ///     snaplen : 65535,
-    ///     datalink : #datalink
-    /// };
-    /// ```
-    #[deprecated(since="1.0.0", note="Please use the Default struct constructor instead, will be removed in 1.0")]
-    pub fn with_datalink(datalink: DataLink) -> PcapHeader {
-
-        PcapHeader {
-            datalink,
-            ..Default::default()
+            Ok(24)
         }
     }
 }
 
-/// Creates a new `PcapHeader` with the default parameters:
+/// Creates a new [`PcapHeader`] with the default parameters:
 ///
 /// ```rust,ignore
 /// PcapHeader {
-///
-///     magic_number : 0xa1b2c3d4,
-///     version_major : 2,
-///     version_minor : 4,
-///     ts_correction : 0,
-///     ts_accuracy : 0,
-///     snaplen : 65535,
-///     datalink : DataLink::ETHERNET
+///     version_major: 2,
+///     version_minor: 4,
+///     ts_correction: 0,
+///     ts_accuracy: 0,
+///     snaplen: 65535,
+///     datalink: DataLink::ETHERNET,
+///     ts_resolution: TsResolution::MicroSecond,
+///     endianness: Endianness::Big
 /// };
 /// ```
 impl Default for PcapHeader {
     fn default() -> Self {
         PcapHeader {
-            magic_number: 0xa1b2c3d4,
             version_major: 2,
             version_minor: 4,
             ts_correction: 0,
             ts_accuracy: 0,
             snaplen: 65535,
             datalink: DataLink::ETHERNET,
+            ts_resolution: TsResolution::MicroSecond,
+            endianness: Endianness::Big,
         }
     }
 }
-

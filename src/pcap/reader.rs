@@ -1,17 +1,13 @@
-use byteorder::{BigEndian, LittleEndian};
-
-use crate::{
-    Endianness,
-    errors::*,
-    pcap::Packet,
-    pcap::PcapHeader,
-    peek_reader::PeekReader
-};
-
 use std::io::Read;
 
+use crate::errors::*;
+use crate::pcap::{PcapHeader, PcapPacket};
+use crate::read_buffer::ReadBuffer;
 
-/// Wraps another reader and uses it to read a Pcap formated stream.
+use super::{RawPcapPacket, PcapParser};
+
+
+/// Reads a pcap from a reader.
 ///
 /// It implements the Iterator trait in order to read one packet at a time
 ///
@@ -19,29 +15,27 @@ use std::io::Read;
 ///
 /// ```rust,no_run
 /// use std::fs::File;
+///
 /// use pcap_file::pcap::PcapReader;
 ///
 /// let file_in = File::open("test.pcap").expect("Error opening file");
-/// let pcap_reader = PcapReader::new(file_in).unwrap();
+/// let mut pcap_reader = PcapReader::new(file_in).unwrap();
 ///
 /// // Read test.pcap
-/// for pcap in pcap_reader {
-///
+/// while let Some(pkt) = pcap_reader.next_packet() {
 ///     //Check if there is no error
-///     let pcap = pcap.unwrap();
+///     let pkt = pkt.unwrap();
 ///
 ///     //Do something
 /// }
 /// ```
 #[derive(Debug)]
-pub struct PcapReader<T: Read> {
-
-    pub header: PcapHeader,
-    reader: PeekReader<T>
+pub struct PcapReader<R: Read> {
+    parser: PcapParser,
+    reader: ReadBuffer<R>,
 }
 
-impl <T:Read> PcapReader<T>{
-
+impl<R: Read> PcapReader<R> {
     /// Create a new PcapReader from an existing reader.
     /// This function read the global pcap header of the file to verify its integrity.
     ///
@@ -54,64 +48,56 @@ impl <T:Read> PcapReader<T>{
     /// # Examples
     /// ```rust,no_run
     /// use std::fs::File;
+    ///
     /// use pcap_file::pcap::PcapReader;
     ///
     /// let file_in = File::open("test.pcap").expect("Error opening file");
     /// let pcap_reader = PcapReader::new(file_in).unwrap();
     /// ```
-    pub fn new(mut reader:T) -> ResultParsing<PcapReader<T>> {
+    pub fn new(reader: R) -> Result<PcapReader<R>, PcapError> {
+        let mut reader = ReadBuffer::new(reader);
+        let parser = reader.parse_with(PcapParser::new)?;
 
-        Ok(
-            PcapReader {
-
-                header : PcapHeader::from_reader(&mut reader)?,
-                reader : PeekReader::new(reader)
-            }
-        )
+        Ok(PcapReader { parser, reader })
     }
 
     /// Consumes the `PcapReader`, returning the wrapped reader.
-    pub fn into_reader(self) -> T{
-        self.reader.inner
+    pub fn into_reader(self) -> R {
+        self.reader.into_inner()
     }
 
-    /// Gets a reference to the underlying reader.
-    ///
-    /// It is not advised to directly read from the underlying reader.
-    pub fn get_ref(&self) -> &T{
-        &self.reader.inner
-    }
-
-    /// Gets a mutable reference to the underlying reader.
-    ///
-    /// It is not advised to directly read from the underlying reader.
-    pub fn get_mut(&mut self) -> &mut T{
-        &mut self.reader.inner
-    }
-}
-
-impl <T:Read> Iterator for PcapReader<T> {
-
-    type Item = ResultParsing<Packet<'static>>;
-
-    fn next(&mut self) -> Option<ResultParsing<Packet<'static>>> {
-
-        match self.reader.is_empty() {
-            Ok(is_empty) if is_empty => {
-                return None;
+    /// Returns the next [`PcapPacket`]
+    pub fn next_packet(&mut self) -> Option<Result<PcapPacket, PcapError>> {
+        match self.reader.has_data_left() {
+            Ok(has_data) => {
+                if has_data {
+                    Some(self.reader.parse_with(|src| self.parser.next_packet(src)))
+                }
+                else {
+                    None
+                }
             },
-            Err(err) => return Some(Err(err.into())),
-            _ => {}
+            Err(e) => Some(Err(PcapError::IoError(e))),
         }
-
-        let ts_resolution = self.header.ts_resolution();
-
-        Some(
-            match self.header.endianness() {
-                Endianness::Big => Packet::from_reader::<_, BigEndian>(&mut self.reader, ts_resolution),
-                Endianness::Little => Packet::from_reader::<_, LittleEndian>(&mut self.reader, ts_resolution)
-            }
-        )
     }
 
+    /// Returns the next [`RawPcapPacket`]
+    pub fn next_raw_packet(&mut self) -> Option<Result<RawPcapPacket, PcapError>> {
+        match self.reader.has_data_left() {
+            Ok(has_data) => {
+                if has_data {
+                    Some(self.reader.parse_with(|src| self.parser.next_raw_packet(src)))
+                }
+                else {
+                    None
+                }
+            },
+            Err(e) => Some(Err(PcapError::IoError(e))),
+        }
+    }
+
+    /// Returns the global header of the pcap
+    pub fn header(&self) -> PcapHeader {
+        self.parser.header()
+    }
 }

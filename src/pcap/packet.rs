@@ -1,205 +1,168 @@
-use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
+use std::borrow::Cow;
+use std::io::Write;
+use std::time::Duration;
 
-use crate::{
-    errors::*,
-    TsResolution
-};
+use byteorder_slice::byteorder::WriteBytesExt;
+use byteorder_slice::result::ReadSlice;
+use byteorder_slice::ByteOrder;
+use derive_into_owned::IntoOwned;
 
-use std::{
-    borrow::Cow,
-    io::Read,
-    io::Write,
-    time::Duration
-};
+use crate::errors::*;
+use crate::TsResolution;
 
-/// Describes a pcap packet header.
-#[derive(Copy, Clone, Default, Debug, Eq, PartialEq)]
-pub struct PacketHeader {
-    /// Timestamp in seconds
-    pub ts_sec: u32,
 
-    /// Nanosecond part of the timestamp
-    pub ts_nsec: u32,
-
-    /// Number of octets of the packet saved in file
-    pub incl_len: u32,
-
-    /// Original length of the packet on the wire
-    pub orig_len: u32
+/// Pcap packet.
+///
+/// The payload can be owned or borrowed.
+#[derive(Clone, Debug, IntoOwned)]
+pub struct PcapPacket<'a> {
+    /// Timestamp EPOCH of the packet with a nanosecond resolution
+    pub timestamp: Duration,
+    /// Original length of the packet when captured on the wire
+    pub orig_len: u32,
+    /// Payload, owned or borrowed, of the packet
+    pub data: Cow<'a, [u8]>,
 }
 
-impl PacketHeader {
-    /// Create a new `PacketHeader` with the given parameters.
-    pub fn new(ts_sec: u32, ts_nsec: u32, incl_len:u32, orig_len:u32) -> PacketHeader {
-        PacketHeader {
-            ts_sec,
-            ts_nsec,
-            incl_len,
-            orig_len
-        }
+impl<'a> PcapPacket<'a> {
+    /// Create a new borrowed `Packet` with the given parameters.
+    pub fn new(timestamp: Duration, orig_len: u32, data: &'a [u8]) -> PcapPacket<'a> {
+        PcapPacket { timestamp, orig_len, data: Cow::Borrowed(data) }
     }
 
-    /// Create a new `PacketHeader` from a reader.
-    pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R, ts_resolution: TsResolution) -> ResultParsing<PacketHeader> {
-        // Read and validate timestamps
-        let ts_sec = reader.read_u32::<B>()?;
-        let mut ts_nsec = reader.read_u32::<B>()?;
+    /// Create a new owned `Packet` with the given parameters.
+    pub fn new_owned(timestamp: Duration, orig_len: u32, data: Vec<u8>) -> PcapPacket<'static> {
+        PcapPacket { timestamp, orig_len, data: Cow::Owned(data) }
+    }
+
+    /// Parse a new borrowed [`PcapPacket`] from a slice.
+    pub fn from_slice<B: ByteOrder>(slice: &'a [u8], ts_resolution: TsResolution, snap_len: u32) -> PcapResult<(&'a [u8], PcapPacket<'a>)> {
+        let (rem, raw_packet) = RawPcapPacket::from_slice::<B>(slice)?;
+        let s = Self::try_from_raw_packet(raw_packet, ts_resolution, snap_len)?;
+
+        Ok((rem, s))
+    }
+
+    /// Write a [`PcapPacket`] to a writer.
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution, snap_len: u32) -> PcapResult<usize> {
+        let ts_sec = self.timestamp.as_secs().try_into().map_err(|_| PcapError::InvalidField("PcapPacket: timestamp_secs > u32::MAX"))?;
+        let mut ts_frac = self.timestamp.subsec_nanos();
         if ts_resolution == TsResolution::MicroSecond {
-            ts_nsec = ts_nsec.checked_mul(1000).ok_or(PcapError::InvalidField("Packet Header ts_microsecond can't be converted to nanosecond"))?;
-        }
-        if ts_nsec > 1_000_000_000 {
-            return Err(PcapError::InvalidField("Packet Header ts_nanosecond > 1_000_000_000"));
+            ts_frac /= 1000;
         }
 
-        let incl_len = reader.read_u32::<B>()?;
-        let orig_len = reader.read_u32::<B>()?;
+        let incl_len = self.data.len().try_into().map_err(|_| PcapError::InvalidField("PcapPacket: incl_len > u32::MAX"))?;
+        let orig_len = self.orig_len;
 
-        if incl_len > 0xFFFF {
-            return Err(PcapError::InvalidField("PacketHeader incl_len > 0xFFFF"));
+        if incl_len > snap_len {
+            return Err(PcapError::InvalidField("PcapPacket: incl_len > snap_len"));
         }
 
-        if orig_len > 0xFFFF {
-            return Err(PcapError::InvalidField("PacketHeader orig_len > 0xFFFF"));
+        if incl_len > orig_len {
+            return Err(PcapError::InvalidField("PcapPacket: incl_len > orig_len"));
+        }
+
+        let raw_packet = RawPcapPacket {
+            ts_sec,
+            ts_frac,
+            incl_len,
+            orig_len,
+            data: Cow::Borrowed(&self.data[..]),
+        };
+
+        raw_packet.write_to::<_, B>(writer)
+    }
+
+    /// Try to create a [`PcapPacket`] from a [`RawPcapPacket`]
+    pub fn try_from_raw_packet(raw: RawPcapPacket<'a>, ts_resolution: TsResolution, snap_len: u32) -> PcapResult<Self> {
+        // Validate timestamps //
+        let ts_sec = raw.ts_sec;
+        let mut ts_nsec = raw.ts_frac;
+        if ts_resolution == TsResolution::MicroSecond {
+            ts_nsec = ts_nsec.checked_mul(1000).ok_or(PcapError::InvalidField("PacketHeader ts_nanosecond is invalid"))?;
+        }
+        if ts_nsec >= 1_000_000_000 {
+            return Err(PcapError::InvalidField("PacketHeader ts_nanosecond >= 1_000_000_000"));
+        }
+
+        let incl_len = raw.incl_len;
+        let orig_len = raw.orig_len;
+
+        if incl_len > snap_len {
+            return Err(PcapError::InvalidField("PacketHeader incl_len > snap_len"));
+        }
+
+        if orig_len > snap_len {
+            return Err(PcapError::InvalidField("PacketHeader orig_len > snap_len"));
         }
 
         if incl_len > orig_len {
             return Err(PcapError::InvalidField("PacketHeader incl_len > orig_len"));
         }
 
-
-        Ok(
-            PacketHeader {
-
-                ts_sec,
-                ts_nsec,
-                incl_len,
-                orig_len
-            }
-        )
-    }
-
-    /// Create a new `PacketHeader` from a slice.
-    pub fn from_slice<B: ByteOrder>(mut slice: &[u8], ts_resolution: TsResolution) -> ResultParsing<(&[u8], PacketHeader)> {
-
-        //Header len
-        if slice.len() < 16 {
-            return Err(PcapError::IncompleteBuffer(16 - slice.len()));
-        }
-
-        let header = Self::from_reader::<_, B>(&mut slice, ts_resolution)?;
-
-        Ok((slice, header))
-    }
-
-    /// Write a `PcapHeader` to a writer.
-    ///
-    /// Writes 24B in the writer on success.
-    pub fn write_to< W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> ResultParsing<()> {
-        let mut ts_unsec = self.ts_nsec;
-        if ts_resolution == TsResolution::MicroSecond{
-            ts_unsec /= 1000;
-        }
-        writer.write_u32::<B>(self.ts_sec)?;
-        writer.write_u32::<B>(ts_unsec)?;
-        writer.write_u32::<B>(self.incl_len)?;
-        writer.write_u32::<B>(self.orig_len)?;
-
-        Ok(())
-    }
-
-    /// Get the timestamp of the packet as a Duration
-    pub fn timestamp(&self) -> Duration {
-        Duration::new(self.ts_sec.into(), self.ts_nsec)
+        Ok(PcapPacket { timestamp: Duration::new(ts_sec as u64, ts_nsec), orig_len, data: raw.data })
     }
 }
 
 
-/// Packet with its header and data.
+/// Raw Pcap packet with its header and data.
+/// The fields of the packet are not validated.
 ///
 /// The payload can be owned or borrowed.
-#[derive(Clone, Debug)]
-pub struct Packet<'a> {
-    /// Header of the packet
-    pub header: PacketHeader,
-
+#[derive(Clone, Debug, IntoOwned)]
+pub struct RawPcapPacket<'a> {
+    /// Timestamp in seconds
+    pub ts_sec: u32,
+    /// Nanosecond or microsecond part of the timestamp
+    pub ts_frac: u32,
+    /// Number of octets of the packet saved in file
+    pub incl_len: u32,
+    /// Original length of the packet on the wire
+    pub orig_len: u32,
     /// Payload, owned or borrowed, of the packet
-    pub data: Cow<'a, [u8]>
+    pub data: Cow<'a, [u8]>,
 }
 
-impl<'a> Packet<'a> {
-    /// Create a new borrowed `Packet` with the given parameters.
-    pub fn new(ts_sec: u32, ts_nsec: u32, data: &'a [u8], orig_len: u32) -> Packet<'a> {
-
-        let header = PacketHeader {
-            ts_sec,
-            ts_nsec,
-            incl_len: data.len() as u32,
-            orig_len
-        };
-
-        Packet {
-            header,
-            data: Cow::Borrowed(data)
-        }
-    }
-
-    /// Create a new owned `Packet` with the given parameters.
-    pub fn new_owned(ts_sec: u32, ts_nsec: u32, data: Vec<u8>, orig_len: u32) -> Packet<'static> {
-        let header = PacketHeader {
-            ts_sec,
-            ts_nsec,
-            incl_len: data.len() as u32,
-            orig_len
-        };
-
-        Packet {
-            header,
-            data: Cow::Owned(data)
-        }
-    }
-
-    /// Create a new owned `Packet` from a reader.
-    pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R, ts_resolution: TsResolution) -> ResultParsing<Packet<'static>> {
-
-        let header = PacketHeader::from_reader::<R, B>(reader, ts_resolution)?;
-
-        let mut bytes = vec![0_u8; header.incl_len as usize];
-        reader.read_exact(&mut bytes)?;
-
-        Ok(
-            Packet {
-
-                header,
-                data : Cow::Owned(bytes)
-            }
-        )
-    }
-
-    /// Create a new borrowed `Packet` from a slice.
-    pub fn from_slice<B: ByteOrder>(slice: &'a[u8], ts_resolution: TsResolution) -> ResultParsing<(&'a[u8], Packet<'a>)> {
-
-        let (slice, header) = PacketHeader::from_slice::<B>(slice, ts_resolution)?;
-        let len = header.incl_len as usize;
-
-        if slice.len() < len {
-            return Err(PcapError::IncompleteBuffer(len - slice.len()));
+impl<'a> RawPcapPacket<'a> {
+    /// Parse a new borrowed [`RawPcapPacket`] from a slice.
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> PcapResult<(&'a [u8], Self)> {
+        // Check header length
+        if slice.len() < 16 {
+            return Err(PcapError::IncompleteBuffer);
         }
 
-        let packet = Packet {
-            header,
-            data : Cow::Borrowed(&slice[..len])
-        };
+        // Read packet header //
+        // Length checks done before //
+        let ts_sec = slice.read_u32::<B>().unwrap();
+        let ts_frac = slice.read_u32::<B>().unwrap();
+        let incl_len = slice.read_u32::<B>().unwrap();
+        let orig_len = slice.read_u32::<B>().unwrap();
 
-        let slice = &slice[len..];
+        let pkt_len = incl_len as usize;
+        if slice.len() < pkt_len {
+            return Err(PcapError::IncompleteBuffer);
+        }
 
-        Ok((slice, packet))
+        let packet = RawPcapPacket { ts_sec, ts_frac, incl_len, orig_len, data: Cow::Borrowed(&slice[..pkt_len]) };
+        let rem = &slice[pkt_len..];
+
+        Ok((rem, packet))
     }
 
-    /// Convert a borrowed `Packet` to an owned one.
-    pub fn to_owned(& self) -> Packet<'static> {
-        Packet {
-            header: self.header,
-            data: Cow::Owned(self.data.as_ref().to_owned())
-        }
+    /// Write a [`RawPcapPacket`] to a writer.
+    /// The fields of the packet are not validated.
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> PcapResult<usize> {
+        writer.write_u32::<B>(self.ts_sec).map_err(|e| PcapError::IoError(e))?;
+        writer.write_u32::<B>(self.ts_frac).map_err(|e| PcapError::IoError(e))?;
+        writer.write_u32::<B>(self.incl_len).map_err(|e| PcapError::IoError(e))?;
+        writer.write_u32::<B>(self.orig_len).map_err(|e| PcapError::IoError(e))?;
+        writer.write_all(&self.data).map_err(|e| PcapError::IoError(e))?;
+
+        Ok(16 + self.data.len())
+    }
+
+    /// Try to convert a [`RawPcapPacket`] into a [`PcapPacket`]
+    pub fn try_into_pcap_packet(self, ts_resolution: TsResolution, snap_len: u32) -> PcapResult<PcapPacket<'a>> {
+        PcapPacket::try_from_raw_packet(self, ts_resolution, snap_len)
     }
 }

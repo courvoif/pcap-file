@@ -1,24 +1,21 @@
 #![allow(clippy::unreadable_literal)]
+#![deny(missing_docs)]
 
-//! This crate contains parsers and readers for Pcap and Pcapng files.
-//! It also contains a writer for Pcap files.
+//! Provides parsers, readers and writers for Pcap and PcapNg files.
 //!
 //! For Pcap files see
-//! [PcapReader](struct.PcapReader.html), [PcapParser](struct.PcapParser.html) and [PcapWriter](struct.PcapWriter.html).
+//! [PcapParser](struct.PcapParser.html), [PcapReader](struct.PcapReader.html) and [PcapWriter](struct.PcapWriter.html).
 //!
 //! For PcapNg files see
-//! [PcapNgReader](struct.PcapNgReader.html) and [PcapNgParser](struct.PcapNgParser.html).
+//! [PcapNgParser](struct.PcapNgParser.html), [PcapNgReader](struct.PcapNgReader.html) and [PcapNgWriter](struct.PcapNgWriter.html).
 
-pub(crate) mod common;
+
 pub use common::*;
-
-pub(crate) mod errors;
 pub use errors::*;
 
+pub(crate) mod common;
+pub(crate) mod errors;
+pub(crate) mod read_buffer;
+
 pub mod pcap;
-pub use pcap::{PcapReader, PcapParser, PcapWriter};
-
 pub mod pcapng;
-pub use pcapng::{PcapNgReader, PcapNgParser};
-
-pub(crate) mod peek_reader;
