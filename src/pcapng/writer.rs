@@ -1,8 +1,12 @@
 use std::io::Write;
 
-use byteorder_slice::{BigEndian, LittleEndian};
+use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
-use crate::pcapng::{Block, InterfaceDescriptionBlock, PcapNgBlock, SectionHeaderBlock};
+use super::blocks::block_common::{Block, PcapNgBlock};
+use super::blocks::interface_description::InterfaceDescriptionBlock;
+use super::blocks::section_header::SectionHeaderBlock;
+use super::blocks::SECTION_HEADER_BLOCK;
+use super::RawBlock;
 use crate::{Endianness, PcapError, PcapResult};
 
 
@@ -37,7 +41,7 @@ pub struct PcapNgWriter<W: Write> {
 }
 
 impl<W: Write> PcapNgWriter<W> {
-    /// Creates a new `PcapNgWriter` from an existing writer.
+    /// Creates a new [`PcapNgWriter`] from an existing writer.
     /// Defaults to the native endianness of the CPU.
     ///
     /// Writes this global pcap header to the file:
@@ -87,14 +91,22 @@ impl<W: Write> PcapNgWriter<W> {
     /// Creates a new `PcapNgWriter` from an existing writer with the given section header
     pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'static>) -> PcapResult<Self> {
         match section.endianness {
-            Endianness::Big => section.clone().into_block().write_to::<BigEndian, _>(&mut writer)?,
-            Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer)?,
+            Endianness::Big => section
+                .clone()
+                .into_block()
+                .write_to::<BigEndian, _>(&mut writer)
+                .map_err(|e| PcapError::IoError(e))?,
+            Endianness::Little => section
+                .clone()
+                .into_block()
+                .write_to::<LittleEndian, _>(&mut writer)
+                .map_err(|e| PcapError::IoError(e))?,
         };
 
         Ok(Self { section, interfaces: vec![], writer })
     }
 
-    /// Writes a `Block`.
+    /// Writes a [`Block`].
     ///
     /// # Examples
     /// ```rust,no_run
@@ -102,9 +114,9 @@ impl<W: Write> PcapNgWriter<W> {
     /// use std::fs::File;
     /// use std::time::Duration;
     ///
-    /// use pcap_file::pcapng::{
-    ///     EnhancedPacketBlock, InterfaceDescriptionBlock, PcapNgBlock, PcapNgWriter,
-    /// };
+    /// use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
+    /// use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
+    /// use pcap_file::pcapng::{PcapNgBlock, PcapNgWriter};
     /// use pcap_file::DataLink;
     ///
     /// let data = [0u8; 10];
@@ -153,12 +165,69 @@ impl<W: Write> PcapNgWriter<W> {
         }
 
         match self.section.endianness {
-            Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(|e| e.into()),
-            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(|e| e.into()),
+            Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(|e| PcapError::IoError(e)),
+            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(|e| PcapError::IoError(e)),
         }
     }
 
-    /// Consumes the `PcapNgWriter`, returning the wrapped writer.
+    /// Writes a [`PcapNgBlock`].
+    ///
+    /// # Examples
+    /// ```rust,no_run
+    /// use std::borrow::Cow;
+    /// use std::fs::File;
+    /// use std::time::Duration;
+    ///
+    /// use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
+    /// use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
+    /// use pcap_file::pcapng::{PcapNgBlock, PcapNgWriter};
+    /// use pcap_file::DataLink;
+    ///
+    /// let data = [0u8; 10];
+    ///
+    /// let interface = InterfaceDescriptionBlock {
+    ///     linktype: DataLink::ETHERNET,
+    ///     snaplen: 0xFFFF,
+    ///     options: vec![],
+    /// };
+    ///
+    /// let packet = EnhancedPacketBlock {
+    ///     interface_id: 0,
+    ///     timestamp: Duration::from_secs(0),
+    ///     original_len: data.len() as u32,
+    ///     data: Cow::Borrowed(&data),
+    ///     options: vec![],
+    /// };
+    ///
+    /// let file = File::create("out.pcap").expect("Error creating file");
+    /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
+    ///
+    /// pcap_ng_writer.write_pcapng_block(interface).unwrap();
+    /// pcap_ng_writer.write_pcapng_block(packet).unwrap();
+    /// ```
+    pub fn write_pcapng_block<'a, B: PcapNgBlock<'a>>(&mut self, block: B) -> PcapResult<usize> {
+        self.write_block(&block.into_block())
+    }
+
+    /// Write a [`RawBlock`].
+    ///
+    /// Doesn't check the validity of the written blocks.
+    pub fn write_raw_block(&mut self, block: &RawBlock) -> PcapResult<usize> {
+        return match self.section.endianness {
+            Endianness::Big => inner::<BigEndian, _>(&mut self.section, block, &mut self.writer),
+            Endianness::Little => inner::<LittleEndian, _>(&mut self.section, block, &mut self.writer),
+        };
+
+        fn inner<B: ByteOrder, W: Write>(section: &mut SectionHeaderBlock, block: &RawBlock, writer: &mut W) -> PcapResult<usize> {
+            if block.type_ == SECTION_HEADER_BLOCK {
+                *section = block.clone().try_into_block::<B>()?.into_owned().into_section_header().unwrap();
+            }
+
+            block.write_to::<B, _>(writer).map_err(|e| PcapError::IoError(e))
+        }
+    }
+
+    /// Consumes the [`PcapNgWriter`], returning the wrapped writer.
     pub fn into_inner(self) -> W {
         self.writer
     }

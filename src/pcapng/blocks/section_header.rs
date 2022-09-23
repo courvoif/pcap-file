@@ -1,3 +1,5 @@
+//! Section Header Block.
+
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
@@ -7,8 +9,10 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
-use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::Endianness;
+
+use super::block_common::{PcapNgBlock, Block};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
 
 /// Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -41,7 +45,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
             return Err(PcapError::InvalidField("SectionHeaderBlock: block length < 16"));
         }
 
-        let magic = slice.read_u32::<BigEndian>()?;
+        let magic = slice.read_u32::<BigEndian>().unwrap();
         let endianness = match magic {
             0x1A2B3C4D => Endianness::Big,
             0x4D3C2B1A => Endianness::Little,
@@ -59,9 +63,9 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
 
         #[allow(clippy::type_complexity)]
         fn parse_inner<B: ByteOrder>(mut slice: &[u8]) -> Result<(&[u8], u16, u16, i64, Vec<SectionHeaderOption>), PcapError> {
-            let maj_ver = slice.read_u16::<B>()?;
-            let min_ver = slice.read_u16::<B>()?;
-            let sec_len = slice.read_i64::<B>()?;
+            let maj_ver = slice.read_u16::<B>().unwrap();
+            let min_ver = slice.read_u16::<B>().unwrap();
+            let sec_len = slice.read_i64::<B>().unwrap();
             let (rem, opts) = SectionHeaderOption::opts_from_slice::<B>(slice)?;
 
             Ok((rem, maj_ver, min_ver, sec_len, opts))

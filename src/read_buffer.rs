@@ -50,13 +50,13 @@ impl<R: Read> ReadBuffer<R> {
                     return Ok(value);
                 },
 
-                Err(PcapError::IncompleteBuffer(_)) => {
+                Err(PcapError::IncompleteBuffer) => {
                     // The parsed data len should never be more than the buffer capacity
                     if buf.len() == self.buffer.len() {
                         return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
                     }
 
-                    let nb_read = self.fill_buf()?;
+                    let nb_read = self.fill_buf().map_err(|e| PcapError::IoError(e))?;
                     if nb_read == 0 {
                         return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
                     }

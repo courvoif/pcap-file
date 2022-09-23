@@ -1,3 +1,5 @@
+//! Enhanced Packet Block (EPB).
+
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 use std::time::Duration;
@@ -7,8 +9,9 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
-use crate::pcapng::{Block, CustomBinaryOption, CustomUtf8Option, PcapNgBlock, PcapNgOption, UnknownOption, WriteOptTo};
 
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
@@ -38,12 +41,12 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
             return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
         }
 
-        let interface_id = slice.read_u32::<B>()?;
-        let timestamp_high = slice.read_u32::<B>()? as u64;
-        let timestamp_low = slice.read_u32::<B>()? as u64;
+        let interface_id = slice.read_u32::<B>().unwrap();
+        let timestamp_high = slice.read_u32::<B>().unwrap() as u64;
+        let timestamp_low = slice.read_u32::<B>().unwrap() as u64;
         let timestamp = (timestamp_high << 32) + timestamp_low;
-        let captured_len = slice.read_u32::<B>()?;
-        let original_len = slice.read_u32::<B>()?;
+        let captured_len = slice.read_u32::<B>().unwrap();
+        let original_len = slice.read_u32::<B>().unwrap();
 
         let pad_len = (4 - (captured_len as usize % 4)) % 4;
         let tot_len = captured_len as usize + pad_len;
@@ -129,14 +132,14 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
                 if slice.len() != 4 {
                     return Err(PcapError::InvalidField("EnhancedPacketOption: Flags length != 4"));
                 }
-                EnhancedPacketOption::Flags(slice.read_u32::<B>()?)
+                EnhancedPacketOption::Flags(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
             },
             3 => EnhancedPacketOption::Hash(Cow::Borrowed(slice)),
             4 => {
                 if slice.len() != 8 {
                     return Err(PcapError::InvalidField("EnhancedPacketOption: DropCount length != 8"));
                 }
-                EnhancedPacketOption::DropCount(slice.read_u64::<B>()?)
+                EnhancedPacketOption::DropCount(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
             },
 
             2988 | 19372 => EnhancedPacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),

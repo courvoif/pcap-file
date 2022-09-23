@@ -2,6 +2,7 @@ use std::io::Write;
 
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
 
+use super::RawPcapPacket;
 use crate::errors::*;
 use crate::pcap::{PcapHeader, PcapPacket};
 use crate::{Endianness, TsResolution};
@@ -62,18 +63,6 @@ impl<W: Write> PcapWriter<W> {
     /// # Errors
     ///
     /// Return an error if the writer can't be written to.
-    ///
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use std::fs::File;
-    ///
-    /// use pcap_file::pcap::PcapWriter;
-    ///
-    /// let file_out = File::create("out.pcap").expect("Error creating file");
-    /// let mut pcap_writer = PcapWriter::new(file_out);
-    /// ```
     pub fn new(writer: W) -> PcapResult<PcapWriter<W>> {
         // Get endianness of current processor
         let tmp = NativeEndian::read_u16(&[0x42, 0x00]);
@@ -139,7 +128,7 @@ impl<W: Write> PcapWriter<W> {
         self.writer
     }
 
-    /// Writes a `Packet`.
+    /// Writes a [`PcapPacket`].
     ///
     /// # Examples
     /// ```rust,no_run
@@ -156,16 +145,18 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// pcap_writer.write_packet(&packet).unwrap();
     /// ```
-    pub fn write_packet(&mut self, packet: &PcapPacket) -> PcapResult<()> {
-        if packet.data.len() > self.snaplen as usize {
-            return Err(PcapError::InvalidPacketLength);
-        }
-
+    pub fn write_packet(&mut self, packet: &PcapPacket) -> PcapResult<usize> {
         match self.endianness {
-            Endianness::Big => packet.write_to::<_, BigEndian>(&mut self.writer, self.ts_resolution)?,
-            Endianness::Little => packet.write_to::<_, LittleEndian>(&mut self.writer, self.ts_resolution)?,
+            Endianness::Big => packet.write_to::<_, BigEndian>(&mut self.writer, self.ts_resolution, self.snaplen),
+            Endianness::Little => packet.write_to::<_, LittleEndian>(&mut self.writer, self.ts_resolution, self.snaplen),
         }
+    }
 
-        Ok(())
+    /// Writes a [`RawPcapPacket`].
+    pub fn write_raw_packet(&mut self, packet: &RawPcapPacket) -> PcapResult<usize> {
+        match self.endianness {
+            Endianness::Big => packet.write_to::<_, BigEndian>(&mut self.writer),
+            Endianness::Little => packet.write_to::<_, LittleEndian>(&mut self.writer),
+        }
     }
 }

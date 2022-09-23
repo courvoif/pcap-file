@@ -1,7 +1,7 @@
 //! Contains the PcapNg parser, reader and writer
 
-pub(crate) mod blocks;
-pub use blocks::*;
+pub mod blocks;
+pub use blocks::{Block, PcapNgBlock, RawBlock};
 
 pub(crate) mod parser;
 pub use parser::*;
