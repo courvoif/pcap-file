@@ -1,0 +1,2 @@
+*.pcap filter=lfs diff=lfs merge=lfs -text
+*.pcapng filter=lfs diff=lfs merge=lfs -text
