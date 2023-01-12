@@ -6,9 +6,8 @@ use std::io::{Result as IoResult, Write};
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
 use crate::errors::PcapError;
-
-use super::block_common::{PcapNgBlock, Block};
 
 
 /// The Systemd Journal Export Block is a lightweight containter for systemd Journal Export Format entry data.

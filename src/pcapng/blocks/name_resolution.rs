@@ -1,6 +1,5 @@
 //! Name Resolution Block (NRB).
 
-
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
@@ -9,10 +8,10 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
 
-use super::block_common::{PcapNgBlock, Block};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
 /// (present in the captured packets) and their corresponding canonical names and it is optional.
@@ -52,7 +51,6 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
             len += record.write_to::<B, _>(writer)?;
         }
         len += Record::End.write_to::<B, _>(writer)?;
-
 
         len += NameResolutionOption::write_opts_to::<B, _>(&self.options, writer)?;
 
@@ -253,7 +251,6 @@ impl<'a> Ipv6Record<'a> {
             return Err(PcapError::InvalidField("NameResolutionBlock: Ipv6Record without any name"));
         }
 
-
         let record = Ipv6Record { ip_addr: Cow::Borrowed(ip_addr), names };
 
         Ok(record)
@@ -320,7 +317,6 @@ pub enum NameResolutionOption<'a> {
     /// Unknown option
     Unknown(UnknownOption<'a>),
 }
-
 
 impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
     fn from_slice<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {

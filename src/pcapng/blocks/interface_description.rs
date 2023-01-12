@@ -2,7 +2,6 @@
 
 //! Interface Description Block (IDB).
 
-
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
@@ -11,11 +10,11 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::DataLink;
 
-use super::block_common::{PcapNgBlock, Block};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.

@@ -1,16 +1,12 @@
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
-
-use crate::errors::PcapError;
-
-use crate::Endianness;
-
-use super::blocks::{SECTION_HEADER_BLOCK, INTERFACE_DESCRIPTION_BLOCK};
 use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::enhanced_packet::EnhancedPacketBlock;
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
-
+use super::blocks::{INTERFACE_DESCRIPTION_BLOCK, SECTION_HEADER_BLOCK};
+use crate::errors::PcapError;
+use crate::Endianness;
 
 
 /// Parses a PcapNg from a slice of bytes.
@@ -27,7 +23,7 @@ use super::blocks::section_header::SectionHeaderBlock;
 ///
 /// let pcap = std::fs::read("test.pcapng").expect("Error reading file");
 /// let mut src = &pcap[..];
-/// 
+///
 /// let (rem, mut pcapng_parser) = PcapNgParser::new(src).unwrap();
 /// src = rem;
 ///

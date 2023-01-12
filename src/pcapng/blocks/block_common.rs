@@ -38,7 +38,6 @@ pub const ENHANCED_PACKET_BLOCK: u32 = 0x00000006;
 /// Systemd journal export block type
 pub const SYSTEMD_JOURNAL_EXPORT_BLOCK: u32 = 0x00000009;
 
-
 //   0               1               2               3
 //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -92,7 +91,6 @@ impl<'a> RawBlock<'a> {
             let initial_len = slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?;
             return inner_parse::<B>(slice, type_, initial_len);
         };
-
 
         fn inner_parse<'a, B: ByteOrder>(slice: &'a [u8], type_: u32, initial_len: u32) -> Result<(&'a [u8], RawBlock<'a>), PcapError> {
             if (initial_len % 4) != 0 {

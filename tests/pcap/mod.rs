@@ -42,7 +42,6 @@ fn read_write() {
     assert_eq!(&DATA[..], &out[..]);
 }
 
-
 #[test]
 fn read_write_raw() {
     let mut pcap_reader = PcapReader::new(&DATA[..]).unwrap();
@@ -81,10 +80,12 @@ fn big_endian() {
 
     assert_eq!(pcap_header, pcap_header_truth);
 
-
     //// Packet header test ////
-    let data_truth = hex::decode("00005e0001b10021280529ba08004500005430a70000ff010348c0a8b1a00a400b3108000afb43a800004\
-    fa11b290002538d08090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031323334353637").unwrap();
+    let data_truth = hex::decode(
+        "00005e0001b10021280529ba08004500005430a70000ff010348c0a8b1a00a400b3108000afb43a800004\
+    fa11b290002538d08090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031323334353637",
+    )
+    .unwrap();
 
     let pkt_truth = PcapPacket {
         timestamp: Duration::new(1335958313, 152630000),
@@ -119,7 +120,6 @@ fn little_endian() {
     let pcap_header = pcap_reader.header();
 
     assert_eq!(pcap_header, pcap_header_truth);
-
 
     //// Packet header test ////
     let data_truth = hex::decode("000c29414be70016479df2c2810000780800450000638d2c0000fe06fdc8c0a8e5fec0a8ca4f01bbb4258\

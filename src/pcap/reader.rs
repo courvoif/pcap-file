@@ -1,10 +1,9 @@
 use std::io::Read;
 
+use super::{PcapParser, RawPcapPacket};
 use crate::errors::*;
 use crate::pcap::{PcapHeader, PcapPacket};
 use crate::read_buffer::ReadBuffer;
-
-use super::{RawPcapPacket, PcapParser};
 
 
 /// Reads a pcap from a reader.

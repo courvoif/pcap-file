@@ -8,9 +8,8 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
 use crate::errors::PcapError;
-
-use super::block_common::{PcapNgBlock, Block};
 
 
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.

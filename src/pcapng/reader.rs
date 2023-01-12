@@ -1,13 +1,12 @@
 use std::io::Read;
 
-
-use crate::errors::PcapError;
-use crate::read_buffer::ReadBuffer;
-use super::PcapNgParser;
 use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::enhanced_packet::EnhancedPacketBlock;
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
+use super::PcapNgParser;
+use crate::errors::PcapError;
+use crate::read_buffer::ReadBuffer;
 
 
 /// Reads a PcapNg from a reader.

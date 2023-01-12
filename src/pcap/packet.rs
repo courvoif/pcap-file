@@ -10,7 +10,6 @@ use derive_into_owned::IntoOwned;
 use crate::errors::*;
 use crate::TsResolution;
 
-
 /// Pcap packet.
 ///
 /// The payload can be owned or borrowed.
@@ -45,7 +44,12 @@ impl<'a> PcapPacket<'a> {
 
     /// Write a [`PcapPacket`] to a writer.
     pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution, snap_len: u32) -> PcapResult<usize> {
-        let ts_sec = self.timestamp.as_secs().try_into().map_err(|_| PcapError::InvalidField("PcapPacket: timestamp_secs > u32::MAX"))?;
+        let ts_sec = self
+            .timestamp
+            .as_secs()
+            .try_into()
+            .map_err(|_| PcapError::InvalidField("PcapPacket: timestamp_secs > u32::MAX"))?;
+
         let mut ts_frac = self.timestamp.subsec_nanos();
         if ts_resolution == TsResolution::MicroSecond {
             ts_frac /= 1000;
@@ -62,13 +66,7 @@ impl<'a> PcapPacket<'a> {
             return Err(PcapError::InvalidField("PcapPacket: incl_len > orig_len"));
         }
 
-        let raw_packet = RawPcapPacket {
-            ts_sec,
-            ts_frac,
-            incl_len,
-            orig_len,
-            data: Cow::Borrowed(&self.data[..]),
-        };
+        let raw_packet = RawPcapPacket { ts_sec, ts_frac, incl_len, orig_len, data: Cow::Borrowed(&self.data[..]) };
 
         raw_packet.write_to::<_, B>(writer)
     }
