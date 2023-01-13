@@ -56,7 +56,7 @@ impl<R: Read> ReadBuffer<R> {
                         return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
                     }
 
-                    let nb_read = self.fill_buf().map_err(|e| PcapError::IoError(e))?;
+                    let nb_read = self.fill_buf().map_err(PcapError::IoError)?;
                     if nb_read == 0 {
                         return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
                     }

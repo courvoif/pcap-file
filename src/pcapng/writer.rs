@@ -72,16 +72,8 @@ impl<W: Write> PcapNgWriter<W> {
     /// Creates a new [`PcapNgWriter`] from an existing writer with the given section header.
     pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'static>) -> PcapResult<Self> {
         match section.endianness {
-            Endianness::Big => section
-                .clone()
-                .into_block()
-                .write_to::<BigEndian, _>(&mut writer)
-                .map_err(|e| PcapError::IoError(e))?,
-            Endianness::Little => section
-                .clone()
-                .into_block()
-                .write_to::<LittleEndian, _>(&mut writer)
-                .map_err(|e| PcapError::IoError(e))?,
+            Endianness::Big => section.clone().into_block().write_to::<BigEndian, _>(&mut writer).map_err(PcapError::IoError)?,
+            Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer).map_err(PcapError::IoError)?,
         };
 
         Ok(Self { section, interfaces: vec![], writer })
@@ -146,8 +138,8 @@ impl<W: Write> PcapNgWriter<W> {
         }
 
         match self.section.endianness {
-            Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(|e| PcapError::IoError(e)),
-            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(|e| PcapError::IoError(e)),
+            Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(PcapError::IoError),
+            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(PcapError::IoError),
         }
     }
 
@@ -204,7 +196,7 @@ impl<W: Write> PcapNgWriter<W> {
                 *section = block.clone().try_into_block::<B>()?.into_owned().into_section_header().unwrap();
             }
 
-            block.write_to::<B, _>(writer).map_err(|e| PcapError::IoError(e))
+            block.write_to::<B, _>(writer).map_err(PcapError::IoError)
         }
     }
 

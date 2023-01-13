@@ -38,7 +38,7 @@ impl<'a> PcapNgBlock<'a> for UnknownBlock<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         writer.write_all(&self.value)?;
-        Ok(self.value.len() as usize)
+        Ok(self.value.len())
     }
 
     fn into_block(self) -> Block<'a> {

@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use byteorder_slice::{BigEndian, ByteOrder, LittleEndian, NativeEndian};
+use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::RawPcapPacket;
 use crate::errors::*;

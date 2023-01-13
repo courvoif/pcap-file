@@ -152,11 +152,11 @@ impl<'a> RawPcapPacket<'a> {
     /// Writes a [`RawPcapPacket`] to a writer.
     /// The fields of the packet are not validated.
     pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> PcapResult<usize> {
-        writer.write_u32::<B>(self.ts_sec).map_err(|e| PcapError::IoError(e))?;
-        writer.write_u32::<B>(self.ts_frac).map_err(|e| PcapError::IoError(e))?;
-        writer.write_u32::<B>(self.incl_len).map_err(|e| PcapError::IoError(e))?;
-        writer.write_u32::<B>(self.orig_len).map_err(|e| PcapError::IoError(e))?;
-        writer.write_all(&self.data).map_err(|e| PcapError::IoError(e))?;
+        writer.write_u32::<B>(self.ts_sec).map_err(PcapError::IoError)?;
+        writer.write_u32::<B>(self.ts_frac).map_err(PcapError::IoError)?;
+        writer.write_u32::<B>(self.incl_len).map_err(PcapError::IoError)?;
+        writer.write_u32::<B>(self.orig_len).map_err(PcapError::IoError)?;
+        writer.write_all(&self.data).map_err(PcapError::IoError)?;
 
         Ok(16 + self.data.len())
     }

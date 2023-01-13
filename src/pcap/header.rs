@@ -96,13 +96,13 @@ impl PcapHeader {
                 TsResolution::NanoSecond => 0xA1B23C4D,
             };
 
-            writer.write_u32::<B>(magic_number).map_err(|e| PcapError::IoError(e))?;
-            writer.write_u16::<B>(header.version_major).map_err(|e| PcapError::IoError(e))?;
-            writer.write_u16::<B>(header.version_minor).map_err(|e| PcapError::IoError(e))?;
-            writer.write_i32::<B>(header.ts_correction).map_err(|e| PcapError::IoError(e))?;
-            writer.write_u32::<B>(header.ts_accuracy).map_err(|e| PcapError::IoError(e))?;
-            writer.write_u32::<B>(header.snaplen).map_err(|e| PcapError::IoError(e))?;
-            writer.write_u32::<B>(header.datalink.into()).map_err(|e| PcapError::IoError(e))?;
+            writer.write_u32::<B>(magic_number).map_err(PcapError::IoError)?;
+            writer.write_u16::<B>(header.version_major).map_err(PcapError::IoError)?;
+            writer.write_u16::<B>(header.version_minor).map_err(PcapError::IoError)?;
+            writer.write_i32::<B>(header.ts_correction).map_err(PcapError::IoError)?;
+            writer.write_u32::<B>(header.ts_accuracy).map_err(PcapError::IoError)?;
+            writer.write_u32::<B>(header.snaplen).map_err(PcapError::IoError)?;
+            writer.write_u32::<B>(header.datalink.into()).map_err(PcapError::IoError)?;
 
             Ok(24)
         }

@@ -40,7 +40,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
 
-        let pad_len = (4 - (self.data.len() as usize % 4)) % 4;
+        let pad_len = (4 - (self.data.len() % 4)) % 4;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
         Ok(4 + self.data.len() + pad_len)

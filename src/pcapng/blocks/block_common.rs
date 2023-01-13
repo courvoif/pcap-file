@@ -93,7 +93,7 @@ impl<'a> RawBlock<'a> {
         };
 
         // Section Header parsing
-        fn inner_parse<'a, B: ByteOrder>(slice: &'a [u8], type_: u32, initial_len: u32) -> Result<(&'a [u8], RawBlock<'a>), PcapError> {
+        fn inner_parse<B: ByteOrder>(slice: &[u8], type_: u32, initial_len: u32) -> Result<(&[u8], RawBlock<'_>), PcapError> {
             if (initial_len % 4) != 0 {
                 return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
             }
@@ -216,38 +216,38 @@ impl<'a> Block<'a> {
 
         match raw_block.type_ {
             SECTION_HEADER_BLOCK => {
-                let (_, block) = SectionHeaderBlock::from_slice::<BigEndian>(&body)?;
+                let (_, block) = SectionHeaderBlock::from_slice::<BigEndian>(body)?;
                 Ok(Block::SectionHeader(block))
             },
             INTERFACE_DESCRIPTION_BLOCK => {
-                let (_, block) = InterfaceDescriptionBlock::from_slice::<B>(&body)?;
+                let (_, block) = InterfaceDescriptionBlock::from_slice::<B>(body)?;
                 Ok(Block::InterfaceDescription(block))
             },
             PACKET_BLOCK => {
-                let (_, block) = PacketBlock::from_slice::<B>(&body)?;
+                let (_, block) = PacketBlock::from_slice::<B>(body)?;
                 Ok(Block::Packet(block))
             },
             SIMPLE_PACKET_BLOCK => {
-                let (_, block) = SimplePacketBlock::from_slice::<B>(&body)?;
+                let (_, block) = SimplePacketBlock::from_slice::<B>(body)?;
                 Ok(Block::SimplePacket(block))
             },
             NAME_RESOLUTION_BLOCK => {
-                let (_, block) = NameResolutionBlock::from_slice::<B>(&body)?;
+                let (_, block) = NameResolutionBlock::from_slice::<B>(body)?;
                 Ok(Block::NameResolution(block))
             },
             INTERFACE_STATISTIC_BLOCK => {
-                let (_, block) = InterfaceStatisticsBlock::from_slice::<B>(&body)?;
+                let (_, block) = InterfaceStatisticsBlock::from_slice::<B>(body)?;
                 Ok(Block::InterfaceStatistics(block))
             },
             ENHANCED_PACKET_BLOCK => {
-                let (_, block) = EnhancedPacketBlock::from_slice::<B>(&body)?;
+                let (_, block) = EnhancedPacketBlock::from_slice::<B>(body)?;
                 Ok(Block::EnhancedPacket(block))
             },
             SYSTEMD_JOURNAL_EXPORT_BLOCK => {
-                let (_, block) = SystemdJournalExportBlock::from_slice::<B>(&body)?;
+                let (_, block) = SystemdJournalExportBlock::from_slice::<B>(body)?;
                 Ok(Block::SystemdJournalExport(block))
             },
-            type_ => Ok(Block::Unknown(UnknownBlock::new(type_, raw_block.initial_len, &body))),
+            type_ => Ok(Block::Unknown(UnknownBlock::new(type_, raw_block.initial_len, body))),
         }
     }
 
