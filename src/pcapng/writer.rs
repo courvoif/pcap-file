@@ -13,7 +13,6 @@ use crate::{Endianness, PcapError, PcapResult};
 /// Writes a PcapNg to a writer.
 ///
 /// # Examples
-///
 /// ```rust,no_run
 /// use std::fs::File;
 ///
@@ -42,9 +41,10 @@ pub struct PcapNgWriter<W: Write> {
 
 impl<W: Write> PcapNgWriter<W> {
     /// Creates a new [`PcapNgWriter`] from an existing writer.
+    ///
     /// Defaults to the native endianness of the CPU.
     ///
-    /// Writes this global pcap header to the file:
+    /// Writes this global pcapng header to the file:
     /// ```rust, ignore
     /// Self {
     ///     endianness: Endianness::Native,
@@ -55,52 +55,25 @@ impl<W: Write> PcapNgWriter<W> {
     /// }
     /// ```
     ///
+    ///
     /// # Errors
-    ///
-    /// Return an error if the writer can't be written to.
-    ///
-    ///
-    /// # Examples
-    ///
-    /// ```rust,no_run
-    /// use std::fs::File;
-    ///
-    /// use pcap_file::pcap::PcapWriter;
-    ///
-    /// let file_out = File::create("out.pcap").expect("Error creating file");
-    /// let mut pcap_writer = PcapWriter::new(file_out);
-    /// ```
+    /// The writer can't be written to.
     pub fn new(writer: W) -> PcapResult<Self> {
-        // Get endianness of the current processor
-        #[cfg(target_endian = "big")]
-        let endianness = Endianness::Big;
-
-        #[cfg(target_endian = "little")]
-        let endianness = Endianness::Little;
-
-        Self::with_endianness(writer, endianness)
+        Self::with_endianness(writer, Endianness::native())
     }
 
-    /// Creates a new `PcapNgWriter` from an existing writer with the given endianness
+    /// Creates a new [`PcapNgWriter`] from an existing writer with the given endianness.
     pub fn with_endianness(writer: W, endianness: Endianness) -> PcapResult<Self> {
         let section = SectionHeaderBlock { endianness, ..Default::default() };
 
         Self::with_section_header(writer, section)
     }
 
-    /// Creates a new `PcapNgWriter` from an existing writer with the given section header
+    /// Creates a new [`PcapNgWriter`] from an existing writer with the given section header.
     pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'static>) -> PcapResult<Self> {
         match section.endianness {
-            Endianness::Big => section
-                .clone()
-                .into_block()
-                .write_to::<BigEndian, _>(&mut writer)
-                .map_err(|e| PcapError::IoError(e))?,
-            Endianness::Little => section
-                .clone()
-                .into_block()
-                .write_to::<LittleEndian, _>(&mut writer)
-                .map_err(|e| PcapError::IoError(e))?,
+            Endianness::Big => section.clone().into_block().write_to::<BigEndian, _>(&mut writer).map_err(PcapError::IoError)?,
+            Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer).map_err(PcapError::IoError)?,
         };
 
         Ok(Self { section, interfaces: vec![], writer })
@@ -108,7 +81,7 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Writes a [`Block`].
     ///
-    /// # Examples
+    /// # Example
     /// ```rust,no_run
     /// use std::borrow::Cow;
     /// use std::fs::File;
@@ -165,14 +138,14 @@ impl<W: Write> PcapNgWriter<W> {
         }
 
         match self.section.endianness {
-            Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(|e| PcapError::IoError(e)),
-            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(|e| PcapError::IoError(e)),
+            Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(PcapError::IoError),
+            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(PcapError::IoError),
         }
     }
 
     /// Writes a [`PcapNgBlock`].
     ///
-    /// # Examples
+    /// # Example
     /// ```rust,no_run
     /// use std::borrow::Cow;
     /// use std::fs::File;
@@ -209,7 +182,7 @@ impl<W: Write> PcapNgWriter<W> {
         self.write_block(&block.into_block())
     }
 
-    /// Write a [`RawBlock`].
+    /// Writes a [`RawBlock`].
     ///
     /// Doesn't check the validity of the written blocks.
     pub fn write_raw_block(&mut self, block: &RawBlock) -> PcapResult<usize> {
@@ -223,11 +196,11 @@ impl<W: Write> PcapNgWriter<W> {
                 *section = block.clone().try_into_block::<B>()?.into_owned().into_section_header().unwrap();
             }
 
-            block.write_to::<B, _>(writer).map_err(|e| PcapError::IoError(e))
+            block.write_to::<B, _>(writer).map_err(PcapError::IoError)
         }
     }
 
-    /// Consumes the [`PcapNgWriter`], returning the wrapped writer.
+    /// Consumes [`Self`], returning the wrapped writer.
     pub fn into_inner(self) -> W {
         self.writer
     }

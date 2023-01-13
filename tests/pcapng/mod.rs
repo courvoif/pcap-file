@@ -20,7 +20,6 @@ fn reader() {
     }
 }
 
-
 #[test]
 fn parser() {
     for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
@@ -47,7 +46,6 @@ fn parser() {
         }
     }
 }
-
 
 #[test]
 fn writer() {

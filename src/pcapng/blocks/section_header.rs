@@ -8,11 +8,11 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::Endianness;
 
-use super::block_common::{PcapNgBlock, Block};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
 
 /// Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -37,7 +37,6 @@ pub struct SectionHeaderBlock<'a> {
     /// Options
     pub options: Vec<SectionHeaderOption<'a>>,
 }
-
 
 impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
     fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
@@ -129,7 +128,6 @@ pub enum SectionHeaderOption<'a> {
     /// Unknown option
     Unknown(UnknownOption<'a>),
 }
-
 
 impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
     fn from_slice<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {

@@ -8,11 +8,9 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
-
-use super::block_common::{PcapNgBlock, Block};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
-
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
@@ -22,6 +20,7 @@ pub struct PacketBlock<'a> {
     pub interface_id: u16,
 
     /// Local drop counter.
+    /// 
     /// It specifies the number of packets lost (by the interface and the operating system)
     /// between this packet and the preceding one.
     pub drop_count: u16,
@@ -100,7 +99,6 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     }
 }
 
-
 /// Packet Block option
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum PacketOption<'a> {
@@ -122,7 +120,6 @@ pub enum PacketOption<'a> {
     /// Unknown option
     Unknown(UnknownOption<'a>),
 }
-
 
 impl<'a> PcapNgOption<'a> for PacketOption<'a> {
     fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {

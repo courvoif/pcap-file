@@ -8,12 +8,12 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
 use crate::errors::PcapError;
-
-use super::block_common::{PcapNgBlock, Block};
 
 
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
+/// 
 /// Its presence is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SimplePacketBlock<'a> {
@@ -40,7 +40,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
 
-        let pad_len = (4 - (self.data.len() as usize % 4)) % 4;
+        let pad_len = (4 - (self.data.len() % 4)) % 4;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
         Ok(4 + self.data.len() + pad_len)

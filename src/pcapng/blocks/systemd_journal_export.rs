@@ -6,9 +6,8 @@ use std::io::{Result as IoResult, Write};
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
 use crate::errors::PcapError;
-
-use super::block_common::{PcapNgBlock, Block};
 
 
 /// The Systemd Journal Export Block is a lightweight containter for systemd Journal Export Format entry data.
@@ -27,7 +26,7 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         writer.write_all(&self.journal_entry)?;
 
-        let pad_len = (4 - (self.journal_entry.len() as usize % 4)) % 4;
+        let pad_len = (4 - (self.journal_entry.len() % 4)) % 4;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
         Ok(self.journal_entry.len() + pad_len)

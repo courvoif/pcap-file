@@ -8,21 +8,22 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
+use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
-
-use super::block_common::{PcapNgBlock, Block};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, UnknownOption, PcapNgOption, WriteOptTo};
 
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct InterfaceStatisticsBlock<'a> {
     /// Specifies the interface these statistics refers to.
+    /// 
     /// The correct interface will be the one whose Interface Description Block (within the current Section of the file)
     /// is identified by same number of this field.
     pub interface_id: u32,
 
     /// Time this statistics refers to.
+    /// 
     /// The format of the timestamp is the same already defined in the Enhanced Packet Block.
     /// The length of a unit of time is specified by the 'if_tsresol' option of the Interface Description Block referenced by this packet.
     pub timestamp: u64,

@@ -1,9 +1,10 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pcap_file::pcap::{PcapParser, PcapReader};
-use pcap_file::PcapError;
 use pcap_file::pcapng::{PcapNgParser, PcapNgReader};
+use pcap_file::PcapError;
 
 
+/// Bench and compare Pcap readers and parsers
 pub fn pcap(c: &mut Criterion) {
     let pcap = std::fs::read("benches/bench.pcap").unwrap();
 
@@ -58,7 +59,7 @@ pub fn pcap(c: &mut Criterion) {
 }
 
 
-
+/// Bench and compare PcapNg readers and parsers
 pub fn pcapng(c: &mut Criterion) {
     let pcapng = std::fs::read("benches/bench.pcapng").unwrap();
 

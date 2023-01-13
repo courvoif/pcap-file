@@ -6,9 +6,8 @@ use std::io::{Result as IoResult, Write};
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
+use super::block_common::{Block, PcapNgBlock};
 use crate::PcapError;
-
-use super::block_common::{PcapNgBlock, Block};
 
 
 /// Unknown block
@@ -39,7 +38,7 @@ impl<'a> PcapNgBlock<'a> for UnknownBlock<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         writer.write_all(&self.value)?;
-        Ok(self.value.len() as usize)
+        Ok(self.value.len())
     }
 
     fn into_block(self) -> Block<'a> {

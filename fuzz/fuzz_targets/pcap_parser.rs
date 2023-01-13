@@ -1,6 +1,6 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
-use pcap_file::PcapParser;
+use pcap_file::pcap::PcapParser;
 
 fuzz_target!(|data: &[u8]| {
     if let Ok((rem, pcap_parser)) = PcapParser::new(data) {

@@ -1,19 +1,17 @@
 use std::io::Read;
 
-
-use crate::errors::PcapError;
-use crate::read_buffer::ReadBuffer;
-use super::PcapNgParser;
 use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::enhanced_packet::EnhancedPacketBlock;
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
+use super::PcapNgParser;
+use crate::errors::PcapError;
+use crate::read_buffer::ReadBuffer;
 
 
 /// Reads a PcapNg from a reader.
 ///
-/// # Examples
-///
+/// # Example
 /// ```rust,no_run
 /// use std::fs::File;
 ///
@@ -37,6 +35,7 @@ pub struct PcapNgReader<R: Read> {
 
 impl<R: Read> PcapNgReader<R> {
     /// Creates a new [`PcapNgReader`] from a reader.
+    ///
     /// Parses the first block which must be a valid SectionHeaderBlock.
     pub fn new(reader: R) -> Result<PcapNgReader<R>, PcapError> {
         let mut reader = ReadBuffer::new(reader);
@@ -44,7 +43,7 @@ impl<R: Read> PcapNgReader<R> {
         Ok(Self { parser, reader })
     }
 
-    /// Returns the next [`Block`]
+    /// Returns the next [`Block`].
     pub fn next_block(&mut self) -> Option<Result<Block, PcapError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
@@ -59,7 +58,7 @@ impl<R: Read> PcapNgReader<R> {
         }
     }
 
-    /// Returns the next [`RawBlock`]
+    /// Returns the next [`RawBlock`].
     pub fn next_raw_block(&mut self) -> Option<Result<RawBlock, PcapError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
@@ -79,7 +78,7 @@ impl<R: Read> PcapNgReader<R> {
         self.parser.section()
     }
 
-    /// Returns the current [`InterfaceDescriptionBlock`].
+    /// Returns all the current [`InterfaceDescriptionBlock`].
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
         self.parser.interfaces()
     }
@@ -89,7 +88,7 @@ impl<R: Read> PcapNgReader<R> {
         self.interfaces().get(packet.interface_id as usize)
     }
 
-    /// Consumes the [`PcapNgReader`], returning the wrapped reader.
+    /// Consumes the [`Self`], returning the wrapped reader.
     pub fn into_inner(self) -> R {
         self.reader.into_inner()
     }
