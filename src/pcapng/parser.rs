@@ -13,8 +13,7 @@ use crate::Endianness;
 ///
 /// You can match on [`PcapError::IncompleteBuffer`] to know if the parser need more data.
 ///
-/// # Examples
-///
+/// # Example
 /// ```rust,no_run
 /// use std::fs::File;
 ///
@@ -54,6 +53,7 @@ impl PcapNgParser {
     ///
     /// Parses the first block which must be a valid SectionHeaderBlock.
     pub fn new(src: &[u8]) -> Result<(&[u8], Self), PcapError> {
+        // Always use BigEndian here because we can't know the SectionHeaderBlock endianness
         let (rem, section) = Block::from_slice::<BigEndian>(src)?;
         let section = match section {
             Block::SectionHeader(section) => section.into_owned(),
@@ -65,7 +65,7 @@ impl PcapNgParser {
         Ok((rem, parser))
     }
 
-    /// Returns the remainder and the next [`Block`]
+    /// Returns the remainder and the next [`Block`].
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
         // Read next Block
         match self.section.endianness {
@@ -82,7 +82,7 @@ impl PcapNgParser {
         }
     }
 
-    /// Returns the remainder and the next [`RawBlock`]
+    /// Returns the remainder and the next [`RawBlock`].
     pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapError> {
         // Read next Block
         match self.section.endianness {
@@ -91,7 +91,7 @@ impl PcapNgParser {
         }
     }
 
-    /// Return the next raw block
+    /// Inner function to parse the next raw block.
     fn next_raw_block_inner<'a, B: ByteOrder>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapError> {
         let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
 
@@ -115,7 +115,7 @@ impl PcapNgParser {
         &self.section
     }
 
-    /// Returns the current [`InterfaceDescriptionBlock`].
+    /// Returns all the current [`InterfaceDescriptionBlock`].
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
         &self.interfaces[..]
     }

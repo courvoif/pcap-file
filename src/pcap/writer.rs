@@ -61,15 +61,7 @@ impl<W: Write> PcapWriter<W> {
     /// # Errors
     /// The writer can't be written to.
     pub fn new(writer: W) -> PcapResult<PcapWriter<W>> {
-        // Get endianness of current processor
-        let tmp = NativeEndian::read_u16(&[0x42, 0x00]);
-        let endianness = match tmp {
-            0x4200 => Endianness::Big,
-            0x0042 => Endianness::Little,
-            _ => unreachable!(),
-        };
-
-        let header = PcapHeader { endianness, ..Default::default() };
+        let header = PcapHeader { endianness: Endianness::native(), ..Default::default() };
 
         PcapWriter::with_header(writer, header)
     }

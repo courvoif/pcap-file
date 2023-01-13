@@ -47,7 +47,8 @@ pub struct PcapParser {
 
 impl PcapParser {
     /// Creates a new [`PcapParser`].
-    /// Returns the parser and the remainder.
+    ///
+    /// Returns the remainder and the parser.
     pub fn new(slice: &[u8]) -> PcapResult<(&[u8], PcapParser)> {
         let (slice, header) = PcapHeader::from_slice(slice)?;
 
@@ -56,7 +57,7 @@ impl PcapParser {
         Ok((slice, parser))
     }
 
-    /// Returns the next [`PcapPacket`] and the remainder.
+    /// Returns the remainder and the next [`PcapPacket`].
     pub fn next_packet<'a>(&self, slice: &'a [u8]) -> PcapResult<(&'a [u8], PcapPacket<'a>)> {
         match self.header.endianness {
             Endianness::Big => PcapPacket::from_slice::<BigEndian>(slice, self.header.ts_resolution, self.header.snaplen),
@@ -64,7 +65,7 @@ impl PcapParser {
         }
     }
 
-    /// Returns the next [`RawPcapPacket`] and the remainder.
+    /// Returns the remainder and the next [`RawPcapPacket`].
     pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> PcapResult<(&'a [u8], RawPcapPacket<'a>)> {
         match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),

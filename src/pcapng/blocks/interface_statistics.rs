@@ -17,11 +17,13 @@ use crate::errors::PcapError;
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct InterfaceStatisticsBlock<'a> {
     /// Specifies the interface these statistics refers to.
+    /// 
     /// The correct interface will be the one whose Interface Description Block (within the current Section of the file)
     /// is identified by same number of this field.
     pub interface_id: u32,
 
     /// Time this statistics refers to.
+    /// 
     /// The format of the timestamp is the same already defined in the Enhanced Packet Block.
     /// The length of a unit of time is specified by the 'if_tsresol' option of the Interface Description Block referenced by this packet.
     pub timestamp: u64,

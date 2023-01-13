@@ -64,7 +64,7 @@ pub struct RawBlock<'a> {
 }
 
 impl<'a> RawBlock<'a> {
-    /// Create an "borrowed" [`RawBlock`] from a slice
+    /// Parses a borrowed [`RawBlock`] from a slice.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 12 {
             return Err(PcapError::IncompleteBuffer);
@@ -92,6 +92,7 @@ impl<'a> RawBlock<'a> {
             return inner_parse::<B>(slice, type_, initial_len);
         };
 
+        // Section Header parsing
         fn inner_parse<'a, B: ByteOrder>(slice: &'a [u8], type_: u32, initial_len: u32) -> Result<(&'a [u8], RawBlock<'a>), PcapError> {
             if (initial_len % 4) != 0 {
                 return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
@@ -123,7 +124,7 @@ impl<'a> RawBlock<'a> {
         }
     }
 
-    /// Writes a [`Block`] to a writer.
+    /// Writes a [`RawBlock`] to a writer.
     ///
     /// Uses the endianness of the header.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
@@ -135,7 +136,7 @@ impl<'a> RawBlock<'a> {
         Ok(self.body.len() + 6)
     }
 
-    /// Try to convert a [`RawBlock`] into a [`Block`]
+    /// Tries to convert a [`RawBlock`] into a [`Block`]
     pub fn try_into_block<B: ByteOrder>(self) -> PcapResult<Block<'a>> {
         Block::try_from_raw_block::<B>(self)
     }
@@ -165,7 +166,7 @@ pub enum Block<'a> {
 }
 
 impl<'a> Block<'a> {
-    /// Create a `ParsedBlock` from a slice
+    /// Parses a [`Block`] from a slice
     pub fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         let (rem, raw_block) = RawBlock::from_slice::<B>(slice)?;
         let block = Self::try_from_raw_block::<B>(raw_block)?;
@@ -173,9 +174,7 @@ impl<'a> Block<'a> {
         Ok((rem, block))
     }
 
-    /// Writes the `Block` to a writer.
-    ///
-    /// Uses the endianness of the header.
+    /// Writes a [`Block`] to a writer.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         return match self {
             Self::SectionHeader(b) => inner_write_to::<B, _, W>(b, SECTION_HEADER_BLOCK, writer),
@@ -206,13 +205,13 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Try to create a [`Block`] from a [`RawBlock`].
+    /// Tries to create a [`Block`] from a [`RawBlock`].
     ///
     /// The RawBlock must be Borrowed.
     pub fn try_from_raw_block<B: ByteOrder>(raw_block: RawBlock<'a>) -> Result<Block<'a>, PcapError> {
         let body = match raw_block.body {
             Cow::Borrowed(b) => b,
-            _ => unreachable!(),
+            _ => panic!("The raw block is not borrowed"),
         };
 
         match raw_block.type_ {
@@ -252,7 +251,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Downcast the current block into an [`EnhancedPacketBlock`], if possible
+    /// Tries to downcasts the current block into an [`EnhancedPacketBlock`]
     pub fn into_enhanced_packet(self) -> Option<EnhancedPacketBlock<'a>> {
         match self {
             Block::EnhancedPacket(a) => Some(a),
@@ -260,7 +259,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Downcast the current block into an [`InterfaceDescriptionBlock`], if possible
+    /// Tries to downcasts the current block into an [`InterfaceDescriptionBlock`]
     pub fn into_interface_description(self) -> Option<InterfaceDescriptionBlock<'a>> {
         match self {
             Block::InterfaceDescription(a) => Some(a),
@@ -268,7 +267,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Downcast the current block into an [`InterfaceStatisticsBlock`], if possible
+    /// Tries to downcasts the current block into an [`InterfaceStatisticsBlock`]
     pub fn into_interface_statistics(self) -> Option<InterfaceStatisticsBlock<'a>> {
         match self {
             Block::InterfaceStatistics(a) => Some(a),
@@ -276,7 +275,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Downcast the current block into an [`NameResolutionBlock`], if possible
+    /// Tries to downcast the current block into an [`NameResolutionBlock`], if possible
     pub fn into_name_resolution(self) -> Option<NameResolutionBlock<'a>> {
         match self {
             Block::NameResolution(a) => Some(a),
@@ -284,7 +283,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Downcast the current block into an [`PacketBlock`], if possible
+    /// Tries to downcast the current block into an [`PacketBlock`], if possible
     pub fn into_packet(self) -> Option<PacketBlock<'a>> {
         match self {
             Block::Packet(a) => Some(a),
@@ -292,7 +291,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Downcast the current block into an [`SectionHeaderBlock`], if possible
+    /// Tries to downcast the current block into an [`SectionHeaderBlock`], if possible
     pub fn into_section_header(self) -> Option<SectionHeaderBlock<'a>> {
         match self {
             Block::SectionHeader(a) => Some(a),
@@ -300,7 +299,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Downcast the current block into an [`SimplePacketBlock`], if possible
+    /// Tries to downcast the current block into an [`SimplePacketBlock`], if possible
     pub fn into_simple_packet(self) -> Option<SimplePacketBlock<'a>> {
         match self {
             Block::SimplePacket(a) => Some(a),
@@ -308,7 +307,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Downcast the current block into an [`SystemdJournalExportBlock`], if possible
+    /// Tries to downcast the current block into an [`SystemdJournalExportBlock`], if possible
     pub fn into_systemd_journal_export(self) -> Option<SystemdJournalExportBlock<'a>> {
         match self {
             Block::SystemdJournalExport(a) => Some(a),

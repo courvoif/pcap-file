@@ -13,6 +13,7 @@ use crate::errors::PcapError;
 
 
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
+/// 
 /// Its presence is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SimplePacketBlock<'a> {

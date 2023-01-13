@@ -21,11 +21,13 @@ use crate::DataLink;
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct InterfaceDescriptionBlock<'a> {
     /// A value that defines the link layer type of this interface.
+    /// 
     /// The list of Standardized Link Layer Type codes is available in the
     /// [tcpdump.org link-layer header types registry.](http://www.tcpdump.org/linktypes.html).
     pub linktype: DataLink,
 
     /// Maximum number of octets captured from each packet.
+    /// 
     /// The portion of each packet that exceeds this value will not be stored in the file.
     /// A value of zero indicates no limit.
     pub snaplen: u32,
