@@ -12,7 +12,7 @@ readme = "README.md"
 keywords = ["pcap", "pcapng", "parse", "read", "write"]
 categories = ["encoding", "parsing"]
 
-exclude = ["benches", "fuzz", "tests"]
+exclude = ["benches/bench.pcap", "benches/bench.pcapng", "fuzz", "tests"]
 
 
 [dependencies]
