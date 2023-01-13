@@ -12,6 +12,8 @@ readme = "README.md"
 keywords = ["pcap", "pcapng", "parse", "read", "write"]
 categories = ["encoding", "parsing"]
 
+exclude = ["benches", "fuzz", "tests"]
+
 
 [dependencies]
 byteorder_slice = "3.0.0"
