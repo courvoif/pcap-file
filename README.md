@@ -1,9 +1,9 @@
 # pcap-file
 Provides parsers, readers and writers for Pcap and PcapNg files.
 
-For Pcap files see [PcapParser](struct.PcapParser.html), [PcapReader](struct.PcapReader.html) and [PcapWriter](struct.PcapWriter.html).
+For Pcap files see the pcap module.
 
-For PcapNg files see [PcapNgParser](struct.PcapNgParser.html), [PcapNgReader](struct.PcapNgReader.html) and [PcapNgWriter](struct.PcapNgWriter.html).
+For PcapNg files see the pcapng module.
 
 [![Crates.io](https://img.shields.io/crates/v/pcap-file.svg)](https://crates.io/crates/pcap-file)
 [![rustdoc](https://img.shields.io/badge/Doc-pcap--file-green.svg)](https://docs.rs/pcap-file/)
@@ -89,3 +89,4 @@ Licensed under MIT.
 
 ## Disclaimer
 To test the library I used the excellent PcapNg testing suite provided by [hadrielk](https://github.com/hadrielk/pcapng-test-generator). 
+
