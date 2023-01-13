@@ -8,10 +8,9 @@ use crate::Endianness;
 
 /// Parses a Pcap from a slice of bytes.
 ///
-/// You can match on [PcapError::IncompleteBuffer](enum.PcapError.html) to known if the parser need more data.
+/// You can match on [`PcapError::IncompleteBuffer`](crate::errors::PcapError) to known if the parser need more data.
 ///
-/// # Examples
-///
+/// # Example
 /// ```no_run
 /// use pcap_file::pcap::PcapParser;
 /// use pcap_file::PcapError;
@@ -47,7 +46,7 @@ pub struct PcapParser {
 }
 
 impl PcapParser {
-    /// Creates a new `PcapParser`.
+    /// Creates a new [`PcapParser`].
     /// Returns the parser and the remainder.
     pub fn new(slice: &[u8]) -> PcapResult<(&[u8], PcapParser)> {
         let (slice, header) = PcapHeader::from_slice(slice)?;
@@ -65,7 +64,7 @@ impl PcapParser {
         }
     }
 
-    /// Returns the next packet and the remainder.
+    /// Returns the next [`RawPcapPacket`] and the remainder.
     pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> PcapResult<(&'a [u8], RawPcapPacket<'a>)> {
         match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),
@@ -73,7 +72,7 @@ impl PcapParser {
         }
     }
 
-    /// Returns the header of the pcap file
+    /// Returns the header of the pcap file.
     pub fn header(&self) -> PcapHeader {
         self.header
     }

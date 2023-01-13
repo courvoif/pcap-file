@@ -37,12 +37,12 @@ pub struct PcapHeader {
 }
 
 impl PcapHeader {
-    /// Creates a new [`PcapHeader`] from a slice of bytes
+    /// Creates a new [`PcapHeader`] from a slice of bytes.
     ///
     /// Returns an error if the reader doesn't contain a valid pcap
     /// or if there is a reading error.
     ///
-    /// `PcapError::IncompleteBuffer` indicates that there is not enough data in the buffer
+    /// [`PcapError::IncompleteBuffer`] indicates that there is not enough data in the buffer.
     pub fn from_slice(mut slice: &[u8]) -> PcapResult<(&[u8], PcapHeader)> {
         // Check that slice.len() > PcapHeader length
         if slice.len() < 24 {
@@ -59,7 +59,7 @@ impl PcapHeader {
             _ => return Err(PcapError::InvalidField("PcapHeader: wrong magic number")),
         };
 
-        // Inner function used for the initialisation of the `PcapHeader`.
+        // Inner function used for the initialisation of the PcapHeader.
         // Must check the srcclength before calling it.
         fn init_pcap_header<B: ByteOrder>(
             mut src: &[u8],
@@ -81,7 +81,7 @@ impl PcapHeader {
         }
     }
 
-    /// Write a [`PcapHeader`] to a writer.
+    /// Writes a [`PcapHeader`] to a writer.
     ///
     /// Uses the endianness of the header.
     pub fn write_to<W: Write>(&self, writer: &mut W) -> PcapResult<usize> {
@@ -109,7 +109,7 @@ impl PcapHeader {
     }
 }
 
-/// Creates a new [`PcapHeader`] with the default parameters:
+/// Creates a new [`PcapHeader`] with these parameters:
 ///
 /// ```rust,ignore
 /// PcapHeader {
