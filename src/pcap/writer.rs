@@ -103,4 +103,10 @@ impl<W: Write> PcapWriter<W> {
             Endianness::Little => packet.write_to::<_, LittleEndian>(&mut self.writer),
         }
     }
+
+    /// Returns a SnapLen, i.e. an unsigned value indicating the maximum number of octets captured
+    /// from each packet
+    pub fn get_snaplen(&self) -> usize {
+        self.snaplen as usize
+    }
 }
