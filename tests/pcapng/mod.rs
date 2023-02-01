@@ -14,7 +14,7 @@ fn reader() {
 
         let mut i = 0;
         while let Some(block) = pcapng_reader.next_block() {
-            let _block = block.expect(&format!("Error on block {} on file: {:?}", i, entry));
+            let _block = block.unwrap_or_else(|_| panic!("Error on block {i} on file: {entry:?}"));
             i += 1;
         }
     }
@@ -39,7 +39,7 @@ fn parser() {
                 break;
             }
 
-            let (rem, _) = pcapng_parser.next_block(src).expect(&format!("Error on block {} on file: {:?}", i, entry));
+            let (rem, _) = pcapng_parser.next_block(src).unwrap_or_else(|_| panic!("Error on block {i} on file: {entry:?}"));
             src = rem;
 
             i += 1;
@@ -61,7 +61,7 @@ fn writer() {
             let block = block.unwrap();
             pcapng_writer
                 .write_block(&block)
-                .expect(&format!("Error writing block, file: {:?}, block n°{}, block: {:?}", entry, idx, block));
+                .unwrap_or_else(|_| panic!("Error writing block, file: {entry:?}, block n°{idx}, block: {block:?}"));
             idx += 1;
         }
 
@@ -78,13 +78,13 @@ fn writer() {
                 let actual = actual.unwrap();
 
                 if expected != actual {
-                    assert_eq!(expected, actual, "Pcap written != pcap read, file: {:?}, block n°{}", entry, idx)
+                    assert_eq!(expected, actual, "Pcap written != pcap read, file: {entry:?}, block n°{idx}")
                 }
 
                 idx += 1;
             }
 
-            panic!("Pcap written != pcap read  but blocks are equal, file: {:?}", entry);
+            panic!("Pcap written != pcap read  but blocks are equal, file: {entry:?}");
         }
     }
 }
