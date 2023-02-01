@@ -104,9 +104,19 @@ impl<W: Write> PcapWriter<W> {
         }
     }
 
-    /// Returns a SnapLen, i.e. an unsigned value indicating the maximum number of octets captured
-    /// from each packet
-    pub fn get_snaplen(&self) -> usize {
-        self.snaplen as usize
+    /// Returns the endianess used by the writer.
+    pub fn endianness(&self) -> Endianness {
+        self.endianness
+    }
+
+    /// Returns the snaplen used by the writer, i.e. an unsigned value indicating the maximum number of octets captured
+    /// from each packet.
+    pub fn snaplen(&self) -> u32 {
+        self.snaplen
+    }
+
+    /// Returns the timestamp resolution of the writer.
+    pub fn ts_resolution(&self) -> TsResolution {
+        self.ts_resolution
     }
 }

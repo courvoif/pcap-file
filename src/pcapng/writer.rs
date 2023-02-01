@@ -216,4 +216,14 @@ impl<W: Write> PcapNgWriter<W> {
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.writer
     }
+
+    /// Returns the current [`SectionHeaderBlock`].
+    pub fn section(&self) -> &SectionHeaderBlock<'static> {
+        &self.section
+    }
+
+    /// Returns all the current [`InterfaceDescriptionBlock`].
+    pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
+        &self.interfaces
+    }
 }
