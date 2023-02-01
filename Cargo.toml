@@ -1,9 +1,9 @@
 [package]
 name = "pcap-file"
 edition = "2021"
-version = "2.0.0-rc1"
+version = "2.0.0"
 authors = ["Courvoif <courvoif@pm.me>"]
-description = "A crate to read and write Pcap and PcapNg"
+description = "A crate to parse, read and write Pcap and PcapNg"
 
 license = "MIT"
 documentation = "https://docs.rs/pcap-file/"
