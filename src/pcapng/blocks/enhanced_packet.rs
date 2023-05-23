@@ -62,7 +62,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         let (slice, options) = EnhancedPacketOption::opts_from_slice::<B>(slice)?;
         let block = EnhancedPacketBlock {
             interface_id,
-            timestamp: Duration::from_nanos(timestamp),
+            timestamp: Duration::from_micros(timestamp),
             original_len,
             data: Cow::Borrowed(data),
             options,
@@ -76,7 +76,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 
         writer.write_u32::<B>(self.interface_id)?;
 
-        let timestamp = self.timestamp.as_nanos();
+        let timestamp = self.timestamp.as_micros();
         let timestamp_high = (timestamp >> 32) as u32;
         writer.write_u32::<B>(timestamp_high)?;
         let timestamp_low = (timestamp & 0xFFFFFFFF) as u32;
