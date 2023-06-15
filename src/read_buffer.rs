@@ -2,7 +2,6 @@ use std::io::{Error, ErrorKind, Read};
 
 use crate::PcapError;
 
-
 /// Internal structure that bufferize its input and allow to parse element from its buffer.
 #[derive(Debug)]
 pub(crate) struct ReadBuffer<R: Read> {
@@ -124,10 +123,17 @@ impl<R: Read> ReadBuffer<R> {
     pub fn into_inner(self) -> R {
         self.reader
     }
+}
 
-    /// Return a reference over the inner reader
-    pub fn get_ref(&self) -> &R {
+impl<R: Read> AsRef<R> for ReadBuffer<R> {
+    fn as_ref(&self) -> &R {
         &self.reader
+    }
+}
+
+impl<R: Read> AsMut<R> for ReadBuffer<R> {
+    fn as_mut(&mut self) -> &mut R {
+        &mut self.reader
     }
 }
 

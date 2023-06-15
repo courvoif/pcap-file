@@ -8,7 +8,6 @@ use super::PcapNgParser;
 use crate::errors::PcapError;
 use crate::read_buffer::ReadBuffer;
 
-
 /// Reads a PcapNg from a reader.
 ///
 /// # Example
@@ -49,8 +48,7 @@ impl<R: Read> PcapNgReader<R> {
             Ok(has_data) => {
                 if has_data {
                     Some(self.reader.parse_with(|src| self.parser.next_block(src)))
-                }
-                else {
+                } else {
                     None
                 }
             },
@@ -64,8 +62,7 @@ impl<R: Read> PcapNgReader<R> {
             Ok(has_data) => {
                 if has_data {
                     Some(self.reader.parse_with(|src| self.parser.next_raw_block(src)))
-                }
-                else {
+                } else {
                     None
                 }
             },
@@ -92,9 +89,16 @@ impl<R: Read> PcapNgReader<R> {
     pub fn into_inner(self) -> R {
         self.reader.into_inner()
     }
+}
 
-    /// Gets a reference to the wrapped reader.
-    pub fn get_ref(&self) -> &R {
-        self.reader.get_ref()
+impl<R: Read> AsRef<R> for PcapNgReader<R> {
+    fn as_ref(&self) -> &R {
+        self.reader.as_ref()
+    }
+}
+
+impl<R: Read> AsMut<R> for PcapNgReader<R> {
+    fn as_mut(&mut self) -> &mut R {
+        self.reader.as_mut()
     }
 }
