@@ -7,7 +7,6 @@ use crate::errors::*;
 use crate::pcap::{PcapHeader, PcapPacket};
 use crate::{Endianness, TsResolution};
 
-
 /// Writes a pcap to a writer.
 ///
 /// # Example
@@ -51,7 +50,7 @@ impl<W: Write> PcapWriter<W> {
     ///     version_minor: 4,
     ///     ts_correction: 0,
     ///     ts_accuracy: 0,
-    ///     snaplen: 65535,
+    ///     snaplen: MAXIMUM_SNAPLEN,
     ///     datalink: DataLink::ETHERNET,
     ///     ts_resolution: TsResolution::MicroSecond,
     ///     endianness: Endianness::Native

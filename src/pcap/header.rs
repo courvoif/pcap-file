@@ -5,8 +5,8 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
 use crate::errors::*;
+use crate::pcap::MAXIMUM_SNAPLEN;
 use crate::{DataLink, Endianness, TsResolution};
-
 
 /// Pcap Global Header
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -23,7 +23,7 @@ pub struct PcapHeader {
     /// Timestamp accuracy, should always be 0
     pub ts_accuracy: u32,
 
-    /// Max length of captured packet, typically 65535
+    /// Max length of captured packet, typically MAXIMUM_SNAPLEN
     pub snaplen: u32,
 
     /// DataLink type (first layer in the packet)
@@ -71,7 +71,12 @@ impl PcapHeader {
                 version_minor: src.read_u16::<B>().unwrap(),
                 ts_correction: src.read_i32::<B>().unwrap(),
                 ts_accuracy: src.read_u32::<B>().unwrap(),
-                snaplen: src.read_u32::<B>().unwrap(),
+                // When snaplen is 0, use default snapshot len
+                // see tcpdump manpages [tcpdump](https://www.tcpdump.org/manpages/tcpdump.1.html)
+                snaplen: match src.read_u32::<B>().unwrap() {
+                    0 => MAXIMUM_SNAPLEN,
+                    len => len,
+                },
                 datalink: DataLink::from(src.read_u32::<B>().unwrap()),
                 ts_resolution,
                 endianness,
@@ -117,7 +122,7 @@ impl PcapHeader {
 ///     version_minor: 4,
 ///     ts_correction: 0,
 ///     ts_accuracy: 0,
-///     snaplen: 65535,
+///     snaplen: MAXIMUM_SNAPLEN,
 ///     datalink: DataLink::ETHERNET,
 ///     ts_resolution: TsResolution::MicroSecond,
 ///     endianness: Endianness::Big
@@ -130,7 +135,7 @@ impl Default for PcapHeader {
             version_minor: 4,
             ts_correction: 0,
             ts_accuracy: 0,
-            snaplen: 65535,
+            snaplen: MAXIMUM_SNAPLEN,
             datalink: DataLink::ETHERNET,
             ts_resolution: TsResolution::MicroSecond,
             endianness: Endianness::Big,
