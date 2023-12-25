@@ -104,6 +104,11 @@ impl<W: Write> PcapWriter<W> {
         }
     }
 
+    /// Flush data
+    pub fn flush(&mut self) -> PcapResult<()> {
+        self.writer.flush().map_err(PcapError::IoError)
+    }
+
     /// Returns the endianess used by the writer.
     pub fn endianness(&self) -> Endianness {
         self.endianness
