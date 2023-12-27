@@ -133,7 +133,7 @@ impl<'a> RawBlock<'a> {
         writer.write_all(&self.body[..])?;
         writer.write_u32::<B>(self.trailer_len)?;
 
-        Ok(self.body.len() + 6)
+        Ok(self.body.len() + 12)
     }
 
     /// Tries to convert a [`RawBlock`] into a [`Block`]
@@ -259,8 +259,24 @@ impl<'a> Block<'a> {
         }
     }
 
+    /// Tries to downcasts the current block as an [`EnhancedPacketBlock`]
+    pub fn as_enhanced_packet(&self) -> Option<&EnhancedPacketBlock<'a>> {
+        match self {
+            Block::EnhancedPacket(a) => Some(a),
+            _ => None,
+        }
+    }
+
     /// Tries to downcasts the current block into an [`InterfaceDescriptionBlock`]
     pub fn into_interface_description(self) -> Option<InterfaceDescriptionBlock<'a>> {
+        match self {
+            Block::InterfaceDescription(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcasts the current block as an [`InterfaceDescriptionBlock`]
+    pub fn as_interface_description(&self) -> Option<&InterfaceDescriptionBlock<'a>> {
         match self {
             Block::InterfaceDescription(a) => Some(a),
             _ => None,
@@ -275,7 +291,15 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into an [`NameResolutionBlock`], if possible
+    /// Tries to downcasts the current block as an [`InterfaceStatisticsBlock`]
+    pub fn as_interface_statistics(&self) -> Option<&InterfaceStatisticsBlock<'a>> {
+        match self {
+            Block::InterfaceStatistics(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcast the current block into a [`NameResolutionBlock`], if possible
     pub fn into_name_resolution(self) -> Option<NameResolutionBlock<'a>> {
         match self {
             Block::NameResolution(a) => Some(a),
@@ -283,7 +307,15 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into an [`PacketBlock`], if possible
+    /// Tries to downcast the current block as a [`NameResolutionBlock`], if possible
+    pub fn as_name_resolution(&self) -> Option<&NameResolutionBlock<'a>> {
+        match self {
+            Block::NameResolution(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcast the current block into a [`PacketBlock`], if possible
     pub fn into_packet(self) -> Option<PacketBlock<'a>> {
         match self {
             Block::Packet(a) => Some(a),
@@ -291,7 +323,15 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into an [`SectionHeaderBlock`], if possible
+    /// Tries to downcast the current block as a [`PacketBlock`], if possible
+    pub fn as_packet(&self) -> Option<&PacketBlock<'a>> {
+        match self {
+            Block::Packet(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcast the current block into a [`SectionHeaderBlock`], if possible
     pub fn into_section_header(self) -> Option<SectionHeaderBlock<'a>> {
         match self {
             Block::SectionHeader(a) => Some(a),
@@ -299,7 +339,15 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into an [`SimplePacketBlock`], if possible
+    /// Tries to downcast the current block as a [`SectionHeaderBlock`], if possible
+    pub fn as_section_header(&self) -> Option<&SectionHeaderBlock<'a>> {
+        match self {
+            Block::SectionHeader(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcast the current block into a [`SimplePacketBlock`], if possible
     pub fn into_simple_packet(self) -> Option<SimplePacketBlock<'a>> {
         match self {
             Block::SimplePacket(a) => Some(a),
@@ -307,8 +355,24 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into an [`SystemdJournalExportBlock`], if possible
+    /// Tries to downcast the current block as a [`SimplePacketBlock`], if possible
+    pub fn as_simple_packet(&self) -> Option<&SimplePacketBlock<'a>> {
+        match self {
+            Block::SimplePacket(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcast the current block into a [`SystemdJournalExportBlock`], if possible
     pub fn into_systemd_journal_export(self) -> Option<SystemdJournalExportBlock<'a>> {
+        match self {
+            Block::SystemdJournalExport(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcast the current block as a [`SystemdJournalExportBlock`], if possible
+    pub fn as_systemd_journal_export(&self) -> Option<&SystemdJournalExportBlock<'a>> {
         match self {
             Block::SystemdJournalExport(a) => Some(a),
             _ => None,
