@@ -2,7 +2,7 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
 use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::enhanced_packet::EnhancedPacketBlock;
-use super::blocks::interface_description::InterfaceDescriptionBlock;
+use super::blocks::interface_description::{InterfaceDescriptionBlock, TsResolution};
 use super::blocks::section_header::SectionHeaderBlock;
 use super::blocks::{INTERFACE_DESCRIPTION_BLOCK, SECTION_HEADER_BLOCK};
 use crate::errors::PcapError;
@@ -44,8 +44,12 @@ use crate::Endianness;
 /// }
 /// ```
 pub struct PcapNgParser {
+    /// Current section of the pcapng
     section: SectionHeaderBlock<'static>,
+    /// List of the interfaces of the current section of the pcapng
     interfaces: Vec<InterfaceDescriptionBlock<'static>>,
+    /// Timestamp resolutions corresponding to the interfaces
+    ts_resolutions: Vec<TsResolution>,
 }
 
 impl PcapNgParser {
@@ -60,7 +64,7 @@ impl PcapNgParser {
             _ => return Err(PcapError::InvalidField("PcapNg: SectionHeader invalid or missing")),
         };
 
-        let parser = PcapNgParser { section, interfaces: vec![] };
+        let parser = PcapNgParser { section, interfaces: Vec::new(), ts_resolutions: Vec::new() };
 
         Ok((rem, parser))
     }
@@ -68,7 +72,7 @@ impl PcapNgParser {
     /// Returns the remainder and the next [`Block`].
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
         // Read next Block
-        match self.section.endianness {
+        let mut res = match self.section.endianness {
             Endianness::Big => {
                 let (rem, raw_block) = self.next_raw_block_inner::<BigEndian>(src)?;
                 let block = raw_block.try_into_block::<BigEndian>()?;
@@ -79,7 +83,19 @@ impl PcapNgParser {
                 let block = raw_block.try_into_block::<LittleEndian>()?;
                 Ok((rem, block))
             },
+        };
+
+        // If the block is an EnhancedPacketBlock, adjust its timestamp with the correct TsResolution
+        if let Ok((_, Block::EnhancedPacket(ref mut blk))) = &mut res {
+            let ts_resol = self
+                .ts_resolutions
+                .get(blk.interface_id as usize)
+                .ok_or(PcapError::InvalidInterfaceId(blk.interface_id))?;
+
+            blk.adjust_parsed_timestamp(*ts_resol);
         }
+
+        res
     }
 
     /// Returns the remainder and the next [`RawBlock`].
@@ -99,10 +115,14 @@ impl PcapNgParser {
             SECTION_HEADER_BLOCK => {
                 self.section = raw_block.clone().try_into_block::<B>()?.into_owned().into_section_header().unwrap();
                 self.interfaces.clear();
+                self.ts_resolutions.clear();
             },
             INTERFACE_DESCRIPTION_BLOCK => {
                 let interface = raw_block.clone().try_into_block::<B>()?.into_owned().into_interface_description().unwrap();
+                let ts_resolution = interface.ts_resolution()?;
+
                 self.interfaces.push(interface);
+                self.ts_resolutions.push(ts_resolution);
             },
             _ => {},
         }

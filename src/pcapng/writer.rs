@@ -3,14 +3,14 @@ use std::io::Write;
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
 use super::blocks::block_common::{Block, PcapNgBlock};
-use super::blocks::interface_description::InterfaceDescriptionBlock;
+use super::blocks::interface_description::{InterfaceDescriptionBlock, TsResolution};
 use super::blocks::section_header::SectionHeaderBlock;
 use super::blocks::SECTION_HEADER_BLOCK;
 use super::RawBlock;
 use crate::{Endianness, PcapError, PcapResult};
 
 
-/// Writes a PcapNg to a writer.
+/// Write a PcapNg to a writer.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -34,15 +34,21 @@ use crate::{Endianness, PcapError, PcapResult};
 /// }
 /// ```
 pub struct PcapNgWriter<W: Write> {
+    /// Current section of the pcapng
     section: SectionHeaderBlock<'static>,
+    /// List of the interfaces of the current section of the pcapng
     interfaces: Vec<InterfaceDescriptionBlock<'static>>,
+    /// Timestamp resolutions corresponding to the interfaces
+    ts_resolutions: Vec<TsResolution>,
+
+    /// Wrapped writer to which the block are written to.
     writer: W,
 }
 
 impl<W: Write> PcapNgWriter<W> {
-    /// Creates a new [`PcapNgWriter`] from an existing writer.
+    /// Create a new [`PcapNgWriter`] from an existing writer.
     ///
-    /// Defaults to the native endianness of the CPU.
+    /// Default to the native endianness of the CPU.
     ///
     /// Writes this global pcapng header to the file:
     /// ```rust, ignore
@@ -62,24 +68,24 @@ impl<W: Write> PcapNgWriter<W> {
         Self::with_endianness(writer, Endianness::native())
     }
 
-    /// Creates a new [`PcapNgWriter`] from an existing writer with the given endianness.
+    /// Create a new [`PcapNgWriter`] from an existing writer with the given endianness.
     pub fn with_endianness(writer: W, endianness: Endianness) -> PcapResult<Self> {
         let section = SectionHeaderBlock { endianness, ..Default::default() };
 
         Self::with_section_header(writer, section)
     }
 
-    /// Creates a new [`PcapNgWriter`] from an existing writer with the given section header.
+    /// Create a new [`PcapNgWriter`] from an existing writer with the given section header.
     pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'static>) -> PcapResult<Self> {
         match section.endianness {
             Endianness::Big => section.clone().into_block().write_to::<BigEndian, _>(&mut writer).map_err(PcapError::IoError)?,
             Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer).map_err(PcapError::IoError)?,
         };
 
-        Ok(Self { section, interfaces: vec![], writer })
+        Ok(Self { section, interfaces: Vec::new(), ts_resolutions: Vec::new(), writer })
     }
 
-    /// Writes a [`Block`].
+    /// Write a [`Block`].
     ///
     /// # Example
     /// ```rust,no_run
@@ -100,13 +106,9 @@ impl<W: Write> PcapNgWriter<W> {
     ///     options: vec![],
     /// };
     ///
-    /// let packet = EnhancedPacketBlock {
-    ///     interface_id: 0,
-    ///     timestamp: Duration::from_secs(0),
-    ///     original_len: data.len() as u32,
-    ///     data: Cow::Borrowed(&data),
-    ///     options: vec![],
-    /// };
+    /// let mut packet = EnhancedPacketBlock::default();
+    /// packet.original_len = data.len() as u32;
+    /// packet.data = Cow::Borrowed(&data);
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
@@ -116,22 +118,29 @@ impl<W: Write> PcapNgWriter<W> {
     /// ```
     pub fn write_block(&mut self, block: &Block) -> PcapResult<usize> {
         match block {
-            Block::SectionHeader(a) => {
-                self.section = a.clone().into_owned();
+            Block::SectionHeader(blk) => {
+                self.section = blk.clone().into_owned();
                 self.interfaces.clear();
+                self.ts_resolutions.clear();
             },
-            Block::InterfaceDescription(a) => {
-                self.interfaces.push(a.clone().into_owned());
+            Block::InterfaceDescription(blk) => {
+                let ts_resolution = blk.ts_resolution()?;
+                self.ts_resolutions.push(ts_resolution);
+
+                self.interfaces.push(blk.clone().into_owned());
             },
-            Block::InterfaceStatistics(a) => {
-                if a.interface_id as usize >= self.interfaces.len() {
-                    return Err(PcapError::InvalidInterfaceId(a.interface_id));
+            Block::InterfaceStatistics(blk) => {
+                if blk.interface_id as usize >= self.interfaces.len() {
+                    return Err(PcapError::InvalidInterfaceId(blk.interface_id));
                 }
             },
-            Block::EnhancedPacket(a) => {
-                if a.interface_id as usize >= self.interfaces.len() {
-                    return Err(PcapError::InvalidInterfaceId(a.interface_id));
+            Block::EnhancedPacket(blk) => {
+                if blk.interface_id as usize >= self.interfaces.len() {
+                    return Err(PcapError::InvalidInterfaceId(blk.interface_id));
                 }
+
+                let ts_resol = self.ts_resolutions[blk.interface_id as usize];
+                blk.set_write_ts_resolution(ts_resol);
             },
 
             _ => (),
@@ -143,7 +152,7 @@ impl<W: Write> PcapNgWriter<W> {
         }
     }
 
-    /// Writes a [`PcapNgBlock`].
+    /// Write a [`PcapNgBlock`].
     ///
     /// # Example
     /// ```rust,no_run
@@ -164,13 +173,9 @@ impl<W: Write> PcapNgWriter<W> {
     ///     options: vec![],
     /// };
     ///
-    /// let packet = EnhancedPacketBlock {
-    ///     interface_id: 0,
-    ///     timestamp: Duration::from_secs(0),
-    ///     original_len: data.len() as u32,
-    ///     data: Cow::Borrowed(&data),
-    ///     options: vec![],
-    /// };
+    /// let mut packet = EnhancedPacketBlock::default();
+    /// packet.original_len = data.len() as u32;
+    /// packet.data = Cow::Borrowed(&data);
     ///
     /// let file = File::create("out.pcap").expect("Error creating file");
     /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
@@ -182,7 +187,7 @@ impl<W: Write> PcapNgWriter<W> {
         self.write_block(&block.into_block())
     }
 
-    /// Writes a [`RawBlock`].
+    /// Write a [`RawBlock`].
     ///
     /// Doesn't check the validity of the written blocks.
     pub fn write_raw_block(&mut self, block: &RawBlock) -> PcapResult<usize> {
@@ -191,6 +196,7 @@ impl<W: Write> PcapNgWriter<W> {
             Endianness::Little => inner::<LittleEndian, _>(&mut self.section, block, &mut self.writer),
         };
 
+        // Write a RawBlock to a writer
         fn inner<B: ByteOrder, W: Write>(section: &mut SectionHeaderBlock, block: &RawBlock, writer: &mut W) -> PcapResult<usize> {
             if block.type_ == SECTION_HEADER_BLOCK {
                 *section = block.clone().try_into_block::<B>()?.into_owned().into_section_header().unwrap();
@@ -200,29 +206,29 @@ impl<W: Write> PcapNgWriter<W> {
         }
     }
 
-    /// Consumes [`Self`], returning the wrapped writer.
+    /// Consume [`self`], returning the wrapped writer.
     pub fn into_inner(self) -> W {
         self.writer
     }
 
-    /// Gets a reference to the underlying writer.
+    /// Get a reference to the underlying writer.
     pub fn get_ref(&self) -> &W {
         &self.writer
     }
 
-    /// Gets a mutable reference to the underlying writer.
+    /// Get a mutable reference to the underlying writer.
     ///
     /// You should not be used unless you really know what you're doing
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.writer
     }
 
-    /// Returns the current [`SectionHeaderBlock`].
+    /// Return the current [`SectionHeaderBlock`].
     pub fn section(&self) -> &SectionHeaderBlock<'static> {
         &self.section
     }
 
-    /// Returns all the current [`InterfaceDescriptionBlock`].
+    /// Return all the current [`InterfaceDescriptionBlock`].
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
         &self.interfaces
     }

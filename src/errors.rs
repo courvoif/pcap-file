@@ -11,7 +11,7 @@ pub enum PcapError {
     IncompleteBuffer,
 
     /// Generic IO error
-    #[error("Error reading bytes")]
+    #[error("Error reading/writing bytes")]
     IoError(#[source] std::io::Error),
 
     /// Invalid field
@@ -27,8 +27,16 @@ pub enum PcapError {
     FromUtf8Error(#[source] std::string::FromUtf8Error),
 
     /// Invalid interface ID (only for Pcap NG)
-    #[error("No corresponding interface id: {0}")]
+    #[error("The interface id ({0}) of the current block doesn't exists")]
     InvalidInterfaceId(u32),
+
+    /// Invalid timestamp resolution (only for Pcap NG)
+    #[error("Invalid timestamp resolution: {0} is not in [0-9]")]
+    InvalidTsResolution(u8),
+
+    /// The packet's timestamp is too big (only for Pcap NG)
+    #[error("Packet's timestamp too big, please choose a bigger timestamp resolution")]
+    TimestampTooBig,
 }
 
 impl From<std::str::Utf8Error> for PcapError {

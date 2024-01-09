@@ -9,6 +9,7 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
+use once_cell::sync::Lazy;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
@@ -21,13 +22,13 @@ use crate::DataLink;
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct InterfaceDescriptionBlock<'a> {
     /// A value that defines the link layer type of this interface.
-    /// 
+    ///
     /// The list of Standardized Link Layer Type codes is available in the
     /// [tcpdump.org link-layer header types registry.](http://www.tcpdump.org/linktypes.html).
     pub linktype: DataLink,
 
     /// Maximum number of octets captured from each packet.
-    /// 
+    ///
     /// The portion of each packet that exceeds this value will not be stored in the file.
     /// A value of zero indicates no limit.
     pub snaplen: u32,
@@ -71,12 +72,30 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
     }
 }
 
-impl InterfaceDescriptionBlock<'static> {
+impl<'a> InterfaceDescriptionBlock<'a> {
     /// Creates a new [`InterfaceDescriptionBlock`]
     pub fn new(linktype: DataLink, snaplen: u32) -> Self {
         Self { linktype, snaplen, options: vec![] }
     }
+
+    /// Returns the timestamp resolution of the interface.
+    /// If no ts_resolution is set, defaults to μs.
+    pub fn ts_resolution(&self) -> Result<TsResolution, PcapError> {
+        let mut ts_resol = Ok(TsResolution::default());
+
+        for opt in &self.options {
+            if let InterfaceDescriptionOption::IfTsResol(resol) = opt {
+                ts_resol = TsResolution::new(*resol);
+                break;
+            }
+        }
+
+        ts_resol
+    }
 }
+
+
+/* ----- */
 
 /// The Interface Description Block (IDB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -239,5 +258,67 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
             InterfaceDescriptionOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
         }
+    }
+}
+
+
+/* ----- */
+
+/// Timestamp resolution of an interface.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct TsResolution(u8);
+
+impl TsResolution {
+    /// Micro-second resolution
+    pub const MICRO: Self = TsResolution(6);
+    /// Milli-second resolution
+    pub const MILLI: Self = TsResolution(3);
+    /// Nano-second resolution
+    pub const NANO: Self = TsResolution(9);
+    /// Second resolution
+    pub const SEC: Self = TsResolution(0);
+
+    /// Creates a new [`TsResolution`] from an [`u8`] if is it in the range [0-9].
+    pub fn new(ts_resol: u8) -> Result<Self, PcapError> {
+        let is_bin = (ts_resol >> 7) & 0x1 == 1;
+        let resol = ts_resol & 0x7F;
+
+        if is_bin && resol > 30 {
+            return Err(PcapError::InvalidTsResolution(ts_resol));
+        }
+
+        if !is_bin && resol > 9 {
+            return Err(PcapError::InvalidTsResolution(ts_resol));
+        }
+
+        Ok(TsResolution(ts_resol))
+    }
+
+    /// Returns the number of nanoseconds coresponding to the [`TsResolution`].
+    pub fn to_nano_secs(&self) -> u32 {
+        static TS_RESOL_BIN_TO_DURATION: Lazy<Vec<u32>> = Lazy::new(|| (0..30).map(|i| 2_u32.pow(30 - i)).collect());
+        static TS_RESOL_DEC_TO_DURATION: Lazy<Vec<u32>> = Lazy::new(|| (0..10).map(|i| 10_u32.pow(9 - i)).collect());
+
+        let is_bin = (self.0 >> 7) & 0x1 == 1;
+        let resol = self.0 & 0x7F;
+
+        if is_bin {
+            TS_RESOL_BIN_TO_DURATION[resol as usize]
+        }
+        else {
+            TS_RESOL_DEC_TO_DURATION[resol as usize]
+        }
+    }
+
+    /// Returns the number of nanoseconds coresponding to the [`TsResolution`] in 10^-ts.
+    pub fn to_raw(&self) -> u8 {
+        self.0
+    }
+}
+
+impl Default for TsResolution {
+    /// Default to micro-seconds resolution
+    fn default() -> Self {
+        Self::MICRO
     }
 }

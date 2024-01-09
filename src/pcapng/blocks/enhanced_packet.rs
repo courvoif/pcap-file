@@ -1,6 +1,7 @@
 //! Enhanced Packet Block (EPB).
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::io::{Result as IoResult, Write};
 use std::time::Duration;
 
@@ -10,6 +11,7 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
+use super::interface_description::TsResolution;
 use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
 
@@ -18,12 +20,14 @@ use crate::errors::PcapError;
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct EnhancedPacketBlock<'a> {
     /// It specifies the interface this packet comes from.
-    /// 
+    ///
     /// The correct interface will be the one whose Interface Description Block
     /// (within the current Section of the file) is identified by the same number of this field.
     pub interface_id: u32,
 
     /// Number of units of time that have elapsed since 1970-01-01 00:00:00 UTC.
+    /// By default the timestamp read from the format is considered by have a nano_second resolution.
+    /// If it is not the case, call [`self.correct_ts_with_ts_resolution()`].
     pub timestamp: Duration,
 
     /// Actual length of the packet when it was transmitted on the network.
@@ -34,6 +38,22 @@ pub struct EnhancedPacketBlock<'a> {
 
     /// Options
     pub options: Vec<EnhancedPacketOption<'a>>,
+
+    /// TsResolution to use when writing the block
+    write_ts_resolution: Cell<TsResolution>,
+}
+
+impl<'a> EnhancedPacketBlock<'a> {
+    /// Set the [`TsResolution`] to use for writing this block.
+    pub fn set_write_ts_resolution(&self, ts_resolution: TsResolution) {
+        self.write_ts_resolution.set(ts_resolution)
+    }
+
+    /// Ajust the parsed timestamp field with the right [`TsResolution`].
+    /// Must be called only once.
+    pub(crate) fn adjust_parsed_timestamp(&mut self, ts_resolution: TsResolution) {
+        self.timestamp *= ts_resolution.to_nano_secs();
+    }
 }
 
 impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
@@ -43,9 +63,12 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         }
 
         let interface_id = slice.read_u32::<B>().unwrap();
+
         let timestamp_high = slice.read_u32::<B>().unwrap() as u64;
         let timestamp_low = slice.read_u32::<B>().unwrap() as u64;
-        let timestamp = (timestamp_high << 32) + timestamp_low;
+        let ts_raw = (timestamp_high << 32) + timestamp_low;
+        let timestamp = Duration::from_nanos(ts_raw);
+
         let captured_len = slice.read_u32::<B>().unwrap();
         let original_len = slice.read_u32::<B>().unwrap();
 
@@ -62,10 +85,11 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         let (slice, options) = EnhancedPacketOption::opts_from_slice::<B>(slice)?;
         let block = EnhancedPacketBlock {
             interface_id,
-            timestamp: Duration::from_nanos(timestamp),
+            timestamp,
             original_len,
             data: Cow::Borrowed(data),
             options,
+            write_ts_resolution: Cell::new(TsResolution::NANO),
         };
 
         Ok((slice, block))
@@ -76,10 +100,14 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 
         writer.write_u32::<B>(self.interface_id)?;
 
-        let timestamp = self.timestamp.as_nanos();
-        let timestamp_high = (timestamp >> 32) as u32;
+        let ts_raw = self.timestamp.as_nanos() / self.write_ts_resolution.get().to_nano_secs() as u128;
+        let ts_raw: u64 = ts_raw
+            .try_into()
+            .map_err(|_| std::io::Error::other("Timestamp too big, please use a bigger timestamp resolution"))?;
+
+        let timestamp_high = (ts_raw >> 32) as u32;
+        let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;
         writer.write_u32::<B>(timestamp_high)?;
-        let timestamp_low = (timestamp & 0xFFFFFFFF) as u32;
         writer.write_u32::<B>(timestamp_low)?;
 
         writer.write_u32::<B>(self.data.len() as u32)?;
@@ -96,6 +124,22 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         Block::EnhancedPacket(self)
     }
 }
+
+impl Default for EnhancedPacketBlock<'_> {
+    fn default() -> Self {
+        Self {
+            interface_id: Default::default(),
+            timestamp: Duration::ZERO,
+            original_len: Default::default(),
+            data: Default::default(),
+            options: Default::default(),
+            write_ts_resolution: Default::default(),
+        }
+    }
+}
+
+
+/* ----- */
 
 /// The Enhanced Packet Block (EPB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
