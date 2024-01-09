@@ -93,10 +93,6 @@ impl<'a> PcapPacket<'a> {
             return Err(PcapError::InvalidField("PacketHeader incl_len > snap_len"));
         }
 
-        if orig_len > snap_len {
-            return Err(PcapError::InvalidField("PacketHeader orig_len > snap_len"));
-        }
-
         if incl_len > orig_len {
             return Err(PcapError::InvalidField("PacketHeader incl_len > orig_len"));
         }
