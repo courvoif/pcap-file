@@ -3,9 +3,9 @@
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
+use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
-use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
@@ -15,12 +15,22 @@ use crate::pcapng::PcapNgState;
 /// Common fonctions of the PcapNg options
 pub(crate) trait PcapNgOption<'a> {
     /// Parse an option from a slice
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, interface_id: Option<u32>, code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError>
+    fn from_slice<B: ByteOrder>(
+        state: &PcapNgState,
+        interface_id: Option<u32>,
+        code: u16,
+        length: u16,
+        slice: &'a [u8],
+    ) -> Result<Self, PcapError>
     where
         Self: std::marker::Sized;
 
     /// Parse all options in a block
-    fn opts_from_slice<B: ByteOrder>(state: &PcapNgState, interface_id: Option<u32>, mut slice: &'a [u8]) -> Result<(&'a [u8], Vec<Self>), PcapError>
+    fn opts_from_slice<B: ByteOrder>(
+        state: &PcapNgState,
+        interface_id: Option<u32>,
+        mut slice: &'a [u8],
+    ) -> Result<(&'a [u8], Vec<Self>), PcapError>
     where
         Self: std::marker::Sized,
     {
@@ -57,14 +67,19 @@ pub(crate) trait PcapNgOption<'a> {
             options.push(opt);
         }
 
-        Err(PcapError::InvalidField("Invalid option"))
+        Ok((slice, options))
     }
 
     /// Write the option to a writer
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError>;
 
     /// Write all options in a block
-    fn write_opts_to<B: ByteOrder, W: Write>(opts: &[Self], state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError>
+    fn write_opts_to<B: ByteOrder, W: Write>(
+        opts: &[Self],
+        state: &PcapNgState,
+        interface_id: Option<u32>,
+        writer: &mut W,
+    ) -> Result<usize, PcapError>
     where
         Self: std::marker::Sized,
     {
@@ -163,7 +178,7 @@ impl<'a> WriteOptTo for Cow<'a, [u8]> {
 
 impl<'a> WriteOptTo for Cow<'a, str> {
     fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        let len = self.as_bytes().len();
+        let len = self.len();
         let pad_len = (4 - len % 4) % 4;
 
         writer.write_u16::<B>(code)?;
@@ -258,5 +273,54 @@ impl<'a> WriteOptTo for UnknownOption<'a> {
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
         Ok(len + pad_len + 4)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use byteorder_slice::BigEndian;
+
+    use crate::PcapError;
+    use crate::pcapng::PcapNgState;
+    use crate::pcapng::blocks::opt_common::PcapNgOption;
+
+    #[derive(Debug, PartialEq)]
+    struct PcapNgOptionImpl {}
+
+    impl<'a> PcapNgOption<'a> for PcapNgOptionImpl {
+        fn from_slice<B: byteorder_slice::ByteOrder>(
+            _state: &PcapNgState,
+            _interface_id: Option<u32>,
+            _code: u16,
+            _length: u16,
+            _slice: &'a [u8],
+        ) -> Result<Self, PcapError>
+        where
+            Self: std::marker::Sized,
+        {
+            Ok(Self {})
+        }
+
+        fn write_to<B: byteorder_slice::ByteOrder, W: std::io::Write>(
+            &self,
+            _state: &PcapNgState,
+            _interface_id: Option<u32>,
+            _writer: &mut W,
+        ) -> Result<usize, PcapError> {
+            Ok(0)
+        }
+    }
+
+
+    /// Test that a list of option without an endofopt can be parsed
+    #[test]
+    fn opt_without_endofopt() {
+        let data = [0, 1, 0, 4, 0, 0, 0, 0];
+        let state = PcapNgState::default();
+
+        let (rem, opts) = PcapNgOptionImpl::opts_from_slice::<BigEndian>(&state, None, &data).expect("Failed to read the options");
+
+        assert_eq!(&opts, &[PcapNgOptionImpl {}]);
+        assert_eq!(&rem, &[]);
     }
 }

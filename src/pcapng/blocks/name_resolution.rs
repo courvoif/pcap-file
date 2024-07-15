@@ -211,7 +211,7 @@ impl<'a> Ipv4Record<'a> {
             writer.write_all(name.as_bytes())?;
             writer.write_u8(0)?;
 
-            len += name.as_bytes().len();
+            len += name.len();
             len += 1;
         }
 
@@ -266,7 +266,7 @@ impl<'a> Ipv6Record<'a> {
             writer.write_all(name.as_bytes())?;
             writer.write_u8(0)?;
 
-            len += name.as_bytes().len();
+            len += name.len();
             len += 1;
         }
 
