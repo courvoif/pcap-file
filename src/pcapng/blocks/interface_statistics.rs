@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
+use std::time::Duration;
 
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
@@ -24,23 +25,23 @@ pub struct InterfaceStatisticsBlock<'a> {
     pub interface_id: u32,
 
     /// Time this statistics refers to.
-    /// 
-    /// The format of the timestamp is the same already defined in the Enhanced Packet Block.
-    /// The length of a unit of time is specified by the 'if_tsresol' option of the Interface Description Block referenced by this packet.
-    pub timestamp: u64,
+    pub timestamp: Duration,
 
     /// Options
     pub options: Vec<InterfaceStatisticsOption<'a>>,
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 12 {
             return Err(PcapError::InvalidField("InterfaceStatisticsBlock: block length < 12"));
         }
 
         let interface_id = slice.read_u32::<B>().unwrap();
-        let timestamp = slice.read_u64::<B>().unwrap();
+        let timestamp_high = slice.read_u32::<B>().unwrap() as u64;
+        let timestamp_low = slice.read_u32::<B>().unwrap() as u64;
+        let ts_raw = (timestamp_high << 32) + timestamp_low;
+        let timestamp = state.decode_timestamp(interface_id, ts_raw)?;
         let (slice, options) = InterfaceStatisticsOption::opts_from_slice::<B>(slice)?;
 
         let block = InterfaceStatisticsBlock { interface_id, timestamp, options };
@@ -48,9 +49,13 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
         writer.write_u32::<B>(self.interface_id)?;
-        writer.write_u64::<B>(self.timestamp)?;
+        let ts_raw = state.encode_timestamp(self.interface_id, self.timestamp)?;
+        let timestamp_high = (ts_raw >> 32) as u32;
+        let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;
+        writer.write_u32::<B>(timestamp_high)?;
+        writer.write_u32::<B>(timestamp_low)?;
 
         let opt_len = InterfaceStatisticsOption::write_opts_to::<B, _>(&self.options, writer)?;
         Ok(12 + opt_len)
