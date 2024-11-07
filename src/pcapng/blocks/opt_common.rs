@@ -59,17 +59,17 @@ pub(crate) trait PcapNgOption<'a> {
     }
 
     /// Write the option to a writer
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize>;
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> IoResult<usize>;
 
     /// Write all options in a block
-    fn write_opts_to<B: ByteOrder, W: Write>(opts: &[Self], writer: &mut W) -> IoResult<usize>
+    fn write_opts_to<B: ByteOrder, W: Write>(opts: &[Self], state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> IoResult<usize>
     where
         Self: std::marker::Sized,
     {
         let mut have_opt = false;
         let mut written = 0;
         for opt in opts {
-            written += opt.write_to::<B, W>(writer)?;
+            written += opt.write_to::<B, W>(state, interface_id, writer)?;
             have_opt = true;
         }
 

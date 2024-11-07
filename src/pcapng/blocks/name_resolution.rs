@@ -45,7 +45,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         Ok((rem, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
         let mut len = 0;
 
         for record in &self.records {
@@ -53,7 +53,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         }
         len += Record::End.write_to::<B, _>(writer)?;
 
-        len += NameResolutionOption::write_opts_to::<B, _>(&self.options, writer)?;
+        len += NameResolutionOption::write_opts_to::<B, _>(&self.options, state, None, writer)?;
 
         Ok(len)
     }
@@ -346,7 +346,7 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
         match self {
             NameResolutionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             NameResolutionOption::NsDnsName(a) => a.write_opt_to::<B, W>(2, writer),
