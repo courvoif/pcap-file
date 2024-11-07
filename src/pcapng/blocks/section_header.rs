@@ -72,7 +72,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         }
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
         match self.endianness {
             Endianness::Big => writer.write_u32::<BigEndian>(0x1A2B3C4D)?,
             Endianness::Little => writer.write_u32::<LittleEndian>(0x1A2B3C4D)?,
@@ -82,7 +82,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         writer.write_u16::<B>(self.minor_version)?;
         writer.write_i64::<B>(self.section_length)?;
 
-        let opt_len = SectionHeaderOption::write_opts_to::<B, W>(&self.options, writer)?;
+        let opt_len = SectionHeaderOption::write_opts_to::<B, W>(&self.options, state, None, writer)?;
 
         Ok(16 + opt_len)
     }
@@ -147,7 +147,7 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
         match self {
             SectionHeaderOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             SectionHeaderOption::Hardware(a) => a.write_opt_to::<B, W>(2, writer),

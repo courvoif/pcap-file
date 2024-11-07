@@ -90,7 +90,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let pad_len = (4 - (self.captured_len as usize % 4)) % 4;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        let opt_len = PacketOption::write_opts_to::<B, _>(&self.options, writer)?;
+        let opt_len = PacketOption::write_opts_to::<B, _>(&self.options, state, Some(self.interface_id as u32), writer)?;
 
         Ok(20 + self.data.len() + pad_len + opt_len)
     }
@@ -143,7 +143,7 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
         match self {
             PacketOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             PacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),

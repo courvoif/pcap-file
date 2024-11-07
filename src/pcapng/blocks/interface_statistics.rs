@@ -50,7 +50,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         writer.write_u32::<B>(self.interface_id)?;
         state.encode_timestamp::<B, W>(self.interface_id, self.timestamp, writer)?;
 
-        let opt_len = InterfaceStatisticsOption::write_opts_to::<B, _>(&self.options, writer)?;
+        let opt_len = InterfaceStatisticsOption::write_opts_to::<B, _>(&self.options, state, Some(self.interface_id), writer)?;
         Ok(12 + opt_len)
     }
 
@@ -124,7 +124,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
         match self {
             InterfaceStatisticsOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             InterfaceStatisticsOption::IsbStartTime(a) => a.write_opt_to::<B, W>(2, writer),
