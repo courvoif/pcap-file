@@ -65,7 +65,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let data = &slice[..captured_len as usize];
         slice = &slice[tot_len..];
 
-        let (slice, options) = PacketOption::opts_from_slice::<B>(slice)?;
+        let (slice, options) = PacketOption::opts_from_slice::<B>(state, Some(interface_id as u32), slice)?;
         let block = PacketBlock {
             interface_id,
             drop_count,
@@ -123,7 +123,7 @@ pub enum PacketOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for PacketOption<'a> {
-    fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => PacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => {

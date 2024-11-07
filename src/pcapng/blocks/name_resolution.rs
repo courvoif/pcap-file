@@ -25,7 +25,7 @@ pub struct NameResolutionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         let mut records = Vec::new();
 
         loop {
@@ -38,7 +38,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
             }
         }
 
-        let (rem, options) = NameResolutionOption::opts_from_slice::<B>(slice)?;
+        let (rem, options) = NameResolutionOption::opts_from_slice::<B>(state, None, slice)?;
 
         let block = NameResolutionBlock { records, options };
 
@@ -320,7 +320,7 @@ pub enum NameResolutionOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
-    fn from_slice<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => NameResolutionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => NameResolutionOption::NsDnsName(Cow::Borrowed(std::str::from_utf8(slice)?)),

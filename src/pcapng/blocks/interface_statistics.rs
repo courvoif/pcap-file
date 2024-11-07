@@ -39,7 +39,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
 
         let interface_id = slice.read_u32::<B>().unwrap();
         let timestamp = state.decode_timestamp::<B>(interface_id, &mut slice)?;
-        let (slice, options) = InterfaceStatisticsOption::opts_from_slice::<B>(slice)?;
+        let (slice, options) = InterfaceStatisticsOption::opts_from_slice::<B>(state, Some(interface_id), slice)?;
 
         let block = InterfaceStatisticsBlock { interface_id, timestamp, options };
 
@@ -104,7 +104,7 @@ pub enum InterfaceStatisticsOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
-    fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => InterfaceStatisticsOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => InterfaceStatisticsOption::IsbStartTime(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
