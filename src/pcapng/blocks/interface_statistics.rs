@@ -38,10 +38,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         }
 
         let interface_id = slice.read_u32::<B>().unwrap();
-        let timestamp_high = slice.read_u32::<B>().unwrap() as u64;
-        let timestamp_low = slice.read_u32::<B>().unwrap() as u64;
-        let ts_raw = (timestamp_high << 32) + timestamp_low;
-        let timestamp = state.decode_timestamp(interface_id, ts_raw)?;
+        let timestamp = state.decode_timestamp::<B>(interface_id, &mut slice)?;
         let (slice, options) = InterfaceStatisticsOption::opts_from_slice::<B>(slice)?;
 
         let block = InterfaceStatisticsBlock { interface_id, timestamp, options };
@@ -51,11 +48,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
         writer.write_u32::<B>(self.interface_id)?;
-        let ts_raw = state.encode_timestamp(self.interface_id, self.timestamp)?;
-        let timestamp_high = (ts_raw >> 32) as u32;
-        let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;
-        writer.write_u32::<B>(timestamp_high)?;
-        writer.write_u32::<B>(timestamp_low)?;
+        state.encode_timestamp::<B, W>(self.interface_id, self.timestamp, writer)?;
 
         let opt_len = InterfaceStatisticsOption::write_opts_to::<B, _>(&self.options, writer)?;
         Ok(12 + opt_len)

@@ -45,10 +45,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 
         let interface_id = slice.read_u32::<B>().unwrap();
 
-        let timestamp_high = slice.read_u32::<B>().unwrap() as u64;
-        let timestamp_low = slice.read_u32::<B>().unwrap() as u64;
-        let ts_raw = (timestamp_high << 32) + timestamp_low;
-        let timestamp = state.decode_timestamp(interface_id, ts_raw)?;
+        let timestamp = state.decode_timestamp::<B>(interface_id, &mut slice)?;
 
         let captured_len = slice.read_u32::<B>().unwrap();
         let original_len = slice.read_u32::<B>().unwrap();
@@ -80,12 +77,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 
         writer.write_u32::<B>(self.interface_id)?;
 
-        let ts_raw = state.encode_timestamp(self.interface_id, self.timestamp)?;
-
-        let timestamp_high = (ts_raw >> 32) as u32;
-        let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;
-        writer.write_u32::<B>(timestamp_high)?;
-        writer.write_u32::<B>(timestamp_low)?;
+        state.encode_timestamp::<B, W>(self.interface_id, self.timestamp, writer)?;
 
         writer.write_u32::<B>(self.data.len() as u32)?;
         writer.write_u32::<B>(self.original_len)?;
