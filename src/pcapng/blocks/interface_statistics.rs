@@ -68,10 +68,14 @@ pub enum InterfaceStatisticsOption<'a> {
     Comment(Cow<'a, str>),
 
     /// The isb_starttime option specifies the time the capture started.
-    IsbStartTime(u64),
+    ///
+    /// The time is relative to 1970-01-01 00:00:00 UTC.
+    IsbStartTime(Duration),
 
     /// The isb_endtime option specifies the time the capture ended.
-    IsbEndTime(u64),
+    ///
+    /// The time is relative to 1970-01-01 00:00:00 UTC.
+    IsbEndTime(Duration),
 
     /// The isb_ifrecv option specifies the 64-bit unsigned integer number of packets received from the physical interface
     /// starting from the beginning of the capture.
@@ -104,11 +108,11 @@ pub enum InterfaceStatisticsOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => InterfaceStatisticsOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
-            2 => InterfaceStatisticsOption::IsbStartTime(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
-            3 => InterfaceStatisticsOption::IsbEndTime(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            2 => InterfaceStatisticsOption::IsbStartTime(state.decode_timestamp::<B>(interface_id.unwrap(), &mut slice)?),
+            3 => InterfaceStatisticsOption::IsbEndTime(state.decode_timestamp::<B>(interface_id.unwrap(), &mut slice)?),
             4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
             5 => InterfaceStatisticsOption::IsbIfDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
             6 => InterfaceStatisticsOption::IsbFilterAccept(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
@@ -124,11 +128,21 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
         match self {
             InterfaceStatisticsOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
-            InterfaceStatisticsOption::IsbStartTime(a) => a.write_opt_to::<B, W>(2, writer),
-            InterfaceStatisticsOption::IsbEndTime(a) => a.write_opt_to::<B, W>(3, writer),
+            InterfaceStatisticsOption::IsbStartTime(timestamp) => {
+                writer.write_u16::<B>(2)?;
+                writer.write_u16::<B>(8)?;
+                state.encode_timestamp::<B, W>(interface_id.unwrap(), *timestamp, writer)?;
+                Ok(12)
+            },
+            InterfaceStatisticsOption::IsbEndTime(timestamp) => {
+                writer.write_u16::<B>(3)?;
+                writer.write_u16::<B>(8)?;
+                state.encode_timestamp::<B, W>(interface_id.unwrap(), *timestamp, writer)?;
+                Ok(12)
+            },
             InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt_to::<B, W>(4, writer),
             InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt_to::<B, W>(5, writer),
             InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt_to::<B, W>(6, writer),
