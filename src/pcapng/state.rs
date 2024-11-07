@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use byteorder_slice::ByteOrder;
 
 use super::blocks::block_common::{Block, RawBlock};
@@ -64,5 +66,32 @@ impl PcapNgState {
             },
             _ => Ok(())
         }
+    }
+
+    /// Decode a timestamp using the correct format for the current state.
+    pub(crate) fn decode_timestamp(&self, interface_id: u32, ts_raw: u64) -> Result<Duration, PcapError> {
+        let ts_resolution = self
+            .ts_resolutions
+            .get(interface_id as usize)
+            .ok_or(PcapError::InvalidInterfaceId(interface_id))?;
+
+        let ts_nanos = ts_raw * ts_resolution.to_nano_secs() as u64;
+
+        Ok(Duration::from_nanos(ts_nanos))
+    }
+
+    /// Encode a timestamp using the correct format for the current state.
+    pub(crate) fn encode_timestamp(&self, interface_id: u32, timestamp: Duration) -> std::io::Result<u64> {
+        let ts_resolution = self
+            .ts_resolutions
+            .get(interface_id as usize)
+            .ok_or(std::io::Error::other("Invalid interface ID"))?;
+
+        let ts_raw = timestamp.as_nanos() / ts_resolution.to_nano_secs() as u128;
+
+        ts_raw
+            .try_into()
+            .map_err(|_| std::io::Error::other(
+                "Timestamp too big, please use a bigger timestamp resolution"))
     }
 }
