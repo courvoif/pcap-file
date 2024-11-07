@@ -39,7 +39,7 @@ pub struct InterfaceDescriptionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 8 {
             return Err(PcapError::InvalidField("InterfaceDescriptionBlock: block length < 8"));
         }
@@ -52,7 +52,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         }
 
         let snaplen = slice.read_u32::<B>().unwrap();
-        let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(slice)?;
+        let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(state, None, slice)?;
 
         let block = InterfaceDescriptionBlock { linktype, snaplen, options };
 
@@ -161,7 +161,7 @@ pub enum InterfaceDescriptionOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
-    fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => InterfaceDescriptionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => InterfaceDescriptionOption::IfName(Cow::Borrowed(std::str::from_utf8(slice)?)),

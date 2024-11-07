@@ -60,7 +60,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         let data = &slice[..captured_len as usize];
         slice = &slice[tot_len..];
 
-        let (slice, options) = EnhancedPacketOption::opts_from_slice::<B>(slice)?;
+        let (slice, options) = EnhancedPacketOption::opts_from_slice::<B>(state, Some(interface_id), slice)?;
         let block = EnhancedPacketBlock {
             interface_id,
             timestamp,
@@ -126,7 +126,7 @@ pub enum EnhancedPacketOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
-    fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => EnhancedPacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => {
