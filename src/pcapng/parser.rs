@@ -54,17 +54,15 @@ impl PcapNgParser {
     /// Parses the first block which must be a valid SectionHeaderBlock.
     pub fn new(src: &[u8]) -> Result<(&[u8], Self), PcapError> {
         // Always use BigEndian here because we can't know the SectionHeaderBlock endianness
-        let (rem, section) = Block::from_slice::<BigEndian>(src)?;
-        let section = match section {
-            Block::SectionHeader(section) => section.into_owned(),
-            _ => return Err(PcapError::InvalidField("PcapNg: SectionHeader invalid or missing")),
+        let mut state = PcapNgState::default();
+
+        let (rem, block) = Block::from_slice::<BigEndian>(&state, src)?;
+
+        if !matches!(&block, Block::SectionHeader(_)) {
+            return Err(PcapError::InvalidField("PcapNg: SectionHeader invalid or missing"));
         };
 
-        let state = PcapNgState {
-            section,
-            interfaces: Vec::new(),
-            ts_resolutions: Vec::new(),
-        };
+        state.update_from_block(&block)?;
 
         let parser = PcapNgParser { state };
 
@@ -74,31 +72,18 @@ impl PcapNgParser {
     /// Returns the remainder and the next [`Block`].
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
         // Read next Block
-        let mut res = match self.state.section.endianness {
+        match self.state.section.endianness {
             Endianness::Big => {
                 let (rem, raw_block) = self.next_raw_block_inner::<BigEndian>(src)?;
-                let block = raw_block.try_into_block::<BigEndian>()?;
+                let block = raw_block.try_into_block::<BigEndian>(&self.state)?;
                 Ok((rem, block))
             },
             Endianness::Little => {
                 let (rem, raw_block) = self.next_raw_block_inner::<LittleEndian>(src)?;
-                let block = raw_block.try_into_block::<LittleEndian>()?;
+                let block = raw_block.try_into_block::<LittleEndian>(&self.state)?;
                 Ok((rem, block))
             },
-        };
-
-        // If the block is an EnhancedPacketBlock, adjust its timestamp with the correct TsResolution
-        if let Ok((_, Block::EnhancedPacket(ref mut blk))) = &mut res {
-            let ts_resol = self
-                .state
-                .ts_resolutions
-                .get(blk.interface_id as usize)
-                .ok_or(PcapError::InvalidInterfaceId(blk.interface_id))?;
-
-            blk.adjust_parsed_timestamp(*ts_resol);
         }
-
-        res
     }
 
     /// Returns the remainder and the next [`RawBlock`].

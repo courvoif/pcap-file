@@ -71,15 +71,23 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Create a new [`PcapNgWriter`] from an existing writer with the given section header.
     pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'_>) -> PcapResult<Self> {
-        match section.endianness {
-            Endianness::Big => section.clone().into_block().write_to::<BigEndian, _>(&mut writer).map_err(PcapError::IoError)?,
-            Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer).map_err(PcapError::IoError)?,
-        };
+        let mut state = PcapNgState::default();
 
-        let state = PcapNgState {
-            section: section.into_owned(),
-            interfaces: Vec::new(),
-            ts_resolutions: Vec::new()
+        let endianness = section.endianness;
+
+        let block = section
+            .into_owned()
+            .into_block();
+
+        state.update_from_block(&block)?;
+
+        match endianness {
+            Endianness::Big => block
+                .write_to::<BigEndian, _>(&state, &mut writer)
+                .map_err(PcapError::IoError)?,
+            Endianness::Little => block
+                .write_to::<LittleEndian, _>(&state, &mut writer)
+                .map_err(PcapError::IoError)?,
         };
 
         Ok(Self { state, writer })
@@ -117,6 +125,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// pcap_ng_writer.write_block(&packet.into_block()).unwrap();
     /// ```
     pub fn write_block(&mut self, block: &Block) -> PcapResult<usize> {
+
         match block {
             Block::InterfaceStatistics(blk) => {
                 if blk.interface_id as usize >= self.state.interfaces.len() {
@@ -127,9 +136,6 @@ impl<W: Write> PcapNgWriter<W> {
                 if blk.interface_id as usize >= self.state.interfaces.len() {
                     return Err(PcapError::InvalidInterfaceId(blk.interface_id));
                 }
-
-                let ts_resol = self.state.ts_resolutions[blk.interface_id as usize];
-                blk.set_write_ts_resolution(ts_resol);
             },
 
             _ => (),
@@ -138,8 +144,8 @@ impl<W: Write> PcapNgWriter<W> {
         self.state.update_from_block(block)?;
 
         match self.state.section.endianness {
-            Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(PcapError::IoError),
-            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(PcapError::IoError),
+            Endianness::Big => block.write_to::<BigEndian, _>(&self.state, &mut self.writer).map_err(PcapError::IoError),
+            Endianness::Little => block.write_to::<LittleEndian, _>(&self.state, &mut self.writer).map_err(PcapError::IoError),
         }
     }
 

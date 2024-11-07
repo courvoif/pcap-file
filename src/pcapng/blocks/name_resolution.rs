@@ -11,6 +11,7 @@ use derive_into_owned::IntoOwned;
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
+use crate::pcapng::PcapNgState;
 
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
@@ -24,7 +25,7 @@ pub struct NameResolutionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
-    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         let mut records = Vec::new();
 
         loop {
@@ -44,7 +45,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         Ok((rem, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
         let mut len = 0;
 
         for record in &self.records {

@@ -11,6 +11,7 @@ use derive_into_owned::IntoOwned;
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
+use crate::pcapng::PcapNgState;
 use crate::Endianness;
 
 
@@ -39,7 +40,7 @@ pub struct SectionHeaderBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
-    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 16 {
             return Err(PcapError::InvalidField("SectionHeaderBlock: block length < 16"));
         }
@@ -71,7 +72,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         }
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
         match self.endianness {
             Endianness::Big => writer.write_u32::<BigEndian>(0x1A2B3C4D)?,
             Endianness::Little => writer.write_u32::<LittleEndian>(0x1A2B3C4D)?,
