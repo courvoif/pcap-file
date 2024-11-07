@@ -51,10 +51,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
 
         let interface_id = slice.read_u16::<B>().unwrap();
         let drop_count = slice.read_u16::<B>().unwrap();
-        let timestamp_high = slice.read_u32::<B>().unwrap() as u64;
-        let timestamp_low = slice.read_u32::<B>().unwrap() as u64;
-        let ts_raw = (timestamp_high << 32) + timestamp_low;
-        let timestamp = state.decode_timestamp(interface_id as u32, ts_raw)?;
+        let timestamp = state.decode_timestamp::<B>(interface_id as u32, &mut slice)?;
         let captured_len = slice.read_u32::<B>().unwrap();
         let original_len = slice.read_u32::<B>().unwrap();
 
@@ -85,11 +82,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
         writer.write_u16::<B>(self.interface_id)?;
         writer.write_u16::<B>(self.drop_count)?;
-        let ts_raw = state.encode_timestamp(self.interface_id as u32, self.timestamp)?;
-        let timestamp_high = (ts_raw >> 32) as u32;
-        let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;
-        writer.write_u32::<B>(timestamp_high)?;
-        writer.write_u32::<B>(timestamp_low)?;
+        state.encode_timestamp::<B, W>(self.interface_id as u32, self.timestamp, writer)?;
         writer.write_u32::<B>(self.captured_len)?;
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
