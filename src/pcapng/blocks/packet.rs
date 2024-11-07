@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
+use std::time::Duration;
 
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
@@ -26,9 +27,8 @@ pub struct PacketBlock<'a> {
     /// between this packet and the preceding one.
     pub drop_count: u16,
 
-    /// The timestamp is a single 64-bit unsigned integer that represents the number of units of time
-    /// that have elapsed since 1970-01-01 00:00:00 UTC.
-    pub timestamp: u64,
+    /// Time elapsed since 1970-01-01 00:00:00 UTC.
+    pub timestamp: Duration,
 
     /// Number of octets captured from the packet (i.e. the length of the Packet Data field).
     pub captured_len: u32,
@@ -44,14 +44,17 @@ pub struct PacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 20 {
             return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
         }
 
         let interface_id = slice.read_u16::<B>().unwrap();
         let drop_count = slice.read_u16::<B>().unwrap();
-        let timestamp = slice.read_u64::<B>().unwrap();
+        let timestamp_high = slice.read_u32::<B>().unwrap() as u64;
+        let timestamp_low = slice.read_u32::<B>().unwrap() as u64;
+        let ts_raw = (timestamp_high << 32) + timestamp_low;
+        let timestamp = state.decode_timestamp(interface_id as u32, ts_raw)?;
         let captured_len = slice.read_u32::<B>().unwrap();
         let original_len = slice.read_u32::<B>().unwrap();
 
@@ -79,10 +82,14 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
         writer.write_u16::<B>(self.interface_id)?;
         writer.write_u16::<B>(self.drop_count)?;
-        writer.write_u64::<B>(self.timestamp)?;
+        let ts_raw = state.encode_timestamp(self.interface_id as u32, self.timestamp)?;
+        let timestamp_high = (ts_raw >> 32) as u32;
+        let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;
+        writer.write_u32::<B>(timestamp_high)?;
+        writer.write_u32::<B>(timestamp_low)?;
         writer.write_u32::<B>(self.captured_len)?;
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
