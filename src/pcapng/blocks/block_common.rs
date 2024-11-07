@@ -17,6 +17,7 @@ use super::section_header::SectionHeaderBlock;
 use super::simple_packet::SimplePacketBlock;
 use super::systemd_journal_export::SystemdJournalExportBlock;
 use super::unknown::UnknownBlock;
+use crate::pcapng::PcapNgState;
 use crate::errors::PcapError;
 use crate::PcapResult;
 
@@ -136,9 +137,9 @@ impl<'a> RawBlock<'a> {
         Ok(self.body.len() + 12)
     }
 
-    /// Tries to convert a [`RawBlock`] into a [`Block`]
-    pub fn try_into_block<B: ByteOrder>(self) -> PcapResult<Block<'a>> {
-        Block::try_from_raw_block::<B>(self)
+    /// Tries to convert a [`RawBlock`] into a [`Block`], using a [`PcapNgState`].
+    pub fn try_into_block<B: ByteOrder>(self, state: &PcapNgState) -> PcapResult<Block<'a>> {
+        Block::try_from_raw_block::<B>(state, self)
     }
 }
 
@@ -166,38 +167,38 @@ pub enum Block<'a> {
 }
 
 impl<'a> Block<'a> {
-    /// Parses a [`Block`] from a slice
-    pub fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    /// Parses a [`Block`] from a slice, using a [`PcapNgState`].
+    pub fn from_slice<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         let (rem, raw_block) = RawBlock::from_slice::<B>(slice)?;
-        let block = Self::try_from_raw_block::<B>(raw_block)?;
+        let block = Self::try_from_raw_block::<B>(state, raw_block)?;
 
         Ok((rem, block))
     }
 
-    /// Writes a [`Block`] to a writer.
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    /// Writes a [`Block`] to a writer, using a [`PcapNgState`].
+    pub fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
         return match self {
-            Self::SectionHeader(b) => inner_write_to::<B, _, W>(b, SECTION_HEADER_BLOCK, writer),
-            Self::InterfaceDescription(b) => inner_write_to::<B, _, W>(b, INTERFACE_DESCRIPTION_BLOCK, writer),
-            Self::Packet(b) => inner_write_to::<B, _, W>(b, PACKET_BLOCK, writer),
-            Self::SimplePacket(b) => inner_write_to::<B, _, W>(b, SIMPLE_PACKET_BLOCK, writer),
-            Self::NameResolution(b) => inner_write_to::<B, _, W>(b, NAME_RESOLUTION_BLOCK, writer),
-            Self::InterfaceStatistics(b) => inner_write_to::<B, _, W>(b, INTERFACE_STATISTIC_BLOCK, writer),
-            Self::EnhancedPacket(b) => inner_write_to::<B, _, W>(b, ENHANCED_PACKET_BLOCK, writer),
-            Self::SystemdJournalExport(b) => inner_write_to::<B, _, W>(b, SYSTEMD_JOURNAL_EXPORT_BLOCK, writer),
-            Self::Unknown(b) => inner_write_to::<B, _, W>(b, b.type_, writer),
+            Self::SectionHeader(b) => inner_write_to::<B, _, W>(state, b, SECTION_HEADER_BLOCK, writer),
+            Self::InterfaceDescription(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_DESCRIPTION_BLOCK, writer),
+            Self::Packet(b) => inner_write_to::<B, _, W>(state, b, PACKET_BLOCK, writer),
+            Self::SimplePacket(b) => inner_write_to::<B, _, W>(state, b, SIMPLE_PACKET_BLOCK, writer),
+            Self::NameResolution(b) => inner_write_to::<B, _, W>(state, b, NAME_RESOLUTION_BLOCK, writer),
+            Self::InterfaceStatistics(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_STATISTIC_BLOCK, writer),
+            Self::EnhancedPacket(b) => inner_write_to::<B, _, W>(state, b, ENHANCED_PACKET_BLOCK, writer),
+            Self::SystemdJournalExport(b) => inner_write_to::<B, _, W>(state, b, SYSTEMD_JOURNAL_EXPORT_BLOCK, writer),
+            Self::Unknown(b) => inner_write_to::<B, _, W>(state, b, b.type_, writer),
         };
 
-        fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(block: &BL, block_code: u32, writer: &mut W) -> IoResult<usize> {
+        fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(state: &PcapNgState, block: &BL, block_code: u32, writer: &mut W) -> IoResult<usize> {
             // Fake write to compute the data length
-            let data_len = block.write_to::<B, _>(&mut std::io::sink()).unwrap();
+            let data_len = block.write_to::<B, _>(state, &mut std::io::sink()).unwrap();
             let pad_len = (4 - (data_len % 4)) % 4;
 
             let block_len = data_len + pad_len + 12;
 
             writer.write_u32::<B>(block_code)?;
             writer.write_u32::<B>(block_len as u32)?;
-            block.write_to::<B, _>(writer)?;
+            block.write_to::<B, _>(state, writer)?;
             writer.write_all(&[0_u8; 3][..pad_len])?;
             writer.write_u32::<B>(block_len as u32)?;
 
@@ -205,10 +206,10 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to create a [`Block`] from a [`RawBlock`].
+    /// Tries to create a [`Block`] from a [`RawBlock`], given a [`PcapNgState`].
     ///
     /// The RawBlock must be Borrowed.
-    pub fn try_from_raw_block<B: ByteOrder>(raw_block: RawBlock<'a>) -> Result<Block<'a>, PcapError> {
+    pub fn try_from_raw_block<B: ByteOrder>(state: &PcapNgState, raw_block: RawBlock<'a>) -> Result<Block<'a>, PcapError> {
         let body = match raw_block.body {
             Cow::Borrowed(b) => b,
             _ => panic!("The raw block is not borrowed"),
@@ -216,35 +217,35 @@ impl<'a> Block<'a> {
 
         match raw_block.type_ {
             SECTION_HEADER_BLOCK => {
-                let (_, block) = SectionHeaderBlock::from_slice::<BigEndian>(body)?;
+                let (_, block) = SectionHeaderBlock::from_slice::<BigEndian>(state, body)?;
                 Ok(Block::SectionHeader(block))
             },
             INTERFACE_DESCRIPTION_BLOCK => {
-                let (_, block) = InterfaceDescriptionBlock::from_slice::<B>(body)?;
+                let (_, block) = InterfaceDescriptionBlock::from_slice::<B>(state, body)?;
                 Ok(Block::InterfaceDescription(block))
             },
             PACKET_BLOCK => {
-                let (_, block) = PacketBlock::from_slice::<B>(body)?;
+                let (_, block) = PacketBlock::from_slice::<B>(state, body)?;
                 Ok(Block::Packet(block))
             },
             SIMPLE_PACKET_BLOCK => {
-                let (_, block) = SimplePacketBlock::from_slice::<B>(body)?;
+                let (_, block) = SimplePacketBlock::from_slice::<B>(state, body)?;
                 Ok(Block::SimplePacket(block))
             },
             NAME_RESOLUTION_BLOCK => {
-                let (_, block) = NameResolutionBlock::from_slice::<B>(body)?;
+                let (_, block) = NameResolutionBlock::from_slice::<B>(state, body)?;
                 Ok(Block::NameResolution(block))
             },
             INTERFACE_STATISTIC_BLOCK => {
-                let (_, block) = InterfaceStatisticsBlock::from_slice::<B>(body)?;
+                let (_, block) = InterfaceStatisticsBlock::from_slice::<B>(state, body)?;
                 Ok(Block::InterfaceStatistics(block))
             },
             ENHANCED_PACKET_BLOCK => {
-                let (_, block) = EnhancedPacketBlock::from_slice::<B>(body)?;
+                let (_, block) = EnhancedPacketBlock::from_slice::<B>(state, body)?;
                 Ok(Block::EnhancedPacket(block))
             },
             SYSTEMD_JOURNAL_EXPORT_BLOCK => {
-                let (_, block) = SystemdJournalExportBlock::from_slice::<B>(body)?;
+                let (_, block) = SystemdJournalExportBlock::from_slice::<B>(state, body)?;
                 Ok(Block::SystemdJournalExport(block))
             },
             type_ => Ok(Block::Unknown(UnknownBlock::new(type_, raw_block.initial_len, body))),
@@ -383,13 +384,13 @@ impl<'a> Block<'a> {
 
 /// Common interface for the PcapNg blocks
 pub trait PcapNgBlock<'a> {
-    /// Parse a new block from a slice
-    fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&[u8], Self), PcapError>
+    /// Parse a new block from a slice, using a [`PcapNgState`].
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError>
     where
         Self: std::marker::Sized;
 
-    /// Write the content of a block into a writer
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize>;
+    /// Write the content of a block into a writer, using a [`PcapNgState`].
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize>;
 
     /// Convert a block into the [`Block`] enumeration
     fn into_block(self) -> Block<'a>;

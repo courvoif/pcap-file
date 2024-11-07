@@ -61,7 +61,7 @@ impl PcapNgState {
     pub fn update_from_raw_block<B: ByteOrder>(&mut self, raw_block: &RawBlock) -> Result<(), PcapError> {
         match raw_block.type_ {
             SECTION_HEADER_BLOCK | INTERFACE_DESCRIPTION_BLOCK => {
-                let block = raw_block.clone().try_into_block::<B>()?;
+                let block = raw_block.clone().try_into_block::<B>(self)?;
                 self.update_from_block(&block)
             },
             _ => Ok(())

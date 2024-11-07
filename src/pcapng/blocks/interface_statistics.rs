@@ -11,6 +11,7 @@ use derive_into_owned::IntoOwned;
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
+use crate::pcapng::PcapNgState;
 
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
@@ -33,7 +34,7 @@ pub struct InterfaceStatisticsBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
-    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&[u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 12 {
             return Err(PcapError::InvalidField("InterfaceStatisticsBlock: block length < 12"));
         }
@@ -47,7 +48,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
         writer.write_u32::<B>(self.interface_id)?;
         writer.write_u64::<B>(self.timestamp)?;
 
