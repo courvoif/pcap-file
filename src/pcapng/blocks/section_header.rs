@@ -1,7 +1,7 @@
 //! Section Header Block.
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
@@ -72,7 +72,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         }
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         match self.endianness {
             Endianness::Big => writer.write_u32::<BigEndian>(0x1A2B3C4D)?,
             Endianness::Little => writer.write_u32::<LittleEndian>(0x1A2B3C4D)?,
@@ -147,8 +147,8 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
-        match self {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+        Ok(match self {
             SectionHeaderOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             SectionHeaderOption::Hardware(a) => a.write_opt_to::<B, W>(2, writer),
             SectionHeaderOption::OS(a) => a.write_opt_to::<B, W>(3, writer),
@@ -156,6 +156,6 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
             SectionHeaderOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
             SectionHeaderOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
             SectionHeaderOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
-        }
+        }?)
     }
 }

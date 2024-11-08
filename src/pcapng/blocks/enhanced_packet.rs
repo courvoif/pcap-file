@@ -1,7 +1,7 @@
 //! Enhanced Packet Block (EPB).
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 use std::time::Duration;
 
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -72,7 +72,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         let pad_len = (4 - (&self.data.len() % 4)) % 4;
 
         writer.write_u32::<B>(self.interface_id)?;
@@ -152,8 +152,8 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
-        match self {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+        Ok(match self {
             EnhancedPacketOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             EnhancedPacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
             EnhancedPacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),
@@ -161,6 +161,6 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
             EnhancedPacketOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
             EnhancedPacketOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
             EnhancedPacketOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
-        }
+        }?)
     }
 }

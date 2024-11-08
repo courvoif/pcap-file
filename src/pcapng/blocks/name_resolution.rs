@@ -45,7 +45,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         Ok((rem, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         let mut len = 0;
 
         for record in &self.records {
@@ -346,8 +346,8 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
-        match self {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+        Ok(match self {
             NameResolutionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             NameResolutionOption::NsDnsName(a) => a.write_opt_to::<B, W>(2, writer),
             NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt_to::<B, W>(3, writer),
@@ -355,6 +355,6 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
             NameResolutionOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
             NameResolutionOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
             NameResolutionOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
-        }
+        }?)
     }
 }

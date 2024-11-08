@@ -1,7 +1,7 @@
 //! Systemd Journal Export Block.
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
@@ -24,7 +24,7 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
         Ok((&[], packet))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         writer.write_all(&self.journal_entry)?;
 
         let pad_len = (4 - (self.journal_entry.len() % 4)) % 4;

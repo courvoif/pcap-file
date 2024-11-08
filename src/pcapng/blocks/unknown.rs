@@ -1,7 +1,7 @@
 //! Unknown Block.
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
@@ -37,7 +37,7 @@ impl<'a> PcapNgBlock<'a> for UnknownBlock<'a> {
         unimplemented!("UnkknownBlock::<as PcapNgBlock>::From_slice shouldn't be called")
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         writer.write_all(&self.value)?;
         Ok(self.value.len())
     }

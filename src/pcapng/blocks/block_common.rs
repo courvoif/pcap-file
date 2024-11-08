@@ -1,7 +1,7 @@
 //! Common block types.
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
@@ -128,7 +128,7 @@ impl<'a> RawBlock<'a> {
     /// Writes a [`RawBlock`] to a writer.
     ///
     /// Uses the endianness of the header.
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapError> {
         writer.write_u32::<B>(self.type_)?;
         writer.write_u32::<B>(self.initial_len)?;
         writer.write_all(&self.body[..])?;
@@ -176,7 +176,7 @@ impl<'a> Block<'a> {
     }
 
     /// Writes a [`Block`] to a writer, using a [`PcapNgState`].
-    pub fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         return match self {
             Self::SectionHeader(b) => inner_write_to::<B, _, W>(state, b, SECTION_HEADER_BLOCK, writer),
             Self::InterfaceDescription(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_DESCRIPTION_BLOCK, writer),
@@ -189,7 +189,7 @@ impl<'a> Block<'a> {
             Self::Unknown(b) => inner_write_to::<B, _, W>(state, b, b.type_, writer),
         };
 
-        fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(state: &PcapNgState, block: &BL, block_code: u32, writer: &mut W) -> IoResult<usize> {
+        fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(state: &PcapNgState, block: &BL, block_code: u32, writer: &mut W) -> Result<usize, PcapError> {
             // Fake write to compute the data length
             let data_len = block.write_to::<B, _>(state, &mut std::io::sink()).unwrap();
             let pad_len = (4 - (data_len % 4)) % 4;
@@ -390,7 +390,7 @@ pub trait PcapNgBlock<'a> {
         Self: std::marker::Sized;
 
     /// Write the content of a block into a writer, using a [`PcapNgState`].
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize>;
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError>;
 
     /// Convert a block into the [`Block`] enumeration
     fn into_block(self) -> Block<'a>;

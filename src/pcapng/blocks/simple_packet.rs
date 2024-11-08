@@ -1,7 +1,7 @@
 //! Simple Packet Block (SPB).
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
@@ -37,7 +37,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         Ok((&[], packet))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
 
