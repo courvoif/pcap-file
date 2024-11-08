@@ -95,22 +95,20 @@ impl PcapNgState {
     }
 
     /// Encode a timestamp using the correct format for the current state.
-    pub(crate) fn encode_timestamp<B: ByteOrder, W: Write>(&self, interface_id: u32, timestamp: Duration, writer: &mut W) -> std::io::Result<()> {
+    pub(crate) fn encode_timestamp<B: ByteOrder, W: Write>(&self, interface_id: u32, timestamp: Duration, writer: &mut W) -> Result<(), PcapError> {
 
         let ts_resolution = self
             .ts_resolutions
             .get(interface_id as usize)
-            .ok_or(std::io::Error::other("Invalid interface ID"))?;
+            .ok_or(PcapError::InvalidInterfaceId(interface_id))?;
 
         let ts_raw = timestamp.as_nanos() / ts_resolution.to_nano_secs() as u128;
 
         let ts_raw: u64 = ts_raw
             .try_into()
-            .map_err(|_| std::io::Error::other(
-                "Timestamp too big, please use a bigger timestamp resolution"))?;
+            .or(Err(PcapError::TimestampTooBig))?;
 
         let timestamp_high = (ts_raw >> 32) as u32;
-
         let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;
 
         writer.write_u32::<B>(timestamp_high)?;
