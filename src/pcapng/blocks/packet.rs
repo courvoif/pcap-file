@@ -1,7 +1,7 @@
 //! Packet Block.
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 use std::time::Duration;
 
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -79,7 +79,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         writer.write_u16::<B>(self.interface_id)?;
         writer.write_u16::<B>(self.drop_count)?;
         state.encode_timestamp::<B, W>(self.interface_id as u32, self.timestamp, writer)?;
@@ -143,14 +143,14 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
-        match self {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+        Ok(match self {
             PacketOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             PacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
             PacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),
             PacketOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
             PacketOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
             PacketOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
-        }
+        }?)
     }
 }

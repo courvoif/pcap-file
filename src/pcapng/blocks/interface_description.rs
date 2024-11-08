@@ -3,7 +3,7 @@
 //! Interface Description Block (IDB).
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
@@ -59,7 +59,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         writer.write_u16::<B>(u32::from(self.linktype) as u16)?;
         writer.write_u16::<B>(0)?;
         writer.write_u32::<B>(self.snaplen)?;
@@ -238,8 +238,8 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
-        match self {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+        Ok(match self {
             InterfaceDescriptionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             InterfaceDescriptionOption::IfName(a) => a.write_opt_to::<B, W>(2, writer),
             InterfaceDescriptionOption::IfDescription(a) => a.write_opt_to::<B, W>(3, writer),
@@ -258,7 +258,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
             InterfaceDescriptionOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
             InterfaceDescriptionOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
-        }
+        }?)
     }
 }
 

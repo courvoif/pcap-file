@@ -1,7 +1,7 @@
 //! Interface Statistics Block.
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 use std::time::Duration;
 
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -46,7 +46,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         writer.write_u32::<B>(self.interface_id)?;
         state.encode_timestamp::<B, W>(self.interface_id, self.timestamp, writer)?;
 
@@ -128,8 +128,8 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> IoResult<usize> {
-        match self {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+        Ok(match self {
             InterfaceStatisticsOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             InterfaceStatisticsOption::IsbStartTime(timestamp) => {
                 writer.write_u16::<B>(2)?;
@@ -151,6 +151,6 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
             InterfaceStatisticsOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
             InterfaceStatisticsOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
             InterfaceStatisticsOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
-        }
+        }?)
     }
 }
