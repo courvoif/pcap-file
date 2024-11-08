@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::io::Write;
+use std::time::Duration;
 
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
@@ -92,6 +93,17 @@ impl<'a> InterfaceDescriptionBlock<'a> {
         }
 
         ts_resol
+    }
+
+    /// Returns the timestamp offset of the interface, or zero if it has none.
+    pub fn ts_offset(&self) -> Duration {
+        for opt in &self.options {
+            if let InterfaceDescriptionOption::IfTsOffset(offset) = opt {
+                return Duration::from_secs(*offset)
+            }
+        }
+
+        Duration::ZERO
     }
 }
 
