@@ -130,27 +130,33 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            InterfaceStatisticsOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
-            InterfaceStatisticsOption::IsbStartTime(timestamp) => {
-                writer.write_u16::<B>(2)?;
-                writer.write_u16::<B>(8)?;
-                state.encode_timestamp::<B, W>(interface_id.unwrap(), *timestamp, writer)?;
-                Ok(12)
-            },
-            InterfaceStatisticsOption::IsbEndTime(timestamp) => {
-                writer.write_u16::<B>(3)?;
-                writer.write_u16::<B>(8)?;
-                state.encode_timestamp::<B, W>(interface_id.unwrap(), *timestamp, writer)?;
-                Ok(12)
-            },
-            InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt_to::<B, W>(4, writer),
-            InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt_to::<B, W>(5, writer),
-            InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt_to::<B, W>(6, writer),
-            InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt_to::<B, W>(7, writer),
-            InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt_to::<B, W>(8, writer),
-            InterfaceStatisticsOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
-            InterfaceStatisticsOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
-            InterfaceStatisticsOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
-        }?)
+            InterfaceStatisticsOption::Comment(a) => a.write_opt_to::<B, W>(1, writer)?,
+            InterfaceStatisticsOption::IsbStartTime(a) => write_timestamp::<B, W>(2, a, state, interface_id, writer)?,
+            InterfaceStatisticsOption::IsbEndTime(a) => write_timestamp::<B, W>(3, a, state, interface_id, writer)?,
+            InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt_to::<B, W>(4, writer)?,
+            InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt_to::<B, W>(5, writer)?,
+            InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt_to::<B, W>(6, writer)?,
+            InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt_to::<B, W>(7, writer)?,
+            InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt_to::<B, W>(8, writer)?,
+            InterfaceStatisticsOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer)?,
+            InterfaceStatisticsOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer)?,
+            InterfaceStatisticsOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer)?,
+        })
     }
+}
+
+/// Helper for writing options that contain timestamps.
+fn write_timestamp<B: ByteOrder, W: Write>(
+    code: u16,
+    timestamp: &Duration,
+    state: &PcapNgState,
+    interface_id: Option<u32>,
+    writer: &mut W
+) -> Result<usize, PcapError> {
+    const TIMESTAMP_LENGTH: u16 = 8;
+    const OPTION_LENGTH: usize = 12;
+    writer.write_u16::<B>(code)?;
+    writer.write_u16::<B>(TIMESTAMP_LENGTH)?;
+    state.encode_timestamp::<B, W>(interface_id.unwrap(), *timestamp, writer)?;
+    Ok(OPTION_LENGTH)
 }
