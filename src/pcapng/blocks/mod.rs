@@ -1,11 +1,11 @@
 //! Contains the PcapNg blocks.
 
-pub(crate) mod block_common;
+pub mod block_common;
 pub mod enhanced_packet;
 pub mod interface_description;
 pub mod interface_statistics;
 pub mod name_resolution;
-pub(crate) mod opt_common;
+pub mod opt_common;
 pub mod packet;
 pub mod section_header;
 pub mod simple_packet;
