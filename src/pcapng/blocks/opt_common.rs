@@ -37,7 +37,7 @@ pub(crate) trait PcapNgOption<'a> {
             let length = slice.read_u16::<B>().unwrap() as usize;
             let pad_len = (4 - (length % 4)) % 4;
 
-            if code == 0 {
+            if code == 0 || slice.len() == length + pad_len {
                 return Ok((slice, options));
             }
 
