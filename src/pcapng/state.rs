@@ -82,7 +82,7 @@ impl PcapNgState {
     }
 
     /// Decode a timestamp using the correct format for the current state.
-    pub(crate) fn decode_timestamp<B: ByteOrder>(&self, interface_id: u32, slice: &mut &[u8]) -> Result<Duration, PcapError> {
+    pub fn decode_timestamp<B: ByteOrder>(&self, interface_id: u32, slice: &mut &[u8]) -> Result<Duration, PcapError> {
 
         let timestamp_high = slice
             .read_u32::<B>()
@@ -105,7 +105,7 @@ impl PcapNgState {
     }
 
     /// Encode a timestamp using the correct format for the current state.
-    pub(crate) fn encode_timestamp<B: ByteOrder, W: Write>(&self, interface_id: u32, timestamp: Duration, writer: &mut W) -> Result<(), PcapError> {
+    pub fn encode_timestamp<B: ByteOrder, W: Write>(&self, interface_id: u32, timestamp: Duration, writer: &mut W) -> Result<(), PcapError> {
 
         let (ts_resolution, ts_offset) = self
             .ts_parameters
