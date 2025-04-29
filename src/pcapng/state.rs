@@ -41,6 +41,16 @@ pub struct PcapNgState {
 }
 
 impl PcapNgState {
+    /// Returns the current [`SectionHeaderBlock`].
+    pub fn section(&self) -> &SectionHeaderBlock<'static> {
+        &self.section
+    }
+
+    /// Returns all the current [`InterfaceDescriptionBlock`].
+    pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
+        &self.interfaces[..]
+    }
+
     /// Update the state based on the next [`Block`].
     pub fn update_from_block(&mut self, block: &Block) -> Result<(), PcapError> {
         match block {
