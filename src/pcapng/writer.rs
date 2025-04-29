@@ -33,11 +33,11 @@ use crate::{Endianness, PcapError, PcapResult};
 ///     pcapng_writer.write_block(&block).unwrap();
 /// }
 /// ```
-pub struct PcapNgWriter<'s, W: Write> {
+pub struct PcapNgWriter<W: Write> {
     /// Current section of the pcapng
-    section: SectionHeaderBlock<'s>,
+    section: SectionHeaderBlock<'static>,
     /// List of the interfaces of the current section of the pcapng
-    interfaces: Vec<InterfaceDescriptionBlock<'s>>,
+    interfaces: Vec<InterfaceDescriptionBlock<'static>>,
     /// Timestamp resolutions corresponding to the interfaces
     ts_resolutions: Vec<TsResolution>,
 
@@ -45,7 +45,7 @@ pub struct PcapNgWriter<'s, W: Write> {
     writer: W,
 }
 
-impl<'s, W: Write> PcapNgWriter<'s, W> {
+impl<W: Write> PcapNgWriter<W> {
     /// Create a new [`PcapNgWriter`] from an existing writer.
     ///
     /// Default to the native endianness of the CPU.
@@ -76,13 +76,18 @@ impl<'s, W: Write> PcapNgWriter<'s, W> {
     }
 
     /// Create a new [`PcapNgWriter`] from an existing writer with the given section header.
-    pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'s>) -> PcapResult<Self> {
+    pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'_>) -> PcapResult<Self> {
         match section.endianness {
             Endianness::Big => section.clone().into_block().write_to::<BigEndian, _>(&mut writer).map_err(PcapError::IoError)?,
             Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer).map_err(PcapError::IoError)?,
         };
 
-        Ok(Self { section, interfaces: Vec::new(), ts_resolutions: Vec::new(), writer })
+        Ok(Self {
+            section: section.into_owned(),
+            interfaces: Vec::new(),
+            ts_resolutions: Vec::new(),
+            writer
+        })
     }
 
     /// Write a [`Block`].
@@ -224,12 +229,12 @@ impl<'s, W: Write> PcapNgWriter<'s, W> {
     }
 
     /// Return the current [`SectionHeaderBlock`].
-    pub fn section(&self) -> &SectionHeaderBlock<'_> {
+    pub fn section(&self) -> &SectionHeaderBlock<'static> {
         &self.section
     }
 
     /// Return all the current [`InterfaceDescriptionBlock`].
-    pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'_>] {
+    pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
         &self.interfaces
     }
 }
