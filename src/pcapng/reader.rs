@@ -97,4 +97,9 @@ impl<R: Read> PcapNgReader<R> {
     pub fn get_ref(&self) -> &R {
         self.reader.get_ref()
     }
+
+    /// Returns the number of bytes parsed so far.
+    pub fn bytes_parsed(&self) -> u64 {
+        self.reader.bytes_used
+    }
 }
