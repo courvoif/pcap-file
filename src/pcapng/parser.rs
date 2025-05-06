@@ -45,7 +45,7 @@ use crate::Endianness;
 /// ```
 pub struct PcapNgParser {
     /// Current state of the pcapng format.
-    state: PcapNgState,
+    pub(crate) state: PcapNgState,
 }
 
 impl PcapNgParser {
