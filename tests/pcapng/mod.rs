@@ -88,3 +88,88 @@ fn writer() {
         }
     }
 }
+
+#[test]
+fn test_custom_block() {
+    use byteorder_slice::{
+        BigEndian,
+        byteorder::{ReadBytesExt, WriteBytesExt},
+    };
+    use pcap_file::PcapError;
+    use pcap_file::pcapng::blocks::{custom::*, *};
+    use std::io::Write;
+
+    // 1. Define a new custom block payload
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct MyCustomPayload {
+        magic_number: u64,
+    }
+
+    // 2. Implement the required traits for the custom payload
+    impl CustomCopiable<'_> for MyCustomPayload {
+
+        // A unique PEN for our test block
+        const PEN: u32 = 70000;
+
+        fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), PcapError> {
+            writer.write_u64::<BigEndian>(self.magic_number)?;
+            Ok(())
+        }
+
+        fn from_slice(slice: &[u8]) -> Result<Option<MyCustomPayload>, PcapError> {
+            let mut cursor = std::io::Cursor::new(slice);
+            let magic_number = cursor.read_u64::<BigEndian>()?;
+            Ok(Some(MyCustomPayload { magic_number }))
+        }
+    }
+
+    let original_payload = MyCustomPayload { magic_number: 0xDEADBEEFCAFED00D };
+
+    let mut buffer = Vec::new();
+    let mut pcapng_writer = PcapNgWriter::new(&mut buffer)
+        .expect("Failed to create writer");
+
+    let block_to_write = original_payload
+        .clone()
+        .into_custom_block()
+        .expect("Failed to encode custom block")
+        .into_block();
+
+    pcapng_writer
+        .write_block(&block_to_write)
+        .expect("Failed to write custom block");
+
+    // --- READING ---
+    let (rem, mut pcapng_parser) = PcapNgParser::new(&buffer)
+        .expect("Failed to create parser");
+    let mut remaining_data = rem;
+
+    // Read the next block, which should be our custom block
+    let (rem, read_block_enum) = pcapng_parser
+        .next_block(remaining_data)
+        .expect("Failed to read next block");
+    remaining_data = rem;
+
+    // --- VERIFICATION ---
+    // Extract the CustomBlock from the enum
+    let read_block = match read_block_enum {
+        Block::CustomCopiable(block) => block,
+        // In a real scenario, you might handle both, but we know we wrote a copiable one.
+        _ => panic!("Expected a CustomCopiable block, but got something else."),
+    };
+
+    // Assert that the PEN is correct
+    assert_eq!(read_block.pen, MyCustomPayload::PEN, "PEN did not match");
+
+    // Parse the payload back to our concrete type
+    let read_payload = read_block
+        .interpret::<MyCustomPayload>()
+        .expect("Failed to parse payload")
+        .expect("Payload not recognized");
+
+    // Assert that the inner data is correct
+    assert_eq!(read_payload, original_payload, "Payload data did not match");
+
+    // Verify there is no more data left to parse
+    assert!(remaining_data.is_empty(), "Expected all data to be consumed");
+}
