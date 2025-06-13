@@ -37,6 +37,12 @@ pub enum PcapError {
     /// The packet's timestamp is too big (only for Pcap NG)
     #[error("Packet's timestamp too big, please choose a bigger timestamp resolution")]
     TimestampTooBig,
+
+    /// Unexpected PEM value
+    /// - 0: Expected value
+    /// - 1: Actual value
+    #[error("Encountered an unexpected PEM value. Expected: {0}, got: {1}")]
+    InvalidPEM(u32, u32),
 }
 
 impl From<std::str::Utf8Error> for PcapError {

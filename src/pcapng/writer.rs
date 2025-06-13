@@ -75,9 +75,7 @@ impl<W: Write> PcapNgWriter<W> {
 
         let endianness = section.endianness;
 
-        let block = section
-            .into_owned()
-            .into_block();
+        let block = section.into_owned().into_block();
 
         state.update_from_block(&block)?;
 
@@ -97,10 +95,10 @@ impl<W: Write> PcapNgWriter<W> {
     /// use std::fs::File;
     /// use std::time::Duration;
     ///
+    /// use pcap_file::DataLink;
     /// use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     /// use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
     /// use pcap_file::pcapng::{PcapNgBlock, PcapNgWriter};
-    /// use pcap_file::DataLink;
     ///
     /// let data = [0u8; 10];
     ///
@@ -121,7 +119,6 @@ impl<W: Write> PcapNgWriter<W> {
     /// pcap_ng_writer.write_block(&packet.into_block()).unwrap();
     /// ```
     pub fn write_block(&mut self, block: &Block) -> PcapResult<usize> {
-
         match block {
             Block::InterfaceStatistics(blk) => {
                 if blk.interface_id as usize >= self.state.interfaces.len() {
@@ -153,10 +150,10 @@ impl<W: Write> PcapNgWriter<W> {
     /// use std::fs::File;
     /// use std::time::Duration;
     ///
+    /// use pcap_file::DataLink;
     /// use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     /// use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
     /// use pcap_file::pcapng::{PcapNgBlock, PcapNgWriter};
-    /// use pcap_file::DataLink;
     ///
     /// let data = [0u8; 10];
     ///
@@ -194,7 +191,7 @@ impl<W: Write> PcapNgWriter<W> {
                 let written = block.write_to::<LittleEndian, _>(&mut self.writer)?;
                 self.state.update_from_raw_block::<LittleEndian>(block)?;
                 Ok(written)
-            }
+            },
         }
     }
 
