@@ -173,3 +173,148 @@ fn test_custom_block() {
     // Verify there is no more data left to parse
     assert!(remaining_data.is_empty(), "Expected all data to be consumed");
 }
+
+#[test]
+fn test_stateful_custom_block() {
+    use byteorder_slice::{
+        BigEndian, LittleEndian,
+        byteorder::{ReadBytesExt, WriteBytesExt},
+    };
+    use pcap_file::{PcapError, Endianness, DataLink};
+    use pcap_file::pcapng::PcapNgState;
+    use pcap_file::pcapng::blocks::{custom::*, interface_description::*, *};
+    use std::io::Write;
+    use std::time::Duration;
+
+    // 1. Define a new custom block payload
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct MyStatefulPayload {
+        magic_number: u64,
+        interface_id: u32,
+        timestamp: Duration,
+    }
+
+    // 2. Implement the required traits for the custom payload
+    impl CustomNonCopiable<'_> for MyStatefulPayload {
+
+        // A unique PEN for our test block
+        const PEN: u32 = 70000;
+
+        type State = PcapNgState;
+
+        fn write_to<W: Write>(
+            &self,
+            state: &PcapNgState,
+            writer: &mut W,
+        ) -> Result<(), PcapError> {
+            match state.section().endianness {
+                Endianness::Big => {
+                    writer.write_u64::<BigEndian>(self.magic_number)?;
+                    writer.write_u32::<BigEndian>(self.interface_id)?;
+                    state.encode_timestamp::<BigEndian, W>(
+                        self.interface_id, self.timestamp, writer)?;
+                },
+                Endianness::Little => {
+                    writer.write_u64::<LittleEndian>(self.magic_number)?;
+                    writer.write_u32::<LittleEndian>(self.interface_id)?;
+                    state.encode_timestamp::<LittleEndian, W>(
+                        self.interface_id, self.timestamp, writer)?;
+                },
+            };
+            Ok(())
+        }
+
+        fn from_slice(
+            state: &PcapNgState,
+            mut slice: &[u8],
+        ) -> Result<Option<MyStatefulPayload>, PcapError> {
+            Ok(Some(match state.section().endianness {
+                Endianness::Big => {
+                    let magic_number = slice.read_u64::<BigEndian>()?;
+                    let interface_id = slice.read_u32::<BigEndian>()?;
+                    let timestamp = state.decode_timestamp::<BigEndian>(
+                        interface_id, &mut slice)?;
+                    MyStatefulPayload { magic_number, interface_id, timestamp }
+                },
+                Endianness::Little => {
+                    let magic_number = slice.read_u64::<LittleEndian>()?;
+                    let interface_id = slice.read_u32::<LittleEndian>()?;
+                    let timestamp = state.decode_timestamp::<LittleEndian>(
+                        interface_id, &mut slice)?;
+                    MyStatefulPayload { magic_number, interface_id, timestamp }
+                },
+            }))
+        }
+    }
+
+    let original_payload = MyStatefulPayload {
+        magic_number: 0xDEADBEEFCAFED00D,
+        interface_id: 0,
+        timestamp: Duration::from_nanos(123456789),
+    };
+
+    let mut buffer = Vec::new();
+    let mut pcapng_writer = PcapNgWriter::new(&mut buffer)
+        .expect("Failed to create writer");
+
+    // Write an interface description block that sets the timestamp format.
+    let interface_description = InterfaceDescriptionBlock {
+        linktype: DataLink::ETHERNET,
+        snaplen: 1500,
+        options: vec![InterfaceDescriptionOption::IfTsResol(9)],
+    };
+    pcapng_writer
+        .write_block(&interface_description.into_block())
+        .expect("Failed to write interface description block");
+
+    let block_to_write = original_payload
+        .clone()
+        .into_custom_block(pcapng_writer.state())
+        .expect("Failed to encode custom block")
+        .into_block();
+
+    pcapng_writer
+        .write_block(&block_to_write)
+        .expect("Failed to write custom block");
+
+    // --- READING ---
+    let mut pcapng_reader = PcapNgReader::new(&buffer[..])
+        .expect("Failed to create reader");
+
+    // Read the first block, which should be the interface description
+    let first_block = pcapng_reader
+        .next_block()
+        .expect("No first block from reader")
+        .expect("Failed to get first block");
+
+    assert!(matches!(first_block, Block::InterfaceDescription(_)));
+
+    // Read the next block, which should be our custom block
+    let (read_block_enum, reader_state) = pcapng_reader
+        .next_block_and_state()
+        .expect("No second block from reader")
+        .expect("Failed to get next block");
+
+    // --- VERIFICATION ---
+    // Extract the CustomBlock from the enum
+    let read_block = match read_block_enum {
+        Block::CustomNonCopiable(block) => block,
+        _ => panic!("Expected a CustomNonCopiable block, but got something else."),
+    };
+
+    // Assert that the PEN is correct
+    assert_eq!(read_block.pen, MyStatefulPayload::PEN, "PEN did not match");
+
+    // Parse the payload back to our concrete type
+    let read_payload = read_block
+        .interpret::<MyStatefulPayload>(reader_state)
+        .expect("Failed to parse payload")
+        .expect("Payload not recognized");
+
+    // Assert that the inner data is correct
+    assert_eq!(read_payload, original_payload, "Payload data did not match");
+
+    // Verify there is no more data left to parse
+    let remaining_data = pcapng_reader.into_inner();
+    assert!(remaining_data.is_empty(), "Expected all data to be consumed");
+}
