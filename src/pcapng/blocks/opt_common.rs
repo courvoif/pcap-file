@@ -7,17 +7,18 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
+use crate::pcapng::PcapNgState;
 
 
 /// Common fonctions of the PcapNg options
 pub(crate) trait PcapNgOption<'a> {
     /// Parse an option from a slice
-    fn from_slice<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError>
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, interface_id: Option<u32>, code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError>
     where
         Self: std::marker::Sized;
 
     /// Parse all options in a block
-    fn opts_from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Vec<Self>), PcapError>
+    fn opts_from_slice<B: ByteOrder>(state: &PcapNgState, interface_id: Option<u32>, mut slice: &'a [u8]) -> Result<(&'a [u8], Vec<Self>), PcapError>
     where
         Self: std::marker::Sized,
     {
@@ -46,7 +47,7 @@ pub(crate) trait PcapNgOption<'a> {
             }
 
             let tmp_slice = &slice[..length];
-            let opt = Self::from_slice::<B>(code, length as u16, tmp_slice)?;
+            let opt = Self::from_slice::<B>(state, interface_id, code, length as u16, tmp_slice)?;
 
             // Jump over the padding
             slice = &slice[length + pad_len..];
@@ -58,17 +59,17 @@ pub(crate) trait PcapNgOption<'a> {
     }
 
     /// Write the option to a writer
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize>;
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError>;
 
     /// Write all options in a block
-    fn write_opts_to<B: ByteOrder, W: Write>(opts: &[Self], writer: &mut W) -> IoResult<usize>
+    fn write_opts_to<B: ByteOrder, W: Write>(opts: &[Self], state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError>
     where
         Self: std::marker::Sized,
     {
         let mut have_opt = false;
         let mut written = 0;
         for opt in opts {
-            written += opt.write_to::<B, W>(writer)?;
+            written += opt.write_to::<B, W>(state, interface_id, writer)?;
             have_opt = true;
         }
 

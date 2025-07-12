@@ -3,7 +3,8 @@
 //! Interface Description Block (IDB).
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
+use std::time::Duration;
 
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
@@ -14,6 +15,7 @@ use once_cell::sync::Lazy;
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
+use crate::pcapng::PcapNgState;
 use crate::DataLink;
 
 
@@ -38,7 +40,7 @@ pub struct InterfaceDescriptionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
-    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 8 {
             return Err(PcapError::InvalidField("InterfaceDescriptionBlock: block length < 8"));
         }
@@ -51,19 +53,19 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         }
 
         let snaplen = slice.read_u32::<B>().unwrap();
-        let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(slice)?;
+        let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(state, None, slice)?;
 
         let block = InterfaceDescriptionBlock { linktype, snaplen, options };
 
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         writer.write_u16::<B>(u32::from(self.linktype) as u16)?;
         writer.write_u16::<B>(0)?;
         writer.write_u32::<B>(self.snaplen)?;
 
-        let opt_len = InterfaceDescriptionOption::write_opts_to::<B, W>(&self.options, writer)?;
+        let opt_len = InterfaceDescriptionOption::write_opts_to::<B, W>(&self.options, state, None, writer)?;
         Ok(8 + opt_len)
     }
 
@@ -91,6 +93,17 @@ impl<'a> InterfaceDescriptionBlock<'a> {
         }
 
         ts_resol
+    }
+
+    /// Returns the timestamp offset of the interface, or zero if it has none.
+    pub fn ts_offset(&self) -> Duration {
+        for opt in &self.options {
+            if let InterfaceDescriptionOption::IfTsOffset(offset) = opt {
+                return Duration::from_secs(*offset)
+            }
+        }
+
+        Duration::ZERO
     }
 }
 
@@ -160,7 +173,7 @@ pub enum InterfaceDescriptionOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
-    fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => InterfaceDescriptionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => InterfaceDescriptionOption::IfName(Cow::Borrowed(std::str::from_utf8(slice)?)),
@@ -237,8 +250,8 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-        match self {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+        Ok(match self {
             InterfaceDescriptionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             InterfaceDescriptionOption::IfName(a) => a.write_opt_to::<B, W>(2, writer),
             InterfaceDescriptionOption::IfDescription(a) => a.write_opt_to::<B, W>(3, writer),
@@ -257,7 +270,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
             InterfaceDescriptionOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
             InterfaceDescriptionOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
-        }
+        }?)
     }
 }
 

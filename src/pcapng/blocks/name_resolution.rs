@@ -11,6 +11,7 @@ use derive_into_owned::IntoOwned;
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
+use crate::pcapng::PcapNgState;
 
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
@@ -24,7 +25,7 @@ pub struct NameResolutionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
-    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         let mut records = Vec::new();
 
         loop {
@@ -37,14 +38,14 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
             }
         }
 
-        let (rem, options) = NameResolutionOption::opts_from_slice::<B>(slice)?;
+        let (rem, options) = NameResolutionOption::opts_from_slice::<B>(state, None, slice)?;
 
         let block = NameResolutionBlock { records, options };
 
         Ok((rem, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         let mut len = 0;
 
         for record in &self.records {
@@ -52,7 +53,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         }
         len += Record::End.write_to::<B, _>(writer)?;
 
-        len += NameResolutionOption::write_opts_to::<B, _>(&self.options, writer)?;
+        len += NameResolutionOption::write_opts_to::<B, _>(&self.options, state, None, writer)?;
 
         Ok(len)
     }
@@ -319,7 +320,7 @@ pub enum NameResolutionOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
-    fn from_slice<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => NameResolutionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => NameResolutionOption::NsDnsName(Cow::Borrowed(std::str::from_utf8(slice)?)),
@@ -345,8 +346,8 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-        match self {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+        Ok(match self {
             NameResolutionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             NameResolutionOption::NsDnsName(a) => a.write_opt_to::<B, W>(2, writer),
             NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt_to::<B, W>(3, writer),
@@ -354,6 +355,6 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
             NameResolutionOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
             NameResolutionOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
             NameResolutionOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
-        }
+        }?)
     }
 }

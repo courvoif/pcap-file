@@ -1,12 +1,11 @@
 use std::io::Write;
 
-use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
+use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::blocks::block_common::{Block, PcapNgBlock};
-use super::blocks::interface_description::{InterfaceDescriptionBlock, TsResolution};
+use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
-use super::blocks::SECTION_HEADER_BLOCK;
-use super::RawBlock;
+use super::{PcapNgState, RawBlock};
 use crate::{Endianness, PcapError, PcapResult};
 
 
@@ -34,13 +33,8 @@ use crate::{Endianness, PcapError, PcapResult};
 /// }
 /// ```
 pub struct PcapNgWriter<W: Write> {
-    /// Current section of the pcapng
-    section: SectionHeaderBlock<'static>,
-    /// List of the interfaces of the current section of the pcapng
-    interfaces: Vec<InterfaceDescriptionBlock<'static>>,
-    /// Timestamp resolutions corresponding to the interfaces
-    ts_resolutions: Vec<TsResolution>,
-
+    /// Current state of the pcapng format.
+    state: PcapNgState,
     /// Wrapped writer to which the block are written to.
     writer: W,
 }
@@ -76,13 +70,23 @@ impl<W: Write> PcapNgWriter<W> {
     }
 
     /// Create a new [`PcapNgWriter`] from an existing writer with the given section header.
-    pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'static>) -> PcapResult<Self> {
-        match section.endianness {
-            Endianness::Big => section.clone().into_block().write_to::<BigEndian, _>(&mut writer).map_err(PcapError::IoError)?,
-            Endianness::Little => section.clone().into_block().write_to::<LittleEndian, _>(&mut writer).map_err(PcapError::IoError)?,
+    pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'_>) -> PcapResult<Self> {
+        let mut state = PcapNgState::default();
+
+        let endianness = section.endianness;
+
+        let block = section
+            .into_owned()
+            .into_block();
+
+        state.update_from_block(&block)?;
+
+        match endianness {
+            Endianness::Big => block.write_to::<BigEndian, _>(&state, &mut writer)?,
+            Endianness::Little => block.write_to::<LittleEndian, _>(&state, &mut writer)?,
         };
 
-        Ok(Self { section, interfaces: Vec::new(), ts_resolutions: Vec::new(), writer })
+        Ok(Self { state, writer })
     }
 
     /// Write a [`Block`].
@@ -117,38 +121,27 @@ impl<W: Write> PcapNgWriter<W> {
     /// pcap_ng_writer.write_block(&packet.into_block()).unwrap();
     /// ```
     pub fn write_block(&mut self, block: &Block) -> PcapResult<usize> {
-        match block {
-            Block::SectionHeader(blk) => {
-                self.section = blk.clone().into_owned();
-                self.interfaces.clear();
-                self.ts_resolutions.clear();
-            },
-            Block::InterfaceDescription(blk) => {
-                let ts_resolution = blk.ts_resolution()?;
-                self.ts_resolutions.push(ts_resolution);
 
-                self.interfaces.push(blk.clone().into_owned());
-            },
+        match block {
             Block::InterfaceStatistics(blk) => {
-                if blk.interface_id as usize >= self.interfaces.len() {
+                if blk.interface_id as usize >= self.state.interfaces.len() {
                     return Err(PcapError::InvalidInterfaceId(blk.interface_id));
                 }
             },
             Block::EnhancedPacket(blk) => {
-                if blk.interface_id as usize >= self.interfaces.len() {
+                if blk.interface_id as usize >= self.state.interfaces.len() {
                     return Err(PcapError::InvalidInterfaceId(blk.interface_id));
                 }
-
-                let ts_resol = self.ts_resolutions[blk.interface_id as usize];
-                blk.set_write_ts_resolution(ts_resol);
             },
 
             _ => (),
         }
 
-        match self.section.endianness {
-            Endianness::Big => block.write_to::<BigEndian, _>(&mut self.writer).map_err(PcapError::IoError),
-            Endianness::Little => block.write_to::<LittleEndian, _>(&mut self.writer).map_err(PcapError::IoError),
+        self.state.update_from_block(block)?;
+
+        match self.state.section.endianness {
+            Endianness::Big => block.write_to::<BigEndian, _>(&self.state, &mut self.writer),
+            Endianness::Little => block.write_to::<LittleEndian, _>(&self.state, &mut self.writer),
         }
     }
 
@@ -191,18 +184,17 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// Doesn't check the validity of the written blocks.
     pub fn write_raw_block(&mut self, block: &RawBlock) -> PcapResult<usize> {
-        return match self.section.endianness {
-            Endianness::Big => inner::<BigEndian, _>(&mut self.section, block, &mut self.writer),
-            Endianness::Little => inner::<LittleEndian, _>(&mut self.section, block, &mut self.writer),
-        };
-
-        // Write a RawBlock to a writer
-        fn inner<B: ByteOrder, W: Write>(section: &mut SectionHeaderBlock, block: &RawBlock, writer: &mut W) -> PcapResult<usize> {
-            if block.type_ == SECTION_HEADER_BLOCK {
-                *section = block.clone().try_into_block::<B>()?.into_owned().into_section_header().unwrap();
+        match self.state.section.endianness {
+            Endianness::Big => {
+                let written = block.write_to::<BigEndian, _>(&mut self.writer)?;
+                self.state.update_from_raw_block::<BigEndian>(block)?;
+                Ok(written)
+            },
+            Endianness::Little => {
+                let written = block.write_to::<LittleEndian, _>(&mut self.writer)?;
+                self.state.update_from_raw_block::<LittleEndian>(block)?;
+                Ok(written)
             }
-
-            block.write_to::<B, _>(writer).map_err(PcapError::IoError)
         }
     }
 
@@ -225,11 +217,11 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Return the current [`SectionHeaderBlock`].
     pub fn section(&self) -> &SectionHeaderBlock<'static> {
-        &self.section
+        &self.state.section
     }
 
     /// Return all the current [`InterfaceDescriptionBlock`].
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
-        &self.interfaces
+        &self.state.interfaces
     }
 }

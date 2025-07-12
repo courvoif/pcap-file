@@ -50,3 +50,9 @@ impl From<std::string::FromUtf8Error> for PcapError {
         PcapError::FromUtf8Error(err)
     }
 }
+
+impl From<std::io::Error> for PcapError {
+    fn from(err: std::io::Error) -> Self {
+        PcapError::IoError(err)
+    }
+}

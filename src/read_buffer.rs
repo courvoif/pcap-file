@@ -14,6 +14,8 @@ pub(crate) struct ReadBuffer<R: Read> {
     pos: usize,
     /// Current end position of the buffer
     len: usize,
+    /// Total bytes used by the parser
+    pub(crate) bytes_used: u64,
 }
 
 impl<R: Read> ReadBuffer<R> {
@@ -24,7 +26,7 @@ impl<R: Read> ReadBuffer<R> {
 
     /// Creates a new ReadBuffer with the given capacity
     pub fn with_capacity(reader: R, capacity: usize) -> Self {
-        Self { reader, buffer: vec![0_u8; capacity], pos: 0, len: 0 }
+        Self { reader, buffer: vec![0_u8; capacity], pos: 0, len: 0, bytes_used: 0 }
     }
 
     /// Parse data from the internal buffer
@@ -90,6 +92,7 @@ impl<R: Read> ReadBuffer<R> {
     fn advance(&mut self, nb_bytes: usize) {
         assert!(self.pos + nb_bytes <= self.len);
         self.pos += nb_bytes;
+        self.bytes_used += nb_bytes as u64;
     }
 
     /// Advance the internal buffer position.

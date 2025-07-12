@@ -1,7 +1,8 @@
 //! Packet Block.
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
+use std::time::Duration;
 
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
@@ -11,6 +12,7 @@ use derive_into_owned::IntoOwned;
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
 use crate::errors::PcapError;
+use crate::pcapng::PcapNgState;
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
@@ -25,9 +27,8 @@ pub struct PacketBlock<'a> {
     /// between this packet and the preceding one.
     pub drop_count: u16,
 
-    /// The timestamp is a single 64-bit unsigned integer that represents the number of units of time
-    /// that have elapsed since 1970-01-01 00:00:00 UTC.
-    pub timestamp: u64,
+    /// Time elapsed since 1970-01-01 00:00:00 UTC.
+    pub timestamp: Duration,
 
     /// Number of octets captured from the packet (i.e. the length of the Packet Data field).
     pub captured_len: u32,
@@ -43,14 +44,14 @@ pub struct PacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
-    fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 20 {
             return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
         }
 
         let interface_id = slice.read_u16::<B>().unwrap();
         let drop_count = slice.read_u16::<B>().unwrap();
-        let timestamp = slice.read_u64::<B>().unwrap();
+        let timestamp = state.decode_timestamp::<B>(interface_id as u32, &mut slice)?;
         let captured_len = slice.read_u32::<B>().unwrap();
         let original_len = slice.read_u32::<B>().unwrap();
 
@@ -64,7 +65,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let data = &slice[..captured_len as usize];
         slice = &slice[tot_len..];
 
-        let (slice, options) = PacketOption::opts_from_slice::<B>(slice)?;
+        let (slice, options) = PacketOption::opts_from_slice::<B>(state, Some(interface_id as u32), slice)?;
         let block = PacketBlock {
             interface_id,
             drop_count,
@@ -78,10 +79,10 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
         writer.write_u16::<B>(self.interface_id)?;
         writer.write_u16::<B>(self.drop_count)?;
-        writer.write_u64::<B>(self.timestamp)?;
+        state.encode_timestamp::<B, W>(self.interface_id as u32, self.timestamp, writer)?;
         writer.write_u32::<B>(self.captured_len)?;
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
@@ -89,7 +90,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let pad_len = (4 - (self.captured_len as usize % 4)) % 4;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        let opt_len = PacketOption::write_opts_to::<B, _>(&self.options, writer)?;
+        let opt_len = PacketOption::write_opts_to::<B, _>(&self.options, state, Some(self.interface_id as u32), writer)?;
 
         Ok(20 + self.data.len() + pad_len + opt_len)
     }
@@ -122,7 +123,7 @@ pub enum PacketOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for PacketOption<'a> {
-    fn from_slice<B: ByteOrder>(code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => PacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => {
@@ -142,14 +143,14 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
-        match self {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+        Ok(match self {
             PacketOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             PacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
             PacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),
             PacketOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
             PacketOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
             PacketOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
-        }
+        }?)
     }
 }
