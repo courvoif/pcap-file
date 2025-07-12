@@ -1,3 +1,5 @@
+//! Generic block option types.
+
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 
