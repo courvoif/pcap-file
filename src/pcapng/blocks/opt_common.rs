@@ -23,11 +23,17 @@ pub const CUSTOM_BINARY_OPTION_NON_COPIABLE: u16 = 0x4BAD;
 /// Common options applicable to all block types.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum CommonOption<'a> {
-    /// Custom option containing binary octets in the Custom Data portion
-    CustomBinary(CustomBinaryOption<'a>),
+    /// Custom option containing copiable binary octets in the Custom Data portion
+    CustomBinaryCopiable(CustomBinaryOption<'a, true>),
 
-    /// Custom option containing a UTF-8 string in the Custom Data portion
-    CustomUtf8(CustomUtf8Option<'a>),
+    /// Custom option containing non-copiable binary octets in the Custom Data portion
+    CustomBinaryNonCopiable(CustomBinaryOption<'a, false>),
+
+    /// Custom option containing a copiable UTF-8 string in the Custom Data portion
+    CustomUtf8Copiable(CustomUtf8Option<'a, true>),
+
+    /// Custom option containing a non-copiable UTF-8 string in the Custom Data portion
+    CustomUtf8NonCopiable(CustomUtf8Option<'a, false>),
 
     /// Unknown option
     Unknown(UnknownOption<'a>),
@@ -36,20 +42,28 @@ pub enum CommonOption<'a> {
 impl<'a> CommonOption<'a> {
     pub(crate) fn code(&self) -> u16 {
         match self {
-            CommonOption::CustomBinary(a) => a.code,
-            CommonOption::CustomUtf8(a) => a.code,
+            CommonOption::CustomBinaryCopiable(_) => CUSTOM_BINARY_OPTION_COPIABLE,
+            CommonOption::CustomBinaryNonCopiable(_) => CUSTOM_BINARY_OPTION_NON_COPIABLE,
+            CommonOption::CustomUtf8Copiable(_) => CUSTOM_UTF8_OPTION_COPIABLE,
+            CommonOption::CustomUtf8NonCopiable(_) => CUSTOM_UTF8_OPTION_NON_COPIABLE,
             CommonOption::Unknown(a) => a.code,
         }
     }
 
     pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         Ok(match code {
-            CUSTOM_UTF8_OPTION_COPIABLE | CUSTOM_UTF8_OPTION_NON_COPIABLE =>
-                CommonOption::CustomUtf8(
-                    CustomUtf8Option::from_slice::<B>(code, slice)?),
-            CUSTOM_BINARY_OPTION_COPIABLE | CUSTOM_BINARY_OPTION_NON_COPIABLE =>
-                CommonOption::CustomBinary(
-                    CustomBinaryOption::from_slice::<B>(code, slice)?),
+            CUSTOM_UTF8_OPTION_COPIABLE =>
+                CommonOption::CustomUtf8Copiable(
+                    CustomUtf8Option::from_slice::<B>(slice)?),
+            CUSTOM_UTF8_OPTION_NON_COPIABLE =>
+                CommonOption::CustomUtf8NonCopiable(
+                    CustomUtf8Option::from_slice::<B>(slice)?),
+            CUSTOM_BINARY_OPTION_COPIABLE =>
+                CommonOption::CustomBinaryCopiable(
+                    CustomBinaryOption::from_slice::<B>(slice)?),
+            CUSTOM_BINARY_OPTION_NON_COPIABLE =>
+                CommonOption::CustomBinaryNonCopiable(
+                    CustomBinaryOption::from_slice::<B>(slice)?),
             _ => CommonOption::Unknown(
                     UnknownOption::new(code, slice)),
         })
@@ -160,42 +174,54 @@ impl<'a> UnknownOption<'a> {
 }
 
 /// Custom binary option
-#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
-pub struct CustomBinaryOption<'a> {
-    /// Option code
-    pub code: u16,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
     /// Option PEN identifier
     pub pen: u32,
     /// Option value
     pub value: Cow<'a, [u8]>,
 }
 
-impl<'a> CustomBinaryOption<'a> {
+impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
     /// Parse an [`CustomBinaryOption`] from a slice
-    pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
+    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, PcapError> {
         let pen = src.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?;
-        let opt = CustomBinaryOption { code, pen, value: Cow::Borrowed(src) };
+        let opt = CustomBinaryOption { pen, value: Cow::Borrowed(src) };
         Ok(opt)
+    }
+
+    /// Returns a version of self with all fields converted to owning versions.
+    pub fn into_owned(self) -> CustomBinaryOption<'static, COPIABLE> {
+        CustomBinaryOption {
+            pen: self.pen,
+            value: Cow::Owned(self.value.into_owned())
+        }
     }
 }
 
 /// Custom string (UTF-8) option
-#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
-pub struct CustomUtf8Option<'a> {
-    /// Option code
-    pub code: u16,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
     /// Option PEN identifier
     pub pen: u32,
     /// Option value
     pub value: Cow<'a, str>,
 }
 
-impl<'a> CustomUtf8Option<'a> {
+impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
     /// Parse a [`CustomUtf8Option`] from a slice
-    pub fn from_slice<B: ByteOrder>(code: u16, mut src: &'a [u8]) -> Result<Self, PcapError> {
+    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, PcapError> {
         let pen = src.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?;
-        let opt = CustomUtf8Option { code, pen, value: Cow::Borrowed(std::str::from_utf8(src)?) };
+        let opt = CustomUtf8Option { pen, value: Cow::Borrowed(std::str::from_utf8(src)?) };
         Ok(opt)
+    }
+
+    /// Returns a version of self with all fields converted to owning versions.
+    pub fn into_owned(self) -> CustomUtf8Option<'static, COPIABLE> {
+        CustomUtf8Option {
+            pen: self.pen,
+            value: Cow::Owned(self.value.into_owned())
+        }
     }
 }
 
@@ -276,8 +302,10 @@ impl WriteOptTo for u64 {
 impl<'a> WriteOptTo for CommonOption<'a> {
     fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
         let len = match self {
-            CommonOption::CustomBinary(a) => a.value.len() + 4,
-            CommonOption::CustomUtf8(a) => a.value.len() + 4,
+            CommonOption::CustomBinaryCopiable(a) => a.value.len() + 4,
+            CommonOption::CustomBinaryNonCopiable(a) => a.value.len() + 4,
+            CommonOption::CustomUtf8Copiable(a) => a.value.len() + 4,
+            CommonOption::CustomUtf8NonCopiable(a) => a.value.len() + 4,
             CommonOption::Unknown(a) => a.value.len(),
         };
 
@@ -287,11 +315,19 @@ impl<'a> WriteOptTo for CommonOption<'a> {
         writer.write_u16::<B>(len as u16)?;
 
         match self {
-            CommonOption::CustomBinary(a) => {
+            CommonOption::CustomBinaryCopiable(a) => {
                 writer.write_u32::<B>(a.pen)?;
                 writer.write_all(&a.value)?;
             },
-            CommonOption::CustomUtf8(a) => {
+            CommonOption::CustomBinaryNonCopiable(a) => {
+                writer.write_u32::<B>(a.pen)?;
+                writer.write_all(&a.value)?;
+            },
+            CommonOption::CustomUtf8Copiable(a) => {
+                writer.write_u32::<B>(a.pen)?;
+                writer.write_all(&a.value.as_bytes())?;
+            }
+            CommonOption::CustomUtf8NonCopiable(a) => {
                 writer.write_u32::<B>(a.pen)?;
                 writer.write_all(&a.value.as_bytes())?;
             }
