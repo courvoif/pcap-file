@@ -83,6 +83,11 @@ impl<'a> CustomBinaryOption<'a, true> {
         T::from_slice(&self.value)
             .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
     }
+
+    /// Converts this option into a [`CommonOption`].
+    pub fn into_common_option(self) -> CommonOption<'a> {
+        CommonOption::CustomBinaryCopiable(self)
+    }
 }
 
 impl<'a> CustomBinaryOption<'a, false> {
@@ -96,6 +101,11 @@ impl<'a> CustomBinaryOption<'a, false> {
 
         T::from_slice(state, &self.value)
             .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
+    }
+
+    /// Converts this option into a [`CommonOption`].
+    pub fn into_common_option(self) -> CommonOption<'a> {
+        CommonOption::CustomBinaryNonCopiable(self)
     }
 }
 
