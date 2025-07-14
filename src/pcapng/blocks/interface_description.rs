@@ -167,7 +167,7 @@ pub enum InterfaceDescriptionOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => InterfaceDescriptionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => InterfaceDescriptionOption::IfName(Cow::Borrowed(std::str::from_utf8(slice)?)),
@@ -235,7 +235,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             },
             15 => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
-            _ => InterfaceDescriptionOption::Common(CommonOption::new::<B>(code, length, slice)?),
+            _ => InterfaceDescriptionOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 
         Ok(opt)

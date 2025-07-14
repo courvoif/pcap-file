@@ -107,7 +107,7 @@ impl<'a> Record<'a> {
             },
 
             _ => {
-                let record = UnknownRecord::new(type_, length, value);
+                let record = UnknownRecord::new(type_, value);
                 Record::Unknown(record)
             },
         };
@@ -156,7 +156,7 @@ impl<'a> Record<'a> {
                 let pad_len = (4 - len % 4) % 4;
 
                 writer.write_u16::<B>(a.type_)?;
-                writer.write_u16::<B>(a.length)?;
+                writer.write_u16::<B>(len as u16)?;
                 writer.write_all(&a.value)?;
                 writer.write_all(&[0_u8; 3][..pad_len])?;
 
@@ -279,16 +279,14 @@ impl<'a> Ipv6Record<'a> {
 pub struct UnknownRecord<'a> {
     /// Records type
     pub type_: u16,
-    /// Record length
-    pub length: u16,
     /// Record body
     pub value: Cow<'a, [u8]>,
 }
 
 impl<'a> UnknownRecord<'a> {
     /// Creates a new [`UnknownRecord`]
-    fn new(type_: u16, length: u16, value: &'a [u8]) -> Self {
-        UnknownRecord { type_, length, value: Cow::Borrowed(value) }
+    fn new(type_: u16, value: &'a [u8]) -> Self {
+        UnknownRecord { type_, value: Cow::Borrowed(value) }
     }
 }
 
@@ -314,7 +312,7 @@ pub enum NameResolutionOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => NameResolutionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => NameResolutionOption::NsDnsName(Cow::Borrowed(std::str::from_utf8(slice)?)),
@@ -330,7 +328,7 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
                 }
                 NameResolutionOption::NsDnsIpv6Addr(Cow::Borrowed(slice))
             },
-            _ => NameResolutionOption::Common(CommonOption::new::<B>(code, length, slice)?),
+            _ => NameResolutionOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 
         Ok(opt)

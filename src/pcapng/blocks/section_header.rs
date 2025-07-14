@@ -125,14 +125,14 @@ pub enum SectionHeaderOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
             1 => SectionHeaderOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => SectionHeaderOption::Hardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
             3 => SectionHeaderOption::OS(Cow::Borrowed(std::str::from_utf8(slice)?)),
             4 => SectionHeaderOption::UserApplication(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
-            _ => SectionHeaderOption::Common(CommonOption::new::<B>(code, length, slice)?),
+            _ => SectionHeaderOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 
         Ok(opt)

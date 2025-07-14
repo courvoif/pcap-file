@@ -42,7 +42,7 @@ impl<'a> CommonOption<'a> {
         }
     }
 
-    pub(crate) fn new<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+    pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         Ok(match code {
             CUSTOM_UTF8_OPTION_COPIABLE | CUSTOM_UTF8_OPTION_NON_COPIABLE =>
                 CommonOption::CustomUtf8(
@@ -51,7 +51,7 @@ impl<'a> CommonOption<'a> {
                 CommonOption::CustomBinary(
                     CustomBinaryOption::from_slice::<B>(code, slice)?),
             _ => CommonOption::Unknown(
-                    UnknownOption::new(code, length, slice)),
+                    UnknownOption::new(code, slice)),
         })
     }
 }
@@ -63,7 +63,6 @@ pub(crate) trait PcapNgOption<'a> {
         state: &PcapNgState,
         interface_id: Option<u32>,
         code: u16,
-        length: u16,
         slice: &'a [u8],
     ) -> Result<Self, PcapError>
     where
@@ -103,7 +102,7 @@ pub(crate) trait PcapNgOption<'a> {
             }
 
             let tmp_slice = &slice[..length];
-            let opt = Self::from_slice::<B>(state, interface_id, code, length as u16, tmp_slice)?;
+            let opt = Self::from_slice::<B>(state, interface_id, code, tmp_slice)?;
 
             // Jump over the padding
             slice = &slice[length + pad_len..];
@@ -149,16 +148,14 @@ pub(crate) trait PcapNgOption<'a> {
 pub struct UnknownOption<'a> {
     /// Option code
     pub code: u16,
-    /// Option length
-    pub length: u16,
     /// Option value
     pub value: Cow<'a, [u8]>,
 }
 
 impl<'a> UnknownOption<'a> {
     /// Creates a new [`UnknownOption`]
-    pub fn new(code: u16, length: u16, value: &'a [u8]) -> Self {
-        UnknownOption { code, length, value: Cow::Borrowed(value) }
+    pub fn new(code: u16, value: &'a [u8]) -> Self {
+        UnknownOption { code, value: Cow::Borrowed(value) }
     }
 }
 
@@ -325,7 +322,6 @@ mod tests {
             _state: &PcapNgState,
             _interface_id: Option<u32>,
             _code: u16,
-            _length: u16,
             _slice: &'a [u8],
         ) -> Result<Self, PcapError>
         where
