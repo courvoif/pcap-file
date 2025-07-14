@@ -10,6 +10,7 @@ use derive_into_owned::IntoOwned;
 
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
+use crate::pcapng::blocks::custom::{CustomCopiable, CustomNonCopiable};
 
 /// Custom UTF-8 option code, copiable
 pub const CUSTOM_UTF8_OPTION_COPIABLE: u16 = 0x0BAC;
@@ -67,6 +68,34 @@ impl<'a> CommonOption<'a> {
             _ => CommonOption::Unknown(
                     UnknownOption::new(code, slice)),
         })
+    }
+}
+
+impl<'a> CustomBinaryOption<'a, true> {
+    /// Converts this option's value into a type that implements [`CustomCopiable`].
+    pub fn interpret<T: CustomCopiable<'a>>(&'a self)
+        -> Result<Option<T>, PcapError>
+    {
+        if self.pen != T::PEN {
+            return Ok(None)
+        }
+
+        T::from_slice(&self.value)
+            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
+    }
+}
+
+impl<'a> CustomBinaryOption<'a, false> {
+    /// Converts this option's value into a type that implements [`CustomNonCopiable`].
+    pub fn interpret<T: CustomNonCopiable<'a>>(&'a self, state: &T::State)
+        -> Result<Option<T>, PcapError>
+    {
+        if self.pen != T::PEN {
+            return Ok(None)
+        }
+
+        T::from_slice(state, &self.value)
+            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
     }
 }
 
