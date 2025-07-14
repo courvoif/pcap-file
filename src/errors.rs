@@ -37,6 +37,10 @@ pub enum PcapError {
     /// The packet's timestamp is too big (only for Pcap NG)
     #[error("Packet's timestamp too big, please choose a bigger timestamp resolution")]
     TimestampTooBig,
+
+    /// Error in custom conversion.
+    #[error("Error in custom conversion for PEN {0}: {1}")]
+    CustomConversionError(u32, Box<dyn std::error::Error>),
 }
 
 impl From<std::str::Utf8Error> for PcapError {

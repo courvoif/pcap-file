@@ -1,6 +1,7 @@
 //! Custom Block.
 
 use std::borrow::Cow;
+use std::error::Error;
 use std::io::Write;
 
 use byteorder_slice::ByteOrder;
@@ -27,6 +28,7 @@ impl<'a> CustomBlock<'a, true> {
         }
 
         T::from_slice(&self.payload)
+            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
     }
 }
 
@@ -40,6 +42,7 @@ impl<'a> CustomBlock<'a, false> {
         }
 
         T::from_slice(state, &self.payload)
+            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
     }
 }
 
@@ -61,19 +64,26 @@ pub trait CustomCopiable<'a> {
     /// Private Enterprise Number of the entity which defined this payload format.
     const PEN: u32;
 
+    /// Error returned by [`CustomCopiable::from_slice()`]
+    type FromSliceError: Error + 'static;
+
+    /// Error returned by [`CustomCopiable::write_to()`]
+    type WriteToError: Error + 'static;
+
     /// Try to parse this payload from a slice.
-    fn from_slice(slice: &'a [u8]) -> Result<Option<Self>, PcapError>
+    fn from_slice(slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
         where Self: Sized;
 
     /// Write this payload into a writer.
-    fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), PcapError>;
+    fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), Self::WriteToError>;
 
     /// Convert this block into a copiable [`CustomBlock`]
     fn into_custom_block(self) -> Result<CustomBlock<'a, true>, PcapError>
         where Self: Sized
     {
         let mut data = Vec::new();
-        self.write_to(&mut data)?;
+        self.write_to(&mut data)
+            .map_err(|e| PcapError::CustomConversionError(Self::PEN, e.into()))?;
 
         Ok(CustomBlock { pen: Self::PEN, payload: Cow::Owned(data) })
     }
@@ -87,20 +97,28 @@ pub trait CustomNonCopiable<'a> {
     /// State that may be required to parse/write the block.
     type State;
 
+    /// Error returned by [`CustomNonCopiable::from_slice()`]
+    type FromSliceError: Error + 'static;
+
+
+    /// Error returned by [`CustomNonCopiable::write_to()`]
+    type WriteToError: Error + 'static;
+
     /// Try to parse this payload from a slice.
-    fn from_slice(state: &Self::State, slice: &'a [u8]) -> Result<Option<Self>, PcapError>
+    fn from_slice(state: &Self::State, slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
         where Self: Sized;
 
     /// Write this payload into a writer.
     fn write_to<W: Write>(&self, state: &Self::State, writer: &mut W)
-        -> Result<(), PcapError>;
+        -> Result<(), Self::WriteToError>;
 
     /// Convert this block into a non-copiable [`CustomBlock`]
     fn into_custom_block(self, state: &Self::State) -> Result<CustomBlock<'a, false>, PcapError>
         where Self: Sized
     {
         let mut data = Vec::new();
-        self.write_to(state, &mut data)?;
+        self.write_to(state, &mut data)
+            .map_err(|e| PcapError::CustomConversionError(Self::PEN, e.into()))?;
 
         Ok(CustomBlock { pen: Self::PEN, payload: Cow::Owned(data) })
     }

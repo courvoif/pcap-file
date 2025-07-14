@@ -95,9 +95,8 @@ fn test_custom_block() {
         BigEndian,
         byteorder::{ReadBytesExt, WriteBytesExt},
     };
-    use pcap_file::PcapError;
     use pcap_file::pcapng::blocks::{custom::*, *};
-    use std::io::Write;
+    use std::io::{Error as IoError, Write};
 
     // 1. Define a new custom block payload
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -110,13 +109,15 @@ fn test_custom_block() {
 
         // A unique PEN for our test block
         const PEN: u32 = 70000;
+        type WriteToError = IoError;
+        type FromSliceError = IoError;
 
-        fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), PcapError> {
+        fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), IoError> {
             writer.write_u64::<BigEndian>(self.magic_number)?;
             Ok(())
         }
 
-        fn from_slice(slice: &[u8]) -> Result<Option<MyCustomPayload>, PcapError> {
+        fn from_slice(slice: &[u8]) -> Result<Option<MyCustomPayload>, IoError> {
             let mut cursor = std::io::Cursor::new(slice);
             let magic_number = cursor.read_u64::<BigEndian>()?;
             Ok(Some(MyCustomPayload { magic_number }))
@@ -201,6 +202,8 @@ fn test_stateful_custom_block() {
         const PEN: u32 = 70000;
 
         type State = PcapNgState;
+        type WriteToError = PcapError;
+        type FromSliceError = PcapError;
 
         fn write_to<W: Write>(
             &self,
