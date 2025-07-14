@@ -10,7 +10,7 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 
@@ -112,14 +112,8 @@ pub enum PacketOption<'a> {
     /// Contains a hash of the packet.
     Hash(Cow<'a, [u8]>),
 
-    /// Custom option containing binary octets in the Custom Data portion
-    CustomBinary(CustomBinaryOption<'a>),
-
-    /// Custom option containing a UTF-8 string in the Custom Data portion
-    CustomUtf8(CustomUtf8Option<'a>),
-
-    /// Unknown option
-    Unknown(UnknownOption<'a>),
+    /// A common option applicable to any block type.
+    Common(CommonOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for PacketOption<'a> {
@@ -133,11 +127,7 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
                 PacketOption::Flags(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
             },
             3 => PacketOption::Hash(Cow::Borrowed(slice)),
-
-            2988 | 19372 => PacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-            2989 | 19373 => PacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-            _ => PacketOption::Unknown(UnknownOption::new(code, length, slice)),
+            _ => PacketOption::Common(CommonOption::new::<B>(code, length, slice)?),
         };
 
         Ok(opt)
@@ -148,9 +138,7 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
             PacketOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             PacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
             PacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),
-            PacketOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
-            PacketOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
-            PacketOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
+            PacketOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }?)
     }
 }

@@ -9,7 +9,7 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 use crate::Endianness;
@@ -120,14 +120,8 @@ pub enum SectionHeaderOption<'a> {
     /// Name of the application used to create this section
     UserApplication(Cow<'a, str>),
 
-    /// Custom option containing binary octets in the Custom Data portion
-    CustomBinary(CustomBinaryOption<'a>),
-
-    /// Custom option containing a UTF-8 string in the Custom Data portion
-    CustomUtf8(CustomUtf8Option<'a>),
-
-    /// Unknown option
-    Unknown(UnknownOption<'a>),
+    /// A common option applicable to any block type.
+    Common(CommonOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
@@ -138,10 +132,7 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
             3 => SectionHeaderOption::OS(Cow::Borrowed(std::str::from_utf8(slice)?)),
             4 => SectionHeaderOption::UserApplication(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
-            2988 | 19372 => SectionHeaderOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-            2989 | 19373 => SectionHeaderOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-            _ => SectionHeaderOption::Unknown(UnknownOption::new(code, length, slice)),
+            _ => SectionHeaderOption::Common(CommonOption::new::<B>(code, length, slice)?),
         };
 
         Ok(opt)
@@ -153,9 +144,7 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
             SectionHeaderOption::Hardware(a) => a.write_opt_to::<B, W>(2, writer),
             SectionHeaderOption::OS(a) => a.write_opt_to::<B, W>(3, writer),
             SectionHeaderOption::UserApplication(a) => a.write_opt_to::<B, W>(4, writer),
-            SectionHeaderOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
-            SectionHeaderOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
-            SectionHeaderOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
+            SectionHeaderOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }?)
     }
 }

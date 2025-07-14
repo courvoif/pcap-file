@@ -9,7 +9,7 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 
@@ -309,14 +309,8 @@ pub enum NameResolutionOption<'a> {
     /// The ns_dnsIP6addr option specifies the IPv6 address of the DNS server.
     NsDnsIpv6Addr(Cow<'a, [u8]>),
 
-    /// Custom option containing binary octets in the Custom Data portion
-    CustomBinary(CustomBinaryOption<'a>),
-
-    /// Custom option containing a UTF-8 string in the Custom Data portion
-    CustomUtf8(CustomUtf8Option<'a>),
-
-    /// Unknown option
-    Unknown(UnknownOption<'a>),
+    /// A common option applicable to any block type.
+    Common(CommonOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
@@ -336,11 +330,7 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
                 }
                 NameResolutionOption::NsDnsIpv6Addr(Cow::Borrowed(slice))
             },
-
-            2988 | 19372 => NameResolutionOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-            2989 | 19373 => NameResolutionOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-            _ => NameResolutionOption::Unknown(UnknownOption::new(code, length, slice)),
+            _ => NameResolutionOption::Common(CommonOption::new::<B>(code, length, slice)?),
         };
 
         Ok(opt)
@@ -352,9 +342,7 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
             NameResolutionOption::NsDnsName(a) => a.write_opt_to::<B, W>(2, writer),
             NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt_to::<B, W>(3, writer),
             NameResolutionOption::NsDnsIpv6Addr(a) => a.write_opt_to::<B, W>(4, writer),
-            NameResolutionOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
-            NameResolutionOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
-            NameResolutionOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
+            NameResolutionOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }?)
     }
 }

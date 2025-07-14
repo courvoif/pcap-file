@@ -11,6 +11,50 @@ use derive_into_owned::IntoOwned;
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 
+/// Custom UTF-8 option code, copiable
+pub const CUSTOM_UTF8_OPTION_COPIABLE: u16 = 0x0BAC;
+/// Custom UTF-8 option code, non-copiable
+pub const CUSTOM_UTF8_OPTION_NON_COPIABLE: u16 = 0x4BAC;
+/// Custom binary option code, copiable
+pub const CUSTOM_BINARY_OPTION_COPIABLE: u16 = 0x0BAD;
+/// Custom binary option code, non-copiable
+pub const CUSTOM_BINARY_OPTION_NON_COPIABLE: u16 = 0x4BAD;
+
+/// Common options applicable to all block types.
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
+pub enum CommonOption<'a> {
+    /// Custom option containing binary octets in the Custom Data portion
+    CustomBinary(CustomBinaryOption<'a>),
+
+    /// Custom option containing a UTF-8 string in the Custom Data portion
+    CustomUtf8(CustomUtf8Option<'a>),
+
+    /// Unknown option
+    Unknown(UnknownOption<'a>),
+}
+
+impl<'a> CommonOption<'a> {
+    pub(crate) fn code(&self) -> u16 {
+        match self {
+            CommonOption::CustomBinary(a) => a.code,
+            CommonOption::CustomUtf8(a) => a.code,
+            CommonOption::Unknown(a) => a.code,
+        }
+    }
+
+    pub(crate) fn new<B: ByteOrder>(code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+        Ok(match code {
+            CUSTOM_UTF8_OPTION_COPIABLE | CUSTOM_UTF8_OPTION_NON_COPIABLE =>
+                CommonOption::CustomUtf8(
+                    CustomUtf8Option::from_slice::<B>(code, slice)?),
+            CUSTOM_BINARY_OPTION_COPIABLE | CUSTOM_BINARY_OPTION_NON_COPIABLE =>
+                CommonOption::CustomBinary(
+                    CustomBinaryOption::from_slice::<B>(code, slice)?),
+            _ => CommonOption::Unknown(
+                    UnknownOption::new(code, length, slice)),
+        })
+    }
+}
 
 /// Common fonctions of the PcapNg options
 pub(crate) trait PcapNgOption<'a> {
@@ -232,44 +276,33 @@ impl WriteOptTo for u64 {
     }
 }
 
-impl<'a> WriteOptTo for CustomBinaryOption<'a> {
+impl<'a> WriteOptTo for CommonOption<'a> {
     fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        let len = &self.value.len() + 4;
+        let len = match self {
+            CommonOption::CustomBinary(a) => a.value.len() + 4,
+            CommonOption::CustomUtf8(a) => a.value.len() + 4,
+            CommonOption::Unknown(a) => a.value.len(),
+        };
+
         let pad_len = (4 - len % 4) % 4;
 
         writer.write_u16::<B>(code)?;
         writer.write_u16::<B>(len as u16)?;
-        writer.write_u32::<B>(self.pen)?;
-        writer.write_all(&self.value)?;
-        writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        Ok(len + pad_len + 4)
-    }
-}
+        match self {
+            CommonOption::CustomBinary(a) => {
+                writer.write_u32::<B>(a.pen)?;
+                writer.write_all(&a.value)?;
+            },
+            CommonOption::CustomUtf8(a) => {
+                writer.write_u32::<B>(a.pen)?;
+                writer.write_all(&a.value.as_bytes())?;
+            }
+            CommonOption::Unknown(a) => {
+                writer.write_all(&a.value)?;
+            }
+        };
 
-impl<'a> WriteOptTo for CustomUtf8Option<'a> {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        let len = &self.value.len() + 4;
-        let pad_len = (4 - len % 4) % 4;
-
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(len as u16)?;
-        writer.write_u32::<B>(self.pen)?;
-        writer.write_all(self.value.as_bytes())?;
-        writer.write_all(&[0_u8; 3][..pad_len])?;
-
-        Ok(len + pad_len + 4)
-    }
-}
-
-impl<'a> WriteOptTo for UnknownOption<'a> {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        let len = self.value.len();
-        let pad_len = (4 - len % 4) % 4;
-
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(len as u16)?;
-        writer.write_all(&self.value)?;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
         Ok(len + pad_len + 4)

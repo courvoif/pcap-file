@@ -13,7 +13,7 @@ use derive_into_owned::IntoOwned;
 use once_cell::sync::Lazy;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 use crate::DataLink;
@@ -162,14 +162,8 @@ pub enum InterfaceDescriptionOption<'a> {
     /// The if_hardware option is a UTF-8 string containing the description of the interface hardware.
     IfHardware(Cow<'a, str>),
 
-    /// Custom option containing binary octets in the Custom Data portion
-    CustomBinary(CustomBinaryOption<'a>),
-
-    /// Custom option containing a UTF-8 string in the Custom Data portion
-    CustomUtf8(CustomUtf8Option<'a>),
-
-    /// Unknown option
-    Unknown(UnknownOption<'a>),
+    /// A common option applicable to any block type.
+    Common(CommonOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
@@ -241,10 +235,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             },
             15 => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
-            2988 | 19372 => InterfaceDescriptionOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-            2989 | 19373 => InterfaceDescriptionOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-            _ => InterfaceDescriptionOption::Unknown(UnknownOption::new(code, length, slice)),
+            _ => InterfaceDescriptionOption::Common(CommonOption::new::<B>(code, length, slice)?),
         };
 
         Ok(opt)
@@ -267,9 +258,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::IfFcsLen(a) => a.write_opt_to::<B, W>(13, writer),
             InterfaceDescriptionOption::IfTsOffset(a) => a.write_opt_to::<B, W>(14, writer),
             InterfaceDescriptionOption::IfHardware(a) => a.write_opt_to::<B, W>(15, writer),
-            InterfaceDescriptionOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
-            InterfaceDescriptionOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
-            InterfaceDescriptionOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
+            InterfaceDescriptionOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }?)
     }
 }
