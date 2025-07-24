@@ -95,7 +95,12 @@ fn test_custom_block() {
         BigEndian,
         byteorder::{ReadBytesExt, WriteBytesExt},
     };
-    use pcap_file::pcapng::blocks::{custom::*, *};
+    use pcap_file::pcapng::blocks::{
+        custom::*,
+        section_header::*,
+        opt_common::*,
+        *
+    };
     use std::io::{Error as IoError, Write};
 
     // 1. Define a new custom block payload
@@ -126,8 +131,21 @@ fn test_custom_block() {
 
     let original_payload = MyCustomPayload { magic_number: 0xDEADBEEFCAFED00D };
 
+    let section = SectionHeaderBlock {
+        options: vec![
+            SectionHeaderOption::Common(
+                original_payload
+                    .clone()
+                    .into_custom_option()
+                    .expect("Failed to encode custom option")
+                    .into_common_option()
+            ),
+        ],
+        .. Default::default()
+    };
+
     let mut buffer = Vec::new();
-    let mut pcapng_writer = PcapNgWriter::new(&mut buffer)
+    let mut pcapng_writer = PcapNgWriter::with_section_header(&mut buffer, section)
         .expect("Failed to create writer");
 
     let block_to_write = original_payload
@@ -171,6 +189,25 @@ fn test_custom_block() {
     // Assert that the inner data is correct
     assert_eq!(read_payload, original_payload, "Payload data did not match");
 
+    // Verify that our custom option in the header was also read correctly.
+    match pcapng_parser
+        .section()
+        .options
+        .first()
+        .expect("No options on section header")
+    {
+        SectionHeaderOption::Common(
+            CommonOption::CustomBinaryCopiable(custom)) => {
+                let opt_payload = custom
+                    .interpret::<MyCustomPayload>()
+                    .expect("Failed to parse payload")
+                    .expect("Payload not recognized");
+                assert_eq!(opt_payload, original_payload,
+                           "Option payload data did not match");
+        }
+        _ => panic!("Expected a custom option")
+    };
+
     // Verify there is no more data left to parse
     assert!(remaining_data.is_empty(), "Expected all data to be consumed");
 }
@@ -183,7 +220,14 @@ fn test_stateful_custom_block() {
     };
     use pcap_file::{PcapError, Endianness, DataLink};
     use pcap_file::pcapng::PcapNgState;
-    use pcap_file::pcapng::blocks::{custom::*, interface_description::*, *};
+    use pcap_file::pcapng::blocks::{
+        custom::*,
+        enhanced_packet::*,
+        interface_description::*,
+        opt_common::*,
+        *
+    };
+    use std::borrow::Cow;
     use std::io::Write;
     use std::time::Duration;
 
@@ -266,6 +310,7 @@ fn test_stateful_custom_block() {
         snaplen: 1500,
         options: vec![InterfaceDescriptionOption::IfTsResol(9)],
     };
+
     pcapng_writer
         .write_block(&interface_description.into_block())
         .expect("Failed to write interface description block");
@@ -279,6 +324,26 @@ fn test_stateful_custom_block() {
     pcapng_writer
         .write_block(&block_to_write)
         .expect("Failed to write custom block");
+
+    let packet_block = EnhancedPacketBlock {
+        interface_id: 0,
+        timestamp: Duration::ZERO,
+        original_len: 0,
+        data: Cow::Owned(vec![]),
+        options: vec![
+            EnhancedPacketOption::Common(
+                original_payload
+                    .clone()
+                    .into_custom_option(pcapng_writer.state())
+                    .expect("Failed to encode custom option")
+                    .into_common_option()
+            ),
+        ]
+    };
+
+    pcapng_writer
+        .write_block(&packet_block.into_block())
+        .expect("Failed to write packet block");
 
     // --- READING ---
     let mut pcapng_reader = PcapNgReader::new(&buffer[..])
@@ -316,6 +381,33 @@ fn test_stateful_custom_block() {
 
     // Assert that the inner data is correct
     assert_eq!(read_payload, original_payload, "Payload data did not match");
+
+    // Read the last block, which should be our packet block
+    let (last_block, reader_state) = pcapng_reader
+        .next_block_and_state()
+        .expect("No third block from reader")
+        .expect("Failed to get next block");
+
+    match last_block {
+        Block::EnhancedPacket(packet) => {
+            let option = packet.options
+                .first()
+                .expect("No options on packet");
+            match option {
+                EnhancedPacketOption::Common(
+                    CommonOption::CustomBinaryNonCopiable(custom)) => {
+                        let opt_payload = custom
+                            .interpret::<MyStatefulPayload>(reader_state)
+                            .expect("Failed to parse payload")
+                            .expect("Payload not recognized");
+                        assert_eq!(opt_payload, original_payload,
+                                   "Option payload data did not match");
+                }
+                _ => panic!("Expected a custom option")
+            }
+        },
+        _ => panic!("Expected an enhanced packet block")
+    };
 
     // Verify there is no more data left to parse
     let remaining_data = pcapng_reader.into_inner();
