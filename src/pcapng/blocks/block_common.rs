@@ -8,6 +8,7 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use derive_into_owned::IntoOwned;
 
+use super::custom::CustomBlock;
 use super::enhanced_packet::EnhancedPacketBlock;
 use super::interface_description::InterfaceDescriptionBlock;
 use super::interface_statistics::InterfaceStatisticsBlock;
@@ -38,6 +39,11 @@ pub const INTERFACE_STATISTIC_BLOCK: u32 = 0x00000005;
 pub const ENHANCED_PACKET_BLOCK: u32 = 0x00000006;
 /// Systemd journal export block type
 pub const SYSTEMD_JOURNAL_EXPORT_BLOCK: u32 = 0x00000009;
+/// Custom block type, copiable
+pub const CUSTOM_BLOCK_COPIABLE: u32 = 0x00000BAD;
+/// Custom block type, non-copiable
+pub const CUSTOM_BLOCK_NON_COPIABLE: u32 = 0x40000BAD;
+
 
 //   0               1               2               3
 //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -162,6 +168,10 @@ pub enum Block<'a> {
     EnhancedPacket(EnhancedPacketBlock<'a>),
     /// Systemd Journal Export block
     SystemdJournalExport(SystemdJournalExportBlock<'a>),
+    /// Custom block, copiable
+    CustomCopiable(CustomBlock<'a, true>),
+    /// Custom block, non-copiable
+    CustomNonCopiable(CustomBlock<'a, false>),
     /// Unknown block
     Unknown(UnknownBlock<'a>),
 }
@@ -186,6 +196,8 @@ impl<'a> Block<'a> {
             Self::InterfaceStatistics(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_STATISTIC_BLOCK, writer),
             Self::EnhancedPacket(b) => inner_write_to::<B, _, W>(state, b, ENHANCED_PACKET_BLOCK, writer),
             Self::SystemdJournalExport(b) => inner_write_to::<B, _, W>(state, b, SYSTEMD_JOURNAL_EXPORT_BLOCK, writer),
+            Self::CustomCopiable(b) => inner_write_to::<B, _, W>(state, b, CUSTOM_BLOCK_COPIABLE, writer),
+            Self::CustomNonCopiable(b) => inner_write_to::<B, _, W>(state, b, CUSTOM_BLOCK_NON_COPIABLE, writer),
             Self::Unknown(b) => inner_write_to::<B, _, W>(state, b, b.type_, writer),
         };
 
@@ -247,6 +259,14 @@ impl<'a> Block<'a> {
             SYSTEMD_JOURNAL_EXPORT_BLOCK => {
                 let (_, block) = SystemdJournalExportBlock::from_slice::<B>(state, body)?;
                 Ok(Block::SystemdJournalExport(block))
+            },
+            CUSTOM_BLOCK_COPIABLE => {
+                let (_, block) = CustomBlock::from_slice::<B>(state, body)?;
+                Ok(Block::CustomCopiable(block))
+            },
+            CUSTOM_BLOCK_NON_COPIABLE => {
+                let (_, block) = CustomBlock::from_slice::<B>(state, body)?;
+                Ok(Block::CustomNonCopiable(block))
             },
             type_ => Ok(Block::Unknown(UnknownBlock::new(type_, raw_block.initial_len, body))),
         }
@@ -376,6 +396,38 @@ impl<'a> Block<'a> {
     pub fn as_systemd_journal_export(&self) -> Option<&SystemdJournalExportBlock<'a>> {
         match self {
             Block::SystemdJournalExport(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcast the current block into a copiable [`CustomBlock`], if possible
+    pub fn into_custom_copiable(self) -> Option<CustomBlock<'a, true>> {
+        match self {
+            Block::CustomCopiable(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcast the current block as a copiable [`CustomBlock`], if possible
+    pub fn as_custom_copiable(&self) -> Option<&CustomBlock<'a, true>> {
+        match self {
+            Block::CustomCopiable(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcast the current block into a non-copiable [`CustomBlock`], if possible
+    pub fn into_custom_non_copiable(self) -> Option<CustomBlock<'a, false>> {
+        match self {
+            Block::CustomNonCopiable(a) => Some(a),
+            _ => None,
+        }
+    }
+
+    /// Tries to downcast the current block as a non-copiable [`CustomBlock`], if possible
+    pub fn as_custom_non_copiable(&self) -> Option<&CustomBlock<'a, false>> {
+        match self {
+            Block::CustomNonCopiable(a) => Some(a),
             _ => None,
         }
     }

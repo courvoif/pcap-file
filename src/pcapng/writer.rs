@@ -215,6 +215,11 @@ impl<W: Write> PcapNgWriter<W> {
         &mut self.writer
     }
 
+    /// Access the current [`PcapNgState`].
+    pub fn state(&self) -> &PcapNgState {
+        &self.state
+    }
+
     /// Return the current [`SectionHeaderBlock`].
     pub fn section(&self) -> &SectionHeaderBlock<'static> {
         &self.state.section

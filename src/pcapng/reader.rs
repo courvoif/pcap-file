@@ -4,7 +4,7 @@ use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::enhanced_packet::EnhancedPacketBlock;
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
-use super::PcapNgParser;
+use super::{PcapNgParser, PcapNgState};
 use crate::errors::PcapError;
 use crate::read_buffer::ReadBuffer;
 
@@ -43,18 +43,34 @@ impl<R: Read> PcapNgReader<R> {
         Ok(Self { parser, reader })
     }
 
-    /// Returns the next [`Block`].
-    pub fn next_block(&mut self) -> Option<Result<Block, PcapError>> {
+    /// Returns the next [`Block`] and the current [`PcapNgState`].
+    pub fn next_block_and_state(&mut self) -> Option<Result<(Block, &PcapNgState), PcapError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
-                    Some(self.reader.parse_with(|src| self.parser.next_block(src)))
-                }
-                else {
+                    // # SAFETY
+                    // Block must NOT contain a mutable reference to the state.
+                    // Keep the annotations to be sure that only the lifetime is trnasmuted.
+                    let res: Result<Block<'_>, PcapError> = self.reader.parse_with(|src| self.parser.next_block(src));
+                    let res: Result<Block<'_>, PcapError> = unsafe {std::mem::transmute(res)};
+
+                    let state = &self.parser.state;
+
+                    Some(res.map(|blk| (blk, state)))
+                } else {
                     None
                 }
             },
             Err(e) => Some(Err(PcapError::IoError(e))),
+        }
+    }
+
+    /// Returns the next [`Block`].
+    pub fn next_block(&mut self) -> Option<Result<Block, PcapError>> {
+        match self.next_block_and_state() {
+            None => None,
+            Some(Ok((block, _state))) => Some(Ok(block)),
+            Some(Err(e)) => Some(Err(e))
         }
     }
 
