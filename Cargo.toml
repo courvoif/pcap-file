@@ -19,7 +19,7 @@ exclude = ["benches/bench.pcap", "benches/bench.pcapng", "fuzz", "tests"]
 byteorder_slice = "3.0.0"
 derive-into-owned = "0.2.0"
 once_cell = "1.19.0"
-thiserror = "1.0.35"
+thiserror = "2.0.16"
 
 [dev-dependencies]
 criterion = "0.4.0"
