@@ -12,6 +12,8 @@ use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::blocks::custom::{CustomCopiable, CustomNonCopiable};
 
+/// Comment
+pub const COMMENT: u16 = 0x0001;
 /// Custom UTF-8 option code, copiable
 pub const CUSTOM_UTF8_OPTION_COPIABLE: u16 = 0x0BAC;
 /// Custom UTF-8 option code, non-copiable
@@ -24,6 +26,9 @@ pub const CUSTOM_BINARY_OPTION_NON_COPIABLE: u16 = 0x4BAD;
 /// Common options applicable to all block types.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum CommonOption<'a> {
+    /// Comment
+    Comment(Cow<'a, str>),
+
     /// Custom option containing copiable binary octets in the Custom Data portion
     CustomBinaryCopiable(CustomBinaryOption<'a, true>),
 
@@ -43,6 +48,7 @@ pub enum CommonOption<'a> {
 impl<'a> CommonOption<'a> {
     pub(crate) fn code(&self) -> u16 {
         match self {
+            CommonOption::Comment(_) => COMMENT,
             CommonOption::CustomBinaryCopiable(_) => CUSTOM_BINARY_OPTION_COPIABLE,
             CommonOption::CustomBinaryNonCopiable(_) => CUSTOM_BINARY_OPTION_NON_COPIABLE,
             CommonOption::CustomUtf8Copiable(_) => CUSTOM_UTF8_OPTION_COPIABLE,
@@ -53,6 +59,9 @@ impl<'a> CommonOption<'a> {
 
     pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         Ok(match code {
+            COMMENT =>
+                CommonOption::Comment(
+                    Cow::Borrowed(std::str::from_utf8(slice)?)),
             CUSTOM_UTF8_OPTION_COPIABLE =>
                 CommonOption::CustomUtf8Copiable(
                     CustomUtf8Option::from_slice::<B>(slice)?),
@@ -341,6 +350,7 @@ impl WriteOptTo for u64 {
 impl<'a> WriteOptTo for CommonOption<'a> {
     fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
         let len = match self {
+            CommonOption::Comment(a) => a.len(),
             CommonOption::CustomBinaryCopiable(a) => a.value.len() + 4,
             CommonOption::CustomBinaryNonCopiable(a) => a.value.len() + 4,
             CommonOption::CustomUtf8Copiable(a) => a.value.len() + 4,
@@ -354,6 +364,9 @@ impl<'a> WriteOptTo for CommonOption<'a> {
         writer.write_u16::<B>(len as u16)?;
 
         match self {
+            CommonOption::Comment(a) => {
+                writer.write_all(a.as_bytes())?;
+            },
             CommonOption::CustomBinaryCopiable(a) => {
                 writer.write_u32::<B>(a.pen)?;
                 writer.write_all(&a.value)?;

@@ -103,9 +103,6 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
 /// Packet Block option
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum PacketOption<'a> {
-    /// Comment associated with the current block
-    Comment(Cow<'a, str>),
-
     /// 32-bit flags word containing link-layer information.
     Flags(u32),
 
@@ -119,7 +116,6 @@ pub enum PacketOption<'a> {
 impl<'a> PcapNgOption<'a> for PacketOption<'a> {
     fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
-            1 => PacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => {
                 if slice.len() != 4 {
                     return Err(PcapError::InvalidField("PacketOption: Flags length != 4"));
@@ -135,7 +131,6 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            PacketOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             PacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
             PacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),
             PacketOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),

@@ -108,9 +108,6 @@ impl Default for SectionHeaderBlock<'static> {
 /// Section Header Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum SectionHeaderOption<'a> {
-    /// Comment associated with the current block
-    Comment(Cow<'a, str>),
-
     /// Description of the hardware used to create this section
     Hardware(Cow<'a, str>),
 
@@ -127,7 +124,6 @@ pub enum SectionHeaderOption<'a> {
 impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
     fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
-            1 => SectionHeaderOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => SectionHeaderOption::Hardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
             3 => SectionHeaderOption::OS(Cow::Borrowed(std::str::from_utf8(slice)?)),
             4 => SectionHeaderOption::UserApplication(Cow::Borrowed(std::str::from_utf8(slice)?)),
@@ -140,7 +136,6 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            SectionHeaderOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             SectionHeaderOption::Hardware(a) => a.write_opt_to::<B, W>(2, writer),
             SectionHeaderOption::OS(a) => a.write_opt_to::<B, W>(3, writer),
             SectionHeaderOption::UserApplication(a) => a.write_opt_to::<B, W>(4, writer),

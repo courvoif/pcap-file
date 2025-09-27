@@ -113,10 +113,6 @@ impl<'a> InterfaceDescriptionBlock<'a> {
 /// The Interface Description Block (IDB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceDescriptionOption<'a> {
-    /// The opt_comment option is a UTF-8 string containing human-readable comment text
-    /// that is associated to the current block.
-    Comment(Cow<'a, str>),
-
     /// The if_name option is a UTF-8 string containing the name of the device used to capture data.
     IfName(Cow<'a, str>),
 
@@ -169,7 +165,6 @@ pub enum InterfaceDescriptionOption<'a> {
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
     fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
-            1 => InterfaceDescriptionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => InterfaceDescriptionOption::IfName(Cow::Borrowed(std::str::from_utf8(slice)?)),
             3 => InterfaceDescriptionOption::IfDescription(Cow::Borrowed(std::str::from_utf8(slice)?)),
             4 => {
@@ -243,7 +238,6 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            InterfaceDescriptionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             InterfaceDescriptionOption::IfName(a) => a.write_opt_to::<B, W>(2, writer),
             InterfaceDescriptionOption::IfDescription(a) => a.write_opt_to::<B, W>(3, writer),
             InterfaceDescriptionOption::IfIpv4Addr(a) => a.write_opt_to::<B, W>(4, writer),

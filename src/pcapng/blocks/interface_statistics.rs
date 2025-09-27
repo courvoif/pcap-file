@@ -63,10 +63,6 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
 /// The Interface Statistics Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceStatisticsOption<'a> {
-    /// The opt_comment option is a UTF-8 string containing human-readable comment text
-    /// that is associated to the current block.
-    Comment(Cow<'a, str>),
-
     /// The isb_starttime option specifies the time the capture started.
     ///
     /// The time is relative to 1970-01-01 00:00:00 UTC.
@@ -104,7 +100,6 @@ pub enum InterfaceStatisticsOption<'a> {
 impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
     fn from_slice<B: ByteOrder>(state: &PcapNgState, interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
-            1 => InterfaceStatisticsOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => InterfaceStatisticsOption::IsbStartTime(state.decode_timestamp::<B>(interface_id.unwrap(), &mut slice)?),
             3 => InterfaceStatisticsOption::IsbEndTime(state.decode_timestamp::<B>(interface_id.unwrap(), &mut slice)?),
             4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
@@ -121,7 +116,6 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            InterfaceStatisticsOption::Comment(a) => a.write_opt_to::<B, W>(1, writer)?,
             InterfaceStatisticsOption::IsbStartTime(a) => write_timestamp::<B, W>(2, a, state, interface_id, writer)?,
             InterfaceStatisticsOption::IsbEndTime(a) => write_timestamp::<B, W>(3, a, state, interface_id, writer)?,
             InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt_to::<B, W>(4, writer)?,

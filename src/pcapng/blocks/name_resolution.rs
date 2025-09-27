@@ -294,10 +294,6 @@ impl<'a> UnknownRecord<'a> {
 /// The Name Resolution Block (NRB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum NameResolutionOption<'a> {
-    /// The opt_comment option is a UTF-8 string containing human-readable comment text
-    /// that is associated to the current block.
-    Comment(Cow<'a, str>),
-
     /// The ns_dnsname option is a UTF-8 string containing the name of the machine (DNS server) used to perform the name resolution.
     NsDnsName(Cow<'a, str>),
 
@@ -314,7 +310,6 @@ pub enum NameResolutionOption<'a> {
 impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
     fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
-            1 => NameResolutionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => NameResolutionOption::NsDnsName(Cow::Borrowed(std::str::from_utf8(slice)?)),
             3 => {
                 if slice.len() != 4 {
@@ -336,7 +331,6 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            NameResolutionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             NameResolutionOption::NsDnsName(a) => a.write_opt_to::<B, W>(2, writer),
             NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt_to::<B, W>(3, writer),
             NameResolutionOption::NsDnsIpv6Addr(a) => a.write_opt_to::<B, W>(4, writer),
