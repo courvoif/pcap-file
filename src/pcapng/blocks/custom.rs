@@ -8,6 +8,7 @@ use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::{ReadBytesExt, WriteBytesExt};
 
 use super::block_common::{Block, PcapNgBlock};
+use super::opt_common::CustomBinaryOption;
 use crate::pcapng::PcapNgState;
 use crate::PcapError;
 
@@ -87,6 +88,17 @@ pub trait CustomCopiable<'a> {
 
         Ok(CustomBlock { pen: Self::PEN, payload: Cow::Owned(data) })
     }
+
+    /// Convert this block into a copiable [`CustomBinaryOption`]
+    fn into_custom_option(self) -> Result<CustomBinaryOption<'a, true>, PcapError>
+        where Self: Sized
+    {
+        let mut data = Vec::new();
+        self.write_to(&mut data)
+            .map_err(|e| PcapError::CustomConversionError(Self::PEN, e.into()))?;
+
+        Ok(CustomBinaryOption { pen: Self::PEN, value: Cow::Owned(data) })
+    }
 }
 
 /// Common interface for non-copiable custom block payloads
@@ -121,6 +133,17 @@ pub trait CustomNonCopiable<'a> {
             .map_err(|e| PcapError::CustomConversionError(Self::PEN, e.into()))?;
 
         Ok(CustomBlock { pen: Self::PEN, payload: Cow::Owned(data) })
+    }
+
+    /// Convert this block into a non-copiable [`CustomBinaryOption`]
+    fn into_custom_option(self, state: &Self::State) -> Result<CustomBinaryOption<'a, false>, PcapError>
+        where Self: Sized
+    {
+        let mut data = Vec::new();
+        self.write_to(state, &mut data)
+            .map_err(|e| PcapError::CustomConversionError(Self::PEN, e.into()))?;
+
+        Ok(CustomBinaryOption { pen: Self::PEN, value: Cow::Owned(data) })
     }
 }
 

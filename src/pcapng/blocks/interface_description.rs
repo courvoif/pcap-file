@@ -13,7 +13,7 @@ use derive_into_owned::IntoOwned;
 use once_cell::sync::Lazy;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 use crate::DataLink;
@@ -113,10 +113,6 @@ impl<'a> InterfaceDescriptionBlock<'a> {
 /// The Interface Description Block (IDB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceDescriptionOption<'a> {
-    /// The opt_comment option is a UTF-8 string containing human-readable comment text
-    /// that is associated to the current block.
-    Comment(Cow<'a, str>),
-
     /// The if_name option is a UTF-8 string containing the name of the device used to capture data.
     IfName(Cow<'a, str>),
 
@@ -162,20 +158,13 @@ pub enum InterfaceDescriptionOption<'a> {
     /// The if_hardware option is a UTF-8 string containing the description of the interface hardware.
     IfHardware(Cow<'a, str>),
 
-    /// Custom option containing binary octets in the Custom Data portion
-    CustomBinary(CustomBinaryOption<'a>),
-
-    /// Custom option containing a UTF-8 string in the Custom Data portion
-    CustomUtf8(CustomUtf8Option<'a>),
-
-    /// Unknown option
-    Unknown(UnknownOption<'a>),
+    /// A common option applicable to any block type.
+    Common(CommonOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
-            1 => InterfaceDescriptionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => InterfaceDescriptionOption::IfName(Cow::Borrowed(std::str::from_utf8(slice)?)),
             3 => InterfaceDescriptionOption::IfDescription(Cow::Borrowed(std::str::from_utf8(slice)?)),
             4 => {
@@ -241,10 +230,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             },
             15 => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
-            2988 | 19372 => InterfaceDescriptionOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-            2989 | 19373 => InterfaceDescriptionOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-            _ => InterfaceDescriptionOption::Unknown(UnknownOption::new(code, length, slice)),
+            _ => InterfaceDescriptionOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -252,7 +238,6 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            InterfaceDescriptionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             InterfaceDescriptionOption::IfName(a) => a.write_opt_to::<B, W>(2, writer),
             InterfaceDescriptionOption::IfDescription(a) => a.write_opt_to::<B, W>(3, writer),
             InterfaceDescriptionOption::IfIpv4Addr(a) => a.write_opt_to::<B, W>(4, writer),
@@ -267,9 +252,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::IfFcsLen(a) => a.write_opt_to::<B, W>(13, writer),
             InterfaceDescriptionOption::IfTsOffset(a) => a.write_opt_to::<B, W>(14, writer),
             InterfaceDescriptionOption::IfHardware(a) => a.write_opt_to::<B, W>(15, writer),
-            InterfaceDescriptionOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
-            InterfaceDescriptionOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
-            InterfaceDescriptionOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
+            InterfaceDescriptionOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }?)
     }
 }

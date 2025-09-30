@@ -9,7 +9,7 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 use crate::Endianness;
@@ -108,9 +108,6 @@ impl Default for SectionHeaderBlock<'static> {
 /// Section Header Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum SectionHeaderOption<'a> {
-    /// Comment associated with the current block
-    Comment(Cow<'a, str>),
-
     /// Description of the hardware used to create this section
     Hardware(Cow<'a, str>),
 
@@ -120,28 +117,18 @@ pub enum SectionHeaderOption<'a> {
     /// Name of the application used to create this section
     UserApplication(Cow<'a, str>),
 
-    /// Custom option containing binary octets in the Custom Data portion
-    CustomBinary(CustomBinaryOption<'a>),
-
-    /// Custom option containing a UTF-8 string in the Custom Data portion
-    CustomUtf8(CustomUtf8Option<'a>),
-
-    /// Unknown option
-    Unknown(UnknownOption<'a>),
+    /// A common option applicable to any block type.
+    Common(CommonOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
-            1 => SectionHeaderOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => SectionHeaderOption::Hardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
             3 => SectionHeaderOption::OS(Cow::Borrowed(std::str::from_utf8(slice)?)),
             4 => SectionHeaderOption::UserApplication(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
-            2988 | 19372 => SectionHeaderOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-            2989 | 19373 => SectionHeaderOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-            _ => SectionHeaderOption::Unknown(UnknownOption::new(code, length, slice)),
+            _ => SectionHeaderOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -149,13 +136,10 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            SectionHeaderOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             SectionHeaderOption::Hardware(a) => a.write_opt_to::<B, W>(2, writer),
             SectionHeaderOption::OS(a) => a.write_opt_to::<B, W>(3, writer),
             SectionHeaderOption::UserApplication(a) => a.write_opt_to::<B, W>(4, writer),
-            SectionHeaderOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
-            SectionHeaderOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
-            SectionHeaderOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
+            SectionHeaderOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }?)
     }
 }

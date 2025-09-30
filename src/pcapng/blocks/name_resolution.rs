@@ -9,7 +9,7 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 
@@ -107,7 +107,7 @@ impl<'a> Record<'a> {
             },
 
             _ => {
-                let record = UnknownRecord::new(type_, length, value);
+                let record = UnknownRecord::new(type_, value);
                 Record::Unknown(record)
             },
         };
@@ -156,7 +156,7 @@ impl<'a> Record<'a> {
                 let pad_len = (4 - len % 4) % 4;
 
                 writer.write_u16::<B>(a.type_)?;
-                writer.write_u16::<B>(a.length)?;
+                writer.write_u16::<B>(len as u16)?;
                 writer.write_all(&a.value)?;
                 writer.write_all(&[0_u8; 3][..pad_len])?;
 
@@ -279,16 +279,14 @@ impl<'a> Ipv6Record<'a> {
 pub struct UnknownRecord<'a> {
     /// Records type
     pub type_: u16,
-    /// Record length
-    pub length: u16,
     /// Record body
     pub value: Cow<'a, [u8]>,
 }
 
 impl<'a> UnknownRecord<'a> {
     /// Creates a new [`UnknownRecord`]
-    fn new(type_: u16, length: u16, value: &'a [u8]) -> Self {
-        UnknownRecord { type_, length, value: Cow::Borrowed(value) }
+    fn new(type_: u16, value: &'a [u8]) -> Self {
+        UnknownRecord { type_, value: Cow::Borrowed(value) }
     }
 }
 
@@ -296,10 +294,6 @@ impl<'a> UnknownRecord<'a> {
 /// The Name Resolution Block (NRB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum NameResolutionOption<'a> {
-    /// The opt_comment option is a UTF-8 string containing human-readable comment text
-    /// that is associated to the current block.
-    Comment(Cow<'a, str>),
-
     /// The ns_dnsname option is a UTF-8 string containing the name of the machine (DNS server) used to perform the name resolution.
     NsDnsName(Cow<'a, str>),
 
@@ -309,20 +303,13 @@ pub enum NameResolutionOption<'a> {
     /// The ns_dnsIP6addr option specifies the IPv6 address of the DNS server.
     NsDnsIpv6Addr(Cow<'a, [u8]>),
 
-    /// Custom option containing binary octets in the Custom Data portion
-    CustomBinary(CustomBinaryOption<'a>),
-
-    /// Custom option containing a UTF-8 string in the Custom Data portion
-    CustomUtf8(CustomUtf8Option<'a>),
-
-    /// Unknown option
-    Unknown(UnknownOption<'a>),
+    /// A common option applicable to any block type.
+    Common(CommonOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
-            1 => NameResolutionOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => NameResolutionOption::NsDnsName(Cow::Borrowed(std::str::from_utf8(slice)?)),
             3 => {
                 if slice.len() != 4 {
@@ -336,11 +323,7 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
                 }
                 NameResolutionOption::NsDnsIpv6Addr(Cow::Borrowed(slice))
             },
-
-            2988 | 19372 => NameResolutionOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-            2989 | 19373 => NameResolutionOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-            _ => NameResolutionOption::Unknown(UnknownOption::new(code, length, slice)),
+            _ => NameResolutionOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -348,13 +331,10 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            NameResolutionOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             NameResolutionOption::NsDnsName(a) => a.write_opt_to::<B, W>(2, writer),
             NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt_to::<B, W>(3, writer),
             NameResolutionOption::NsDnsIpv6Addr(a) => a.write_opt_to::<B, W>(4, writer),
-            NameResolutionOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
-            NameResolutionOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
-            NameResolutionOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
+            NameResolutionOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }?)
     }
 }

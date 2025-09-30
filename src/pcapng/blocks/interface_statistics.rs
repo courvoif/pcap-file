@@ -10,7 +10,7 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 
@@ -63,10 +63,6 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
 /// The Interface Statistics Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceStatisticsOption<'a> {
-    /// The opt_comment option is a UTF-8 string containing human-readable comment text
-    /// that is associated to the current block.
-    Comment(Cow<'a, str>),
-
     /// The isb_starttime option specifies the time the capture started.
     ///
     /// The time is relative to 1970-01-01 00:00:00 UTC.
@@ -97,20 +93,13 @@ pub enum InterfaceStatisticsOption<'a> {
     /// to the user starting from the beginning of the capture.
     IsbUsrDeliv(u64),
 
-    /// Custom option containing binary octets in the Custom Data portion
-    CustomBinary(CustomBinaryOption<'a>),
-
-    /// Custom option containing a UTF-8 string in the Custom Data portion
-    CustomUtf8(CustomUtf8Option<'a>),
-
-    /// Unknown option
-    Unknown(UnknownOption<'a>),
+    /// A common option applicable to any block type.
+    Common(CommonOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
-            1 => InterfaceStatisticsOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => InterfaceStatisticsOption::IsbStartTime(state.decode_timestamp::<B>(interface_id.unwrap(), &mut slice)?),
             3 => InterfaceStatisticsOption::IsbEndTime(state.decode_timestamp::<B>(interface_id.unwrap(), &mut slice)?),
             4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
@@ -119,10 +108,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
             7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
             8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
 
-            2988 | 19372 => InterfaceStatisticsOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-            2989 | 19373 => InterfaceStatisticsOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-            _ => InterfaceStatisticsOption::Unknown(UnknownOption::new(code, length, slice)),
+            _ => InterfaceStatisticsOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -130,7 +116,6 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            InterfaceStatisticsOption::Comment(a) => a.write_opt_to::<B, W>(1, writer)?,
             InterfaceStatisticsOption::IsbStartTime(a) => write_timestamp::<B, W>(2, a, state, interface_id, writer)?,
             InterfaceStatisticsOption::IsbEndTime(a) => write_timestamp::<B, W>(3, a, state, interface_id, writer)?,
             InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt_to::<B, W>(4, writer)?,
@@ -138,9 +123,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
             InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt_to::<B, W>(6, writer)?,
             InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt_to::<B, W>(7, writer)?,
             InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt_to::<B, W>(8, writer)?,
-            InterfaceStatisticsOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer)?,
-            InterfaceStatisticsOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer)?,
-            InterfaceStatisticsOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer)?,
+            InterfaceStatisticsOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer)?,
         })
     }
 }

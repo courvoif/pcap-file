@@ -10,7 +10,7 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CustomBinaryOption, CustomUtf8Option, PcapNgOption, UnknownOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
 
@@ -100,9 +100,6 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 /// The Enhanced Packet Block (EPB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum EnhancedPacketOption<'a> {
-    /// Comment associated with the current block
-    Comment(Cow<'a, str>),
-
     /// 32-bit flags word containing link-layer information.
     Flags(u32),
 
@@ -115,20 +112,13 @@ pub enum EnhancedPacketOption<'a> {
     /// and the start of the capture process.
     DropCount(u64),
 
-    /// Custom option containing binary octets in the Custom Data portion
-    CustomBinary(CustomBinaryOption<'a>),
-
-    /// Custom option containing a UTF-8 string in the Custom Data portion
-    CustomUtf8(CustomUtf8Option<'a>),
-
-    /// Unknown option
-    Unknown(UnknownOption<'a>),
+    /// A common option applicable to any block type.
+    Common(CommonOption<'a>),
 }
 
 impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, length: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
         let opt = match code {
-            1 => EnhancedPacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             2 => {
                 if slice.len() != 4 {
                     return Err(PcapError::InvalidField("EnhancedPacketOption: Flags length != 4"));
@@ -142,11 +132,7 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
                 }
                 EnhancedPacketOption::DropCount(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
             },
-
-            2988 | 19372 => EnhancedPacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-            2989 | 19373 => EnhancedPacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
-
-            _ => EnhancedPacketOption::Unknown(UnknownOption::new(code, length, slice)),
+            _ => EnhancedPacketOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -154,13 +140,10 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
         Ok(match self {
-            EnhancedPacketOption::Comment(a) => a.write_opt_to::<B, W>(1, writer),
             EnhancedPacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
             EnhancedPacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),
             EnhancedPacketOption::DropCount(a) => a.write_opt_to::<B, W>(4, writer),
-            EnhancedPacketOption::CustomBinary(a) => a.write_opt_to::<B, W>(a.code, writer),
-            EnhancedPacketOption::CustomUtf8(a) => a.write_opt_to::<B, W>(a.code, writer),
-            EnhancedPacketOption::Unknown(a) => a.write_opt_to::<B, W>(a.code, writer),
+            EnhancedPacketOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }?)
     }
 }
