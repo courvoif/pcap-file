@@ -40,7 +40,7 @@ pub enum PcapError {
 
     /// Error in custom conversion.
     #[error("Error in custom conversion for PEN {0}: {1}")]
-    CustomConversionError(u32, Box<dyn std::error::Error>),
+    CustomConversionError(u32, Box<dyn std::error::Error + Sync + Send>),
 }
 
 impl From<std::str::Utf8Error> for PcapError {

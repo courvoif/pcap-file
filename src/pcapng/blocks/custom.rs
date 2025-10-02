@@ -66,10 +66,10 @@ pub trait CustomCopiable<'a> {
     const PEN: u32;
 
     /// Error returned by [`CustomCopiable::from_slice()`]
-    type FromSliceError: Error + 'static;
+    type FromSliceError: Error + 'static + Send + Sync;
 
     /// Error returned by [`CustomCopiable::write_to()`]
-    type WriteToError: Error + 'static;
+    type WriteToError: Error + 'static + Send + Sync;
 
     /// Try to parse this payload from a slice.
     fn from_slice(slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
@@ -110,11 +110,11 @@ pub trait CustomNonCopiable<'a> {
     type State;
 
     /// Error returned by [`CustomNonCopiable::from_slice()`]
-    type FromSliceError: Error + 'static;
+    type FromSliceError: Error + 'static + Send + Sync;
 
 
     /// Error returned by [`CustomNonCopiable::write_to()`]
-    type WriteToError: Error + 'static;
+    type WriteToError: Error + 'static + Send + Sync;
 
     /// Try to parse this payload from a slice.
     fn from_slice(state: &Self::State, slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
