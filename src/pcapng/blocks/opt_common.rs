@@ -377,11 +377,11 @@ impl<'a> WriteOptTo for CommonOption<'a> {
             },
             CommonOption::CustomUtf8Copiable(a) => {
                 writer.write_u32::<B>(a.pen)?;
-                writer.write_all(&a.value.as_bytes())?;
+                writer.write_all(a.value.as_bytes())?;
             }
             CommonOption::CustomUtf8NonCopiable(a) => {
                 writer.write_u32::<B>(a.pen)?;
-                writer.write_all(&a.value.as_bytes())?;
+                writer.write_all(a.value.as_bytes())?;
             }
             CommonOption::Unknown(a) => {
                 writer.write_all(&a.value)?;

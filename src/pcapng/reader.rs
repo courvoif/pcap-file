@@ -44,7 +44,7 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the next [`Block`] and the current [`PcapNgState`].
-    pub fn next_block_and_state(&mut self) -> Option<Result<(Block, &PcapNgState), PcapError>> {
+    pub fn next_block_and_state(&mut self) -> Option<Result<(Block<'_>, &PcapNgState), PcapError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
@@ -66,7 +66,7 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the next [`Block`].
-    pub fn next_block(&mut self) -> Option<Result<Block, PcapError>> {
+    pub fn next_block(&mut self) -> Option<Result<Block<'_>, PcapError>> {
         match self.next_block_and_state() {
             None => None,
             Some(Ok((block, _state))) => Some(Ok(block)),
@@ -75,7 +75,7 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the next [`RawBlock`].
-    pub fn next_raw_block(&mut self) -> Option<Result<RawBlock, PcapError>> {
+    pub fn next_raw_block(&mut self) -> Option<Result<RawBlock<'_>, PcapError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
@@ -100,7 +100,7 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the [`InterfaceDescriptionBlock`] corresponding to the given packet
-    pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock> {
+    pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock<'_>> {
         self.interfaces().get(packet.interface_id as usize)
     }
 
