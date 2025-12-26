@@ -1,6 +1,5 @@
 //! Interface Statistics Block.
 
-use std::borrow::Cow;
 use std::io::Write;
 use std::time::Duration;
 
