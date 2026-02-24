@@ -79,8 +79,8 @@ pub enum Record<'a> {
 impl<'a> Record<'a> {
     /// Parse a [`Record`] from a slice
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
-        let type_ = slice.read_u16::<B>().map_err(|_| PcapError::IncompleteBuffer)?;
-        let length = slice.read_u16::<B>().map_err(|_| PcapError::IncompleteBuffer)?;
+        let type_ = slice.read_u16::<B>().map_err(|_| PcapError::IncompleteBuffer(2, slice.len()))?;
+        let length = slice.read_u16::<B>().map_err(|_| PcapError::IncompleteBuffer(2, slice.len()))?;
         let pad_len = (4 - length % 4) % 4;
 
         if slice.len() < length as usize {

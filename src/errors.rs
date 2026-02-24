@@ -7,8 +7,11 @@ pub type PcapResult<T> = Result<T, PcapError>;
 #[derive(Error, Debug)]
 pub enum PcapError {
     /// Buffer too small
-    #[error("Need more bytes")]
-    IncompleteBuffer,
+    /// # Fields
+    /// - 0: needed size to parse the element
+    /// - 1: actual size of the buffer
+    #[error("Need more bytes to parse the element: needed {0}B, actual {1}B")]
+    IncompleteBuffer(usize, usize),
 
     /// Generic IO error
     #[error("Error reading/writing bytes")]
@@ -37,6 +40,14 @@ pub enum PcapError {
     /// The packet's timestamp is too big (only for Pcap NG)
     #[error("Packet's timestamp too big, please choose a bigger timestamp resolution")]
     TimestampTooBig,
+
+    /// The packet's included length is bigger than the snaplen of the file
+    /// 
+    /// # Fields
+    /// - 0: included length of the packet
+    /// - 1: snaplen of the file
+    #[error("Packet's included length ({0}) is bigger than the snaplen of the file ({1})")]
+    PacketTooLarge(u32, u32),
 
     /// Error in custom conversion.
     #[error("Error in custom conversion for PEN {0}: {1}")]

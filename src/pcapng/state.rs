@@ -86,11 +86,11 @@ impl PcapNgState {
 
         let timestamp_high = slice
             .read_u32::<B>()
-            .map_err(|_| PcapError::IncompleteBuffer)? as u64;
+            .map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))? as u64;
 
         let timestamp_low = slice
             .read_u32::<B>()
-            .map_err(|_| PcapError::IncompleteBuffer)? as u64;
+            .map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))? as u64;
 
         let ts_raw = (timestamp_high << 32) + timestamp_low;
 

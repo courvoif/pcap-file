@@ -18,10 +18,9 @@ use super::section_header::SectionHeaderBlock;
 use super::simple_packet::SimplePacketBlock;
 use super::systemd_journal_export::SystemdJournalExportBlock;
 use super::unknown::UnknownBlock;
-use crate::pcapng::PcapNgState;
-use crate::errors::PcapError;
 use crate::PcapResult;
-
+use crate::errors::PcapError;
+use crate::pcapng::PcapNgState;
 
 /// Section header block type
 pub const SECTION_HEADER_BLOCK: u32 = 0x0A0D0D0A;
@@ -43,7 +42,6 @@ pub const SYSTEMD_JOURNAL_EXPORT_BLOCK: u32 = 0x00000009;
 pub const CUSTOM_BLOCK_COPIABLE: u32 = 0x00000BAD;
 /// Custom block type, non-copiable
 pub const CUSTOM_BLOCK_NON_COPIABLE: u32 = 0x40000BAD;
-
 
 //   0               1               2               3
 //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -74,7 +72,7 @@ impl<'a> RawBlock<'a> {
     /// Parses a borrowed [`RawBlock`] from a slice.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 12 {
-            return Err(PcapError::IncompleteBuffer);
+            return Err(PcapError::IncompleteBuffer(12, slice.len()));
         }
 
         let type_ = slice.read_u32::<B>().unwrap();
@@ -93,9 +91,8 @@ impl<'a> RawBlock<'a> {
             };
 
             return res;
-        }
-        else {
-            let initial_len = slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?;
+        } else {
+            let initial_len = slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))?;
             return inner_parse::<B>(slice, type_, initial_len);
         };
 
@@ -111,7 +108,7 @@ impl<'a> RawBlock<'a> {
 
             // Check if there is enough data for the body and the trailer_len
             if slice.len() < initial_len as usize - 8 {
-                return Err(PcapError::IncompleteBuffer);
+                return Err(PcapError::IncompleteBuffer(initial_len as usize - 8, slice.len()));
             }
 
             let body_len = initial_len - 12;
@@ -201,7 +198,12 @@ impl<'a> Block<'a> {
             Self::Unknown(b) => inner_write_to::<B, _, W>(state, b, b.type_, writer),
         };
 
-        fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(state: &PcapNgState, block: &BL, block_code: u32, writer: &mut W) -> Result<usize, PcapError> {
+        fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(
+            state: &PcapNgState,
+            block: &BL,
+            block_code: u32,
+            writer: &mut W,
+        ) -> Result<usize, PcapError> {
             // Fake write to compute the data length
             let data_len = block.write_to::<B, _>(state, &mut std::io::sink()).unwrap();
             let pad_len = (4 - (data_len % 4)) % 4;
@@ -432,7 +434,6 @@ impl<'a> Block<'a> {
         }
     }
 }
-
 
 /// Common interface for the PcapNg blocks
 pub trait PcapNgBlock<'a> {

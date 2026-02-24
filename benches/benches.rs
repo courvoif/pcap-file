@@ -16,8 +16,10 @@ pub fn pcap(c: &mut Criterion) {
             let (mut src, parser) = PcapParser::new(&pcap).unwrap();
             loop {
                 match parser.next_packet(src) {
-                    Ok((rem, _)) => src = rem,
-                    Err(PcapError::IncompleteBuffer) => break,
+                    Ok((rem, _)) => {
+                        src = rem;
+                    },
+                    Err(PcapError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }
@@ -30,7 +32,7 @@ pub fn pcap(c: &mut Criterion) {
             loop {
                 match parser.next_raw_packet(src) {
                     Ok((rem, _)) => src = rem,
-                    Err(PcapError::IncompleteBuffer) => break,
+                    Err(PcapError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }
@@ -72,7 +74,7 @@ pub fn pcapng(c: &mut Criterion) {
             loop {
                 match parser.next_block(src) {
                     Ok((rem, _)) => src = rem,
-                    Err(PcapError::IncompleteBuffer) => break,
+                    Err(PcapError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }
@@ -85,7 +87,7 @@ pub fn pcapng(c: &mut Criterion) {
             loop {
                 match parser.next_raw_block(src) {
                     Ok((rem, _)) => src = rem,
-                    Err(PcapError::IncompleteBuffer) => break,
+                    Err(PcapError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }

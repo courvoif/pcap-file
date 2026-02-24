@@ -90,13 +90,18 @@ impl<W: Write> PcapWriter<W> {
 
     /// Writes a [`PcapPacket`].
     pub fn write_packet(&mut self, packet: &PcapPacket) -> PcapResult<usize> {
-        match self.endianness {
-            Endianness::Big => packet.write_to::<_, BigEndian>(&mut self.writer, self.ts_resolution, self.snaplen),
-            Endianness::Little => packet.write_to::<_, LittleEndian>(&mut self.writer, self.ts_resolution, self.snaplen),
+        // Check that the included length of the packet is not bigger than the snaplen of the file
+        if packet.len() > self.snaplen {
+            return Err(PcapError::PacketTooLarge(packet.len(), self.snaplen));
         }
+
+        let raw_packet = packet.as_raw_packet(self.ts_resolution);
+        self.write_raw_packet(&raw_packet)
     }
 
     /// Writes a [`RawPcapPacket`].
+    /// The fields of the packet are not validated, it is the responsibility of the user to check that they are correct.
+    /// The resulting pcap file may not be readable by some parsers if the fields are not correct.
     pub fn write_raw_packet(&mut self, packet: &RawPcapPacket) -> PcapResult<usize> {
         match self.endianness {
             Endianness::Big => packet.write_to::<_, BigEndian>(&mut self.writer),
