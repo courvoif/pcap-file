@@ -189,25 +189,25 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
                 if slice.len() != 8 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfEuIAddr length != 8"));
                 }
-                InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
+                InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?)
             },
             8 => {
                 if slice.len() != 8 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfSpeed length != 8"));
                 }
-                InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
+                InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?)
             },
             9 => {
                 if slice.len() != 1 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsResol length != 1"));
                 }
-                InterfaceDescriptionOption::IfTsResol(slice.read_u8().map_err(|_| PcapError::IncompleteBuffer)?)
+                InterfaceDescriptionOption::IfTsResol(slice.read_u8().map_err(|_| PcapError::IncompleteBuffer(1, slice.len()))?)
             },
             10 => {
                 if slice.len() != 1 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTzone length != 1"));
                 }
-                InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
+                InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))?)
             },
             11 => {
                 if slice.is_empty() {
@@ -220,13 +220,13 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
                 if slice.len() != 1 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFcsLen length != 1"));
                 }
-                InterfaceDescriptionOption::IfFcsLen(slice.read_u8().map_err(|_| PcapError::IncompleteBuffer)?)
+                InterfaceDescriptionOption::IfFcsLen(slice.read_u8().map_err(|_| PcapError::IncompleteBuffer(1, slice.len()))?)
             },
             14 => {
                 if slice.len() != 8 {
                     return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsOffset length != 8"));
                 }
-                InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
+                InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?)
             },
             15 => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
 

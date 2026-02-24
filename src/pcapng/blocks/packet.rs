@@ -120,7 +120,7 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
                 if slice.len() != 4 {
                     return Err(PcapError::InvalidField("PacketOption: Flags length != 4"));
                 }
-                PacketOption::Flags(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
+                PacketOption::Flags(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))?)
             },
             3 => PacketOption::Hash(Cow::Borrowed(slice)),
             _ => PacketOption::Common(CommonOption::new::<B>(code, slice)?),

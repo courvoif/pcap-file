@@ -101,11 +101,11 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         let opt = match code {
             2 => InterfaceStatisticsOption::IsbStartTime(state.decode_timestamp::<B>(interface_id.unwrap(), &mut slice)?),
             3 => InterfaceStatisticsOption::IsbEndTime(state.decode_timestamp::<B>(interface_id.unwrap(), &mut slice)?),
-            4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
-            5 => InterfaceStatisticsOption::IsbIfDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
-            6 => InterfaceStatisticsOption::IsbFilterAccept(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
-            7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
-            8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?),
+            4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?),
+            5 => InterfaceStatisticsOption::IsbIfDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?),
+            6 => InterfaceStatisticsOption::IsbFilterAccept(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?),
+            7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?),
+            8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?),
 
             _ => InterfaceStatisticsOption::Common(CommonOption::new::<B>(code, slice)?),
         };

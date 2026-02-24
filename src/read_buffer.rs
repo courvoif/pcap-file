@@ -52,7 +52,7 @@ impl<R: Read> ReadBuffer<R> {
                     return Ok(value);
                 },
 
-                Err(PcapError::IncompleteBuffer) => {
+                Err(PcapError::IncompleteBuffer(_, _)) => {
                     // The parsed data len should never be more than the buffer capacity
                     if buf.len() == self.buffer.len() {
                         return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
@@ -110,7 +110,7 @@ impl<R: Read> ReadBuffer<R> {
         &self.buffer[self.pos..self.len]
     }
 
-    /// Return true there are some data that can be read
+    /// Return true if there is some data that can be read
     pub fn has_data_left(&mut self) -> Result<bool, std::io::Error> {
         // The buffer can be empty and the reader can still have data
         if self.buffer().is_empty() {

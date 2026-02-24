@@ -46,7 +46,7 @@ impl PcapHeader {
     pub fn from_slice(mut slice: &[u8]) -> PcapResult<(&[u8], PcapHeader)> {
         // Check that slice.len() > PcapHeader length
         if slice.len() < 24 {
-            return Err(PcapError::IncompleteBuffer);
+            return Err(PcapError::IncompleteBuffer(24, slice.len()));
         }
 
         let magic_number = slice.read_u32::<BigEndian>().unwrap();

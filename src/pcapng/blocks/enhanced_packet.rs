@@ -4,16 +4,15 @@ use std::borrow::Cow;
 use std::io::Write;
 use std::time::Duration;
 
+use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
-use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
 use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
-
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
 #[derive(Clone, Debug, Default, IntoOwned, Eq, PartialEq)]
@@ -61,13 +60,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         slice = &slice[tot_len..];
 
         let (slice, options) = EnhancedPacketOption::opts_from_slice::<B>(state, Some(interface_id), slice)?;
-        let block = EnhancedPacketBlock {
-            interface_id,
-            timestamp,
-            original_len,
-            data: Cow::Borrowed(data),
-            options,
-        };
+        let block = EnhancedPacketBlock { interface_id, timestamp, original_len, data: Cow::Borrowed(data), options };
 
         Ok((slice, block))
     }
@@ -94,7 +87,6 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
     }
 }
 
-
 /* ----- */
 
 /// The Enhanced Packet Block (EPB) options
@@ -117,20 +109,25 @@ pub enum EnhancedPacketOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(
+        _state: &PcapNgState,
+        _interface_id: Option<u32>,
+        code: u16,
+        mut slice: &'a [u8],
+    ) -> Result<Self, PcapError> {
         let opt = match code {
             2 => {
                 if slice.len() != 4 {
                     return Err(PcapError::InvalidField("EnhancedPacketOption: Flags length != 4"));
                 }
-                EnhancedPacketOption::Flags(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
+                EnhancedPacketOption::Flags(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))?)
             },
             3 => EnhancedPacketOption::Hash(Cow::Borrowed(slice)),
             4 => {
                 if slice.len() != 8 {
                     return Err(PcapError::InvalidField("EnhancedPacketOption: DropCount length != 8"));
                 }
-                EnhancedPacketOption::DropCount(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer)?)
+                EnhancedPacketOption::DropCount(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?)
             },
             _ => EnhancedPacketOption::Common(CommonOption::new::<B>(code, slice)?),
         };
@@ -138,7 +135,12 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+    fn write_to<B: ByteOrder, W: Write>(
+        &self,
+        _state: &PcapNgState,
+        _interface_id: Option<u32>,
+        writer: &mut W,
+    ) -> Result<usize, PcapError> {
         Ok(match self {
             EnhancedPacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
             EnhancedPacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),

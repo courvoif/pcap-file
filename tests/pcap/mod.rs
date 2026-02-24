@@ -3,8 +3,8 @@ extern crate pcap_file;
 use std::borrow::Cow;
 use std::time::Duration;
 
-use pcap_file::pcap::{PcapHeader, PcapPacket, PcapReader, PcapWriter};
 use pcap_file::TsResolution;
+use pcap_file::pcap::{PcapHeader, PcapPacket, PcapReader, PcapWriter};
 
 static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
 
@@ -19,10 +19,10 @@ fn read() {
 
         //Packet header len
         data_len += 16;
-        data_len += pkt.data.len();
+        data_len += pkt.len();
     }
 
-    assert_eq!(data_len, DATA.len());
+    assert_eq!(data_len as usize, DATA.len());
 }
 
 #[test]
@@ -87,17 +87,12 @@ fn big_endian() {
     )
     .unwrap();
 
-    let pkt_truth = PcapPacket {
-        timestamp: Duration::new(1335958313, 152630000),
-        orig_len: 98,
-        data: Cow::Borrowed(&data_truth[..]),
-    };
-
+    let pkt_truth = PcapPacket::new(Duration::new(1335958313, 152630000), 98, Cow::Borrowed(&data_truth[..])).unwrap();
     let pkt = pcap_reader.next_packet().unwrap().unwrap();
 
-    assert_eq!(pkt.timestamp, pkt_truth.timestamp);
-    assert_eq!(pkt.orig_len, pkt_truth.orig_len);
-    assert_eq!(pkt.data, pkt_truth.data);
+    assert_eq!(pkt.timestamp(), pkt_truth.timestamp());
+    assert_eq!(pkt.orig_len(), pkt_truth.orig_len());
+    assert_eq!(pkt.data(), pkt_truth.data());
 }
 
 #[test]
@@ -125,15 +120,26 @@ fn little_endian() {
     let data_truth = hex::decode("000c29414be70016479df2c2810000780800450000638d2c0000fe06fdc8c0a8e5fec0a8ca4f01bbb4258\
     0e634d3fa9b15fc8018800019da00000101080a130d62b200000000140301000101160301002495776bd4f33faea1aacaf1fbe6026c262fcc2f8cd0f828216dc4aba5bcc1a8e03b496e82").unwrap();
 
-    let pkt_truth = PcapPacket {
-        timestamp: Duration::new(1331901000, 0),
-        orig_len: 117,
-        data: Cow::Borrowed(&data_truth[..]),
-    };
-
+    let pkt_truth = PcapPacket::new(Duration::new(1331901000, 0), 117, Cow::Borrowed(&data_truth[..])).unwrap();
     let pkt = pcap_reader.next_packet().unwrap().unwrap();
 
-    assert_eq!(pkt.timestamp, pkt_truth.timestamp);
-    assert_eq!(pkt.orig_len, pkt_truth.orig_len);
-    assert_eq!(pkt.data, pkt_truth.data);
+    assert_eq!(pkt.timestamp(), pkt_truth.timestamp());
+    assert_eq!(pkt.orig_len(), pkt_truth.orig_len());
+    assert_eq!(pkt.data(), pkt_truth.data());
+}
+
+/// Test that parsing an invalid packet doesn't trigger an infinite loop
+#[test]
+fn infinite_loop() {
+    let data = include_bytes!("infinite_loop.pcap");
+    let mut pcap_reader = PcapReader::new(&data[..]).unwrap();
+
+    let mut i = 0;
+    while pcap_reader.next_packet().is_some() {
+        if i > 18 {
+            panic!("infinite loop detected");
+        }
+
+        i += 1;
+    }
 }
