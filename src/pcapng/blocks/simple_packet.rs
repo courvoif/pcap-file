@@ -9,7 +9,7 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use crate::errors::PcapError;
+use crate::errors::PcapNgError;
 use crate::pcapng::PcapNgState;
 
 
@@ -26,9 +26,9 @@ pub struct SimplePacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapNgError> {
         if slice.len() < 4 {
-            return Err(PcapError::InvalidField("SimplePacketBlock: block length < 4"));
+            return Err(PcapNgError::InvalidField("SimplePacketBlock: block length < 4"));
         }
         let original_len = slice.read_u32::<B>().unwrap();
 
@@ -37,7 +37,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         Ok((&[], packet))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgError> {
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
 

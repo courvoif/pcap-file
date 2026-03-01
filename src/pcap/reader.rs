@@ -2,7 +2,7 @@ use std::io::Read;
 
 use super::{PcapParser, RawPcapPacket};
 use crate::errors::*;
-use crate::pcap::{PcapHeader, PcapPacket};
+use crate::pcap::{PcapError, PcapHeader, PcapPacket};
 use crate::read_buffer::ReadBuffer;
 
 /// Reads a pcap from a reader.
@@ -44,7 +44,7 @@ impl<R: Read> PcapReader<R> {
     /// The underlying data are not readable.
     pub fn new(reader: R) -> Result<PcapReader<R>, PcapError> {
         let mut reader = ReadBuffer::new(reader);
-        let parser = reader.parse_with(PcapParser::new)?;
+        let parser = reader.parse_with2(PcapParser::new)?;
 
         Ok(PcapReader { parser, reader })
     }
@@ -66,12 +66,12 @@ impl<R: Read> PcapReader<R> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
-                    Some(self.reader.parse_with(|src| self.parser.next_raw_packet(src)))
+                    Some(self.reader.parse_with2(|src| self.parser.next_raw_packet(src)))
                 } else {
                     None
                 }
             },
-            Err(e) => Some(Err(PcapError::IoError(e))),
+            Err(e) => Some(Err(PcapError::ReadFailed(e))),
         }
     }
 

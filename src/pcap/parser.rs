@@ -2,7 +2,7 @@ use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::RawPcapPacket;
 use crate::Endianness;
-use crate::errors::*;
+use crate::pcap::PcapError;
 use crate::pcap::PcapHeader;
 use crate::pcap::PcapPacket;
 
@@ -49,14 +49,14 @@ impl PcapParser {
     /// Creates a new [`PcapParser`].
     ///
     /// Returns the remainder and the parser.
-    pub fn new(slice: &[u8]) -> PcapResult<(&[u8], PcapParser)> {
+    pub fn new(slice: &[u8]) -> Result<(&[u8], PcapParser), PcapError> {
         let (slice, header) = PcapHeader::from_slice(slice)?;
         let parser = PcapParser { header };
         Ok((slice, parser))
     }
 
     /// Returns the remainder and the next [`PcapPacket`].
-    pub fn next_packet<'a>(&self, slice: &'a [u8]) -> PcapResult<(&'a [u8], PcapPacket<'a>)> {
+    pub fn next_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], PcapPacket<'a>), PcapError> {
         let res = match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),
             Endianness::Little => RawPcapPacket::from_slice::<LittleEndian>(slice),
@@ -67,7 +67,7 @@ impl PcapParser {
     }
 
     /// Returns the remainder and the next [`RawPcapPacket`].
-    pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> PcapResult<(&'a [u8], RawPcapPacket<'a>)> {
+    pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], RawPcapPacket<'a>), PcapError> {
         match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),
             Endianness::Little => RawPcapPacket::from_slice::<LittleEndian>(slice),

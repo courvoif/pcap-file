@@ -1,7 +1,6 @@
 use std::io::{Error, ErrorKind, Read};
 
-use crate::PcapError;
-
+use crate::{PcapNgError, pcap::PcapError};
 
 /// Internal structure that bufferize its input and allow to parse element from its buffer.
 #[derive(Debug)]
@@ -34,7 +33,47 @@ impl<R: Read> ReadBuffer<R> {
     /// Safety
     ///
     /// The parser must NOT keep a reference to the buffer in input.
-    pub fn parse_with<'a, 'b: 'a, 'c: 'a, F, O>(&'c mut self, mut parser: F) -> Result<O, PcapError>
+    pub fn parse_with<'a, 'b: 'a, 'c: 'a, F, O>(&'c mut self, mut parser: F) -> Result<O, PcapNgError>
+    where
+        F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), PcapNgError>,
+        F: 'b,
+        O: 'a,
+    {
+        loop {
+            let buf = &self.buffer[self.pos..self.len];
+
+            // Sound because 'b and 'c must outlive 'a so the buffer cannot be modified while someone has a ref on it
+            let buf: &'a [u8] = unsafe { std::mem::transmute(buf) };
+
+            match parser(buf) {
+                Ok((rem, value)) => {
+                    self.advance_with_slice(rem);
+                    return Ok(value);
+                },
+
+                Err(PcapNgError::IncompleteBuffer(_, _)) => {
+                    // The parsed data len should never be more than the buffer capacity
+                    if buf.len() == self.buffer.len() {
+                        return Err(PcapNgError::IoError(Error::from(ErrorKind::UnexpectedEof)));
+                    }
+
+                    let nb_read = self.fill_buf().map_err(PcapNgError::IoError)?;
+                    if nb_read == 0 {
+                        return Err(PcapNgError::IoError(Error::from(ErrorKind::UnexpectedEof)));
+                    }
+                },
+
+                Err(e) => return Err(e),
+            }
+        }
+    }
+
+    /// Parse data from the internal buffer
+    ///
+    /// Safety
+    ///
+    /// The parser must NOT keep a reference to the buffer in input.
+    pub fn parse_with2<'a, 'b: 'a, 'c: 'a, F, O>(&'c mut self, mut parser: F) -> Result<O, PcapError>
     where
         F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), PcapError>,
         F: 'b,
@@ -53,14 +92,14 @@ impl<R: Read> ReadBuffer<R> {
                 },
 
                 Err(PcapError::IncompleteBuffer(_, _)) => {
-                    // The parsed data len should never be more than the buffer capacity
+                    // The parsed data len should never be greater than the buffer capacity
                     if buf.len() == self.buffer.len() {
-                        return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
+                        return Err(PcapError::ReadFailed(Error::from(ErrorKind::UnexpectedEof)));
                     }
 
-                    let nb_read = self.fill_buf().map_err(PcapError::IoError)?;
+                    let nb_read = self.fill_buf().map_err(PcapError::ReadFailed)?;
                     if nb_read == 0 {
-                        return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
+                        return Err(PcapError::ReadFailed(Error::from(ErrorKind::UnexpectedEof)));
                     }
                 },
 

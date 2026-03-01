@@ -8,7 +8,7 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use crate::pcapng::PcapNgState;
-use crate::PcapError;
+use crate::PcapNgError;
 
 
 /// Unknown block
@@ -30,14 +30,14 @@ impl<'a> UnknownBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for UnknownBlock<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError>
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapNgError>
     where
         Self: Sized,
     {
         unimplemented!("UnkknownBlock::<as PcapNgBlock>::From_slice shouldn't be called")
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgError> {
         writer.write_all(&self.value)?;
         Ok(self.value.len())
     }

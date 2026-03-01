@@ -6,7 +6,7 @@ use super::blocks::block_common::{Block, PcapNgBlock};
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
 use super::{PcapNgState, RawBlock};
-use crate::{Endianness, PcapError, PcapResult};
+use crate::{Endianness, PcapNgError, PcapResult};
 
 
 /// Write a PcapNg to a writer.
@@ -125,12 +125,12 @@ impl<W: Write> PcapNgWriter<W> {
         match block {
             Block::InterfaceStatistics(blk) => {
                 if blk.interface_id as usize >= self.state.interfaces.len() {
-                    return Err(PcapError::InvalidInterfaceId(blk.interface_id));
+                    return Err(PcapNgError::InvalidInterfaceId(blk.interface_id));
                 }
             },
             Block::EnhancedPacket(blk) => {
                 if blk.interface_id as usize >= self.state.interfaces.len() {
-                    return Err(PcapError::InvalidInterfaceId(blk.interface_id));
+                    return Err(PcapNgError::InvalidInterfaceId(blk.interface_id));
                 }
             },
 

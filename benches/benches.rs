@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use pcap_file::pcap::{PcapParser, PcapReader};
 use pcap_file::pcapng::{PcapNgParser, PcapNgReader};
-use pcap_file::PcapError;
+use pcap_file::PcapNgError;
 
 
 /// Bench and compare Pcap readers and parsers
@@ -19,7 +19,7 @@ pub fn pcap(c: &mut Criterion) {
                     Ok((rem, _)) => {
                         src = rem;
                     },
-                    Err(PcapError::IncompleteBuffer(_, _)) => break,
+                    Err(PcapNgError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }
@@ -32,7 +32,7 @@ pub fn pcap(c: &mut Criterion) {
             loop {
                 match parser.next_raw_packet(src) {
                     Ok((rem, _)) => src = rem,
-                    Err(PcapError::IncompleteBuffer(_, _)) => break,
+                    Err(PcapNgError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }
@@ -74,7 +74,7 @@ pub fn pcapng(c: &mut Criterion) {
             loop {
                 match parser.next_block(src) {
                     Ok((rem, _)) => src = rem,
-                    Err(PcapError::IncompleteBuffer(_, _)) => break,
+                    Err(PcapNgError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }
@@ -87,7 +87,7 @@ pub fn pcapng(c: &mut Criterion) {
             loop {
                 match parser.next_raw_block(src) {
                     Ok((rem, _)) => src = rem,
-                    Err(PcapError::IncompleteBuffer(_, _)) => break,
+                    Err(PcapNgError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }

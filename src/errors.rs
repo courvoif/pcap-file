@@ -1,11 +1,11 @@
 use thiserror::Error;
 
 /// Result type for the pcap/pcapng parsing
-pub type PcapResult<T> = Result<T, PcapError>;
+pub type PcapResult<T> = Result<T, PcapNgError>;
 
 /// Error type for the pcap/pcapng parsing
 #[derive(Error, Debug)]
-pub enum PcapError {
+pub enum PcapNgError {
     /// Buffer too small
     /// # Fields
     /// - 0: needed size to parse the element
@@ -54,20 +54,20 @@ pub enum PcapError {
     CustomConversionError(u32, Box<dyn std::error::Error + Sync + Send>),
 }
 
-impl From<std::str::Utf8Error> for PcapError {
+impl From<std::str::Utf8Error> for PcapNgError {
     fn from(err: std::str::Utf8Error) -> Self {
-        PcapError::Utf8Error(err)
+        PcapNgError::Utf8Error(err)
     }
 }
 
-impl From<std::string::FromUtf8Error> for PcapError {
+impl From<std::string::FromUtf8Error> for PcapNgError {
     fn from(err: std::string::FromUtf8Error) -> Self {
-        PcapError::FromUtf8Error(err)
+        PcapNgError::FromUtf8Error(err)
     }
 }
 
-impl From<std::io::Error> for PcapError {
+impl From<std::io::Error> for PcapNgError {
     fn from(err: std::io::Error) -> Self {
-        PcapError::IoError(err)
+        PcapNgError::IoError(err)
     }
 }

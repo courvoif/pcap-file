@@ -10,7 +10,7 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
-use crate::errors::PcapError;
+use crate::errors::PcapNgError;
 use crate::pcapng::PcapNgState;
 
 
@@ -31,9 +31,9 @@ pub struct InterfaceStatisticsBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapNgError> {
         if slice.len() < 12 {
-            return Err(PcapError::InvalidField("InterfaceStatisticsBlock: block length < 12"));
+            return Err(PcapNgError::InvalidField("InterfaceStatisticsBlock: block length < 12"));
         }
 
         let interface_id = slice.read_u32::<B>().unwrap();
@@ -45,7 +45,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgError> {
         writer.write_u32::<B>(self.interface_id)?;
         state.encode_timestamp::<B, W>(self.interface_id, self.timestamp, writer)?;
 
@@ -97,15 +97,15 @@ pub enum InterfaceStatisticsOption<'a> {
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapNgError> {
         let opt = match code {
             2 => InterfaceStatisticsOption::IsbStartTime(state.decode_timestamp::<B>(interface_id.unwrap(), &mut slice)?),
             3 => InterfaceStatisticsOption::IsbEndTime(state.decode_timestamp::<B>(interface_id.unwrap(), &mut slice)?),
-            4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?),
-            5 => InterfaceStatisticsOption::IsbIfDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?),
-            6 => InterfaceStatisticsOption::IsbFilterAccept(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?),
-            7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?),
-            8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?),
+            4 => InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>().map_err(|_| PcapNgError::IncompleteBuffer(8, slice.len()))?),
+            5 => InterfaceStatisticsOption::IsbIfDrop(slice.read_u64::<B>().map_err(|_| PcapNgError::IncompleteBuffer(8, slice.len()))?),
+            6 => InterfaceStatisticsOption::IsbFilterAccept(slice.read_u64::<B>().map_err(|_| PcapNgError::IncompleteBuffer(8, slice.len()))?),
+            7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>().map_err(|_| PcapNgError::IncompleteBuffer(8, slice.len()))?),
+            8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>().map_err(|_| PcapNgError::IncompleteBuffer(8, slice.len()))?),
 
             _ => InterfaceStatisticsOption::Common(CommonOption::new::<B>(code, slice)?),
         };
@@ -113,7 +113,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapNgError> {
         Ok(match self {
             InterfaceStatisticsOption::IsbStartTime(a) => write_timestamp::<B, W>(2, a, state, interface_id, writer)?,
             InterfaceStatisticsOption::IsbEndTime(a) => write_timestamp::<B, W>(3, a, state, interface_id, writer)?,
@@ -134,7 +134,7 @@ fn write_timestamp<B: ByteOrder, W: Write>(
     state: &PcapNgState,
     interface_id: Option<u32>,
     writer: &mut W
-) -> Result<usize, PcapError> {
+) -> Result<usize, PcapNgError> {
     const TIMESTAMP_LENGTH: u16 = 8;
     const OPTION_LENGTH: usize = 12;
     writer.write_u16::<B>(code)?;

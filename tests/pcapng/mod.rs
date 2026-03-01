@@ -218,7 +218,7 @@ fn test_stateful_custom_block() {
         BigEndian, LittleEndian,
         byteorder::{ReadBytesExt, WriteBytesExt},
     };
-    use pcap_file::{PcapError, Endianness, DataLink};
+    use pcap_file::{PcapNgError, Endianness, DataLink};
     use pcap_file::pcapng::PcapNgState;
     use pcap_file::pcapng::blocks::{
         custom::*,
@@ -246,14 +246,14 @@ fn test_stateful_custom_block() {
         const PEN: u32 = 70000;
 
         type State = PcapNgState;
-        type WriteToError = PcapError;
-        type FromSliceError = PcapError;
+        type WriteToError = PcapNgError;
+        type FromSliceError = PcapNgError;
 
         fn write_to<W: Write>(
             &self,
             state: &PcapNgState,
             writer: &mut W,
-        ) -> Result<(), PcapError> {
+        ) -> Result<(), PcapNgError> {
             match state.section().endianness {
                 Endianness::Big => {
                     writer.write_u64::<BigEndian>(self.magic_number)?;
@@ -274,7 +274,7 @@ fn test_stateful_custom_block() {
         fn from_slice(
             state: &PcapNgState,
             mut slice: &[u8],
-        ) -> Result<Option<MyStatefulPayload>, PcapError> {
+        ) -> Result<Option<MyStatefulPayload>, PcapNgError> {
             Ok(Some(match state.section().endianness {
                 Endianness::Big => {
                     let magic_number = slice.read_u64::<BigEndian>()?;

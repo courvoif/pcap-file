@@ -9,7 +9,7 @@ use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::interface_description::{InterfaceDescriptionBlock, TsResolution};
 use super::blocks::section_header::SectionHeaderBlock;
 use super::blocks::{INTERFACE_DESCRIPTION_BLOCK, SECTION_HEADER_BLOCK};
-use crate::errors::PcapError;
+use crate::errors::PcapNgError;
 
 #[cfg(doc)]
 use {
@@ -52,7 +52,7 @@ impl PcapNgState {
     }
 
     /// Update the state based on the next [`Block`].
-    pub fn update_from_block(&mut self, block: &Block) -> Result<(), PcapError> {
+    pub fn update_from_block(&mut self, block: &Block) -> Result<(), PcapNgError> {
         match block {
             Block::SectionHeader(blk) => {
                 self.section = blk.clone().into_owned();
@@ -71,7 +71,7 @@ impl PcapNgState {
     }
 
     /// Update the state based on the next [`RawBlock`].
-    pub fn update_from_raw_block<B: ByteOrder>(&mut self, raw_block: &RawBlock) -> Result<(), PcapError> {
+    pub fn update_from_raw_block<B: ByteOrder>(&mut self, raw_block: &RawBlock) -> Result<(), PcapNgError> {
         match raw_block.type_ {
             SECTION_HEADER_BLOCK | INTERFACE_DESCRIPTION_BLOCK => {
                 let block = raw_block.clone().try_into_block::<B>(self)?;
@@ -82,22 +82,22 @@ impl PcapNgState {
     }
 
     /// Decode a timestamp using the correct format for the current state.
-    pub fn decode_timestamp<B: ByteOrder>(&self, interface_id: u32, slice: &mut &[u8]) -> Result<Duration, PcapError> {
+    pub fn decode_timestamp<B: ByteOrder>(&self, interface_id: u32, slice: &mut &[u8]) -> Result<Duration, PcapNgError> {
 
         let timestamp_high = slice
             .read_u32::<B>()
-            .map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))? as u64;
+            .map_err(|_| PcapNgError::IncompleteBuffer(4, slice.len()))? as u64;
 
         let timestamp_low = slice
             .read_u32::<B>()
-            .map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))? as u64;
+            .map_err(|_| PcapNgError::IncompleteBuffer(4, slice.len()))? as u64;
 
         let ts_raw = (timestamp_high << 32) + timestamp_low;
 
         let (ts_resolution, ts_offset) = self
             .ts_parameters
             .get(interface_id as usize)
-            .ok_or(PcapError::InvalidInterfaceId(interface_id))?;
+            .ok_or(PcapNgError::InvalidInterfaceId(interface_id))?;
 
         let ts_nanos = ts_raw * ts_resolution.to_nano_secs() as u64;
 
@@ -105,12 +105,12 @@ impl PcapNgState {
     }
 
     /// Encode a timestamp using the correct format for the current state.
-    pub fn encode_timestamp<B: ByteOrder, W: Write>(&self, interface_id: u32, timestamp: Duration, writer: &mut W) -> Result<(), PcapError> {
+    pub fn encode_timestamp<B: ByteOrder, W: Write>(&self, interface_id: u32, timestamp: Duration, writer: &mut W) -> Result<(), PcapNgError> {
 
         let (ts_resolution, ts_offset) = self
             .ts_parameters
             .get(interface_id as usize)
-            .ok_or(PcapError::InvalidInterfaceId(interface_id))?;
+            .ok_or(PcapNgError::InvalidInterfaceId(interface_id))?;
 
         let ts_relative = timestamp - *ts_offset;
 
@@ -118,7 +118,7 @@ impl PcapNgState {
 
         let ts_raw: u64 = ts_raw
             .try_into()
-            .or(Err(PcapError::TimestampTooBig))?;
+            .or(Err(PcapNgError::TimestampTooBig))?;
 
         let timestamp_high = (ts_raw >> 32) as u32;
         let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;

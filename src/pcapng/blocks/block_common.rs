@@ -19,7 +19,7 @@ use super::simple_packet::SimplePacketBlock;
 use super::systemd_journal_export::SystemdJournalExportBlock;
 use super::unknown::UnknownBlock;
 use crate::PcapResult;
-use crate::errors::PcapError;
+use crate::errors::PcapNgError;
 use crate::pcapng::PcapNgState;
 
 /// Section header block type
@@ -70,9 +70,9 @@ pub struct RawBlock<'a> {
 
 impl<'a> RawBlock<'a> {
     /// Parses a borrowed [`RawBlock`] from a slice.
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapNgError> {
         if slice.len() < 12 {
-            return Err(PcapError::IncompleteBuffer(12, slice.len()));
+            return Err(PcapNgError::IncompleteBuffer(12, slice.len()));
         }
 
         let type_ = slice.read_u32::<B>().unwrap();
@@ -87,28 +87,28 @@ impl<'a> RawBlock<'a> {
             let res = match magic {
                 0x1A2B3C4D => inner_parse::<BigEndian>(slice, type_, initial_len),
                 0x4D3C2B1A => inner_parse::<LittleEndian>(slice, type_, initial_len.swap_bytes()),
-                _ => Err(PcapError::InvalidField("SectionHeaderBlock: invalid magic number")),
+                _ => Err(PcapNgError::InvalidField("SectionHeaderBlock: invalid magic number")),
             };
 
             return res;
         } else {
-            let initial_len = slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))?;
+            let initial_len = slice.read_u32::<B>().map_err(|_| PcapNgError::IncompleteBuffer(4, slice.len()))?;
             return inner_parse::<B>(slice, type_, initial_len);
         };
 
         // Section Header parsing
-        fn inner_parse<B: ByteOrder>(slice: &[u8], type_: u32, initial_len: u32) -> Result<(&[u8], RawBlock<'_>), PcapError> {
+        fn inner_parse<B: ByteOrder>(slice: &[u8], type_: u32, initial_len: u32) -> Result<(&[u8], RawBlock<'_>), PcapNgError> {
             if !initial_len.is_multiple_of(4) {
-                return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
+                return Err(PcapNgError::InvalidField("Block: (initial_len % 4) != 0"));
             }
 
             if initial_len < 12 {
-                return Err(PcapError::InvalidField("Block: initial_len < 12"));
+                return Err(PcapNgError::InvalidField("Block: initial_len < 12"));
             }
 
             // Check if there is enough data for the body and the trailer_len
             if slice.len() < initial_len as usize - 8 {
-                return Err(PcapError::IncompleteBuffer(initial_len as usize - 8, slice.len()));
+                return Err(PcapNgError::IncompleteBuffer(initial_len as usize - 8, slice.len()));
             }
 
             let body_len = initial_len - 12;
@@ -119,7 +119,7 @@ impl<'a> RawBlock<'a> {
             let trailer_len = rem.read_u32::<B>().unwrap();
 
             if initial_len != trailer_len {
-                return Err(PcapError::InvalidField("Block: initial_length != trailer_length"));
+                return Err(PcapNgError::InvalidField("Block: initial_length != trailer_length"));
             }
 
             let block = RawBlock { type_, initial_len, body: Cow::Borrowed(body), trailer_len };
@@ -131,7 +131,7 @@ impl<'a> RawBlock<'a> {
     /// Writes a [`RawBlock`] to a writer.
     ///
     /// Uses the endianness of the header.
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapError> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapNgError> {
         writer.write_u32::<B>(self.type_)?;
         writer.write_u32::<B>(self.initial_len)?;
         writer.write_all(&self.body[..])?;
@@ -175,7 +175,7 @@ pub enum Block<'a> {
 
 impl<'a> Block<'a> {
     /// Parses a [`Block`] from a slice, using a [`PcapNgState`].
-    pub fn from_slice<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    pub fn from_slice<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapNgError> {
         let (rem, raw_block) = RawBlock::from_slice::<B>(slice)?;
         let block = Self::try_from_raw_block::<B>(state, raw_block)?;
 
@@ -183,7 +183,7 @@ impl<'a> Block<'a> {
     }
 
     /// Writes a [`Block`] to a writer, using a [`PcapNgState`].
-    pub fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgError> {
         return match self {
             Self::SectionHeader(b) => inner_write_to::<B, _, W>(state, b, SECTION_HEADER_BLOCK, writer),
             Self::InterfaceDescription(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_DESCRIPTION_BLOCK, writer),
@@ -203,7 +203,7 @@ impl<'a> Block<'a> {
             block: &BL,
             block_code: u32,
             writer: &mut W,
-        ) -> Result<usize, PcapError> {
+        ) -> Result<usize, PcapNgError> {
             // Fake write to compute the data length
             let data_len = block.write_to::<B, _>(state, &mut std::io::sink()).unwrap();
             let pad_len = (4 - (data_len % 4)) % 4;
@@ -223,7 +223,7 @@ impl<'a> Block<'a> {
     /// Tries to create a [`Block`] from a [`RawBlock`], given a [`PcapNgState`].
     ///
     /// The RawBlock must be Borrowed.
-    pub fn try_from_raw_block<B: ByteOrder>(state: &PcapNgState, raw_block: RawBlock<'a>) -> Result<Block<'a>, PcapError> {
+    pub fn try_from_raw_block<B: ByteOrder>(state: &PcapNgState, raw_block: RawBlock<'a>) -> Result<Block<'a>, PcapNgError> {
         let body = match raw_block.body {
             Cow::Borrowed(b) => b,
             _ => panic!("The raw block is not borrowed"),
@@ -438,12 +438,12 @@ impl<'a> Block<'a> {
 /// Common interface for the PcapNg blocks
 pub trait PcapNgBlock<'a> {
     /// Parse a new block from a slice, using a [`PcapNgState`].
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError>
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapNgError>
     where
         Self: std::marker::Sized;
 
     /// Write the content of a block into a writer, using a [`PcapNgState`].
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError>;
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgError>;
 
     /// Convert a block into the [`Block`] enumeration
     fn into_block(self) -> Block<'a>;

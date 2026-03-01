@@ -7,7 +7,7 @@ use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use crate::errors::PcapError;
+use crate::errors::PcapNgError;
 use crate::pcapng::PcapNgState;
 
 
@@ -19,12 +19,12 @@ pub struct SystemdJournalExportBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapNgError> {
         let packet = SystemdJournalExportBlock { journal_entry: Cow::Borrowed(slice) };
         Ok((&[], packet))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgError> {
         writer.write_all(&self.journal_entry)?;
 
         let pad_len = (4 - (self.journal_entry.len() % 4)) % 4;

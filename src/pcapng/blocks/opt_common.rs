@@ -8,7 +8,7 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use crate::errors::PcapError;
+use crate::errors::PcapNgError;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::blocks::custom::{CustomCopiable, CustomNonCopiable};
 
@@ -57,7 +57,7 @@ impl<'a> CommonOption<'a> {
         }
     }
 
-    pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+    pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, PcapNgError> {
         Ok(match code {
             COMMENT =>
                 CommonOption::Comment(
@@ -83,14 +83,14 @@ impl<'a> CommonOption<'a> {
 impl<'a> CustomBinaryOption<'a, true> {
     /// Converts this option's value into a type that implements [`CustomCopiable`].
     pub fn interpret<T: CustomCopiable<'a>>(&'a self)
-        -> Result<Option<T>, PcapError>
+        -> Result<Option<T>, PcapNgError>
     {
         if self.pen != T::PEN {
             return Ok(None)
         }
 
         T::from_slice(&self.value)
-            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
+            .map_err(|e| PcapNgError::CustomConversionError(T::PEN, e.into()))
     }
 
     /// Converts this option into a [`CommonOption`].
@@ -102,14 +102,14 @@ impl<'a> CustomBinaryOption<'a, true> {
 impl<'a> CustomBinaryOption<'a, false> {
     /// Converts this option's value into a type that implements [`CustomNonCopiable`].
     pub fn interpret<T: CustomNonCopiable<'a>>(&'a self, state: &T::State)
-        -> Result<Option<T>, PcapError>
+        -> Result<Option<T>, PcapNgError>
     {
         if self.pen != T::PEN {
             return Ok(None)
         }
 
         T::from_slice(state, &self.value)
-            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
+            .map_err(|e| PcapNgError::CustomConversionError(T::PEN, e.into()))
     }
 
     /// Converts this option into a [`CommonOption`].
@@ -126,7 +126,7 @@ pub(crate) trait PcapNgOption<'a> {
         interface_id: Option<u32>,
         code: u16,
         slice: &'a [u8],
-    ) -> Result<Self, PcapError>
+    ) -> Result<Self, PcapNgError>
     where
         Self: std::marker::Sized;
 
@@ -135,7 +135,7 @@ pub(crate) trait PcapNgOption<'a> {
         state: &PcapNgState,
         interface_id: Option<u32>,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Vec<Self>), PcapError>
+    ) -> Result<(&'a [u8], Vec<Self>), PcapNgError>
     where
         Self: std::marker::Sized,
     {
@@ -148,7 +148,7 @@ pub(crate) trait PcapNgOption<'a> {
 
         while !slice.is_empty() {
             if slice.len() < 4 {
-                return Err(PcapError::InvalidField("Option: slice.len() < 4"));
+                return Err(PcapNgError::InvalidField("Option: slice.len() < 4"));
             }
 
             let code = slice.read_u16::<B>().unwrap();
@@ -160,7 +160,7 @@ pub(crate) trait PcapNgOption<'a> {
             }
 
             if slice.len() < length + pad_len {
-                return Err(PcapError::InvalidField("Option: length + pad.len() > slice.len()"));
+                return Err(PcapNgError::InvalidField("Option: length + pad.len() > slice.len()"));
             }
 
             let tmp_slice = &slice[..length];
@@ -176,7 +176,7 @@ pub(crate) trait PcapNgOption<'a> {
     }
 
     /// Write the option to a writer
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError>;
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapNgError>;
 
     /// Write all options in a block
     fn write_opts_to<B: ByteOrder, W: Write>(
@@ -184,7 +184,7 @@ pub(crate) trait PcapNgOption<'a> {
         state: &PcapNgState,
         interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, PcapError>
+    ) -> Result<usize, PcapNgError>
     where
         Self: std::marker::Sized,
     {
@@ -232,8 +232,8 @@ pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
 
 impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
     /// Parse an [`CustomBinaryOption`] from a slice
-    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, PcapError> {
-        let pen = src.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, src.len()))?;
+    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, PcapNgError> {
+        let pen = src.read_u32::<B>().map_err(|_| PcapNgError::IncompleteBuffer(4, src.len()))?;
         let opt = CustomBinaryOption { pen, value: Cow::Borrowed(src) };
         Ok(opt)
     }
@@ -258,8 +258,8 @@ pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
 
 impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
     /// Parse a [`CustomUtf8Option`] from a slice
-    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, PcapError> {
-        let pen = src.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, src.len()))?;
+    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, PcapNgError> {
+        let pen = src.read_u32::<B>().map_err(|_| PcapNgError::IncompleteBuffer(4, src.len()))?;
         let opt = CustomUtf8Option { pen, value: Cow::Borrowed(std::str::from_utf8(src)?) };
         Ok(opt)
     }
@@ -398,7 +398,7 @@ impl<'a> WriteOptTo for CommonOption<'a> {
 mod tests {
     use byteorder_slice::BigEndian;
 
-    use crate::PcapError;
+    use crate::PcapNgError;
     use crate::pcapng::PcapNgState;
     use crate::pcapng::blocks::opt_common::PcapNgOption;
 
@@ -411,7 +411,7 @@ mod tests {
             _interface_id: Option<u32>,
             _code: u16,
             _slice: &'a [u8],
-        ) -> Result<Self, PcapError>
+        ) -> Result<Self, PcapNgError>
         where
             Self: std::marker::Sized,
         {
@@ -423,7 +423,7 @@ mod tests {
             _state: &PcapNgState,
             _interface_id: Option<u32>,
             _writer: &mut W,
-        ) -> Result<usize, PcapError> {
+        ) -> Result<usize, PcapNgError> {
             Ok(0)
         }
     }
