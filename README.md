@@ -56,7 +56,7 @@ let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
 // Read test.pcapng
 while let Some(block) = pcapng_reader.next_block() {
     // Check if there is no error
-    let block = block.unwrap();
+    let (block, state) = block.unwrap();
 
     //  Do something
 }

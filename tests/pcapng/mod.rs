@@ -58,7 +58,7 @@ fn writer() {
 
         let mut idx = 0;
         while let Some(block) = pcapng_reader.next_block() {
-            let block = block.unwrap();
+            let (block, _) = block.unwrap();
             pcapng_writer
                 .write_block(&block)
                 .unwrap_or_else(|_| panic!("Error writing block, file: {entry:?}, block n°{idx}, block: {block:?}"));
@@ -74,8 +74,8 @@ fn writer() {
 
             let mut idx = 0;
             while let (Some(expected), Some(actual)) = (expected_reader.next_block(), actual_reader.next_block()) {
-                let expected = expected.unwrap();
-                let actual = actual.unwrap();
+                let (expected, _) = expected.unwrap();
+                let (actual, _) = actual.unwrap();
 
                 if expected != actual {
                     assert_eq!(expected, actual, "Pcap written != pcap read, file: {entry:?}, block n°{idx}")
@@ -350,7 +350,7 @@ fn test_stateful_custom_block() {
         .expect("Failed to create reader");
 
     // Read the first block, which should be the interface description
-    let first_block = pcapng_reader
+    let (first_block, _) = pcapng_reader
         .next_block()
         .expect("No first block from reader")
         .expect("Failed to get first block");
@@ -358,8 +358,8 @@ fn test_stateful_custom_block() {
     assert!(matches!(first_block, Block::InterfaceDescription(_)));
 
     // Read the next block, which should be our custom block
-    let (read_block_enum, reader_state) = pcapng_reader
-        .next_block_and_state()
+    let (read_block_enum, reader_state)  = pcapng_reader
+        .next_block()
         .expect("No second block from reader")
         .expect("Failed to get next block");
 
@@ -384,7 +384,7 @@ fn test_stateful_custom_block() {
 
     // Read the last block, which should be our packet block
     let (last_block, reader_state) = pcapng_reader
-        .next_block_and_state()
+        .next_block()
         .expect("No third block from reader")
         .expect("Failed to get next block");
 

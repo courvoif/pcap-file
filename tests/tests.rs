@@ -16,7 +16,7 @@ fn timestamp_resolution() {
 
     let mut i = 0;
     while let Some(block) = pcapng_reader.next_block() {
-        let block = block.unwrap_or_else(|_| panic!("Error on block {i}"));
+        let (block, _) = block.unwrap_or_else(|_| panic!("Error on block {i}"));
         
         match i {
             0 => {

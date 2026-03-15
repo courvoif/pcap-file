@@ -141,7 +141,17 @@ impl<'a> RawBlock<'a> {
     }
 
     /// Tries to convert a [`RawBlock`] into a [`Block`], using a [`PcapNgState`].
-    pub fn try_into_block<B: ByteOrder>(self, state: &PcapNgState) -> PcapResult<Block<'a>> {
+    /// The byteorder is defined by the `state`.
+    pub fn try_into_block(self, state: &PcapNgState) -> PcapResult<Block<'a>> {
+        match state.section.endianness {
+            crate::Endianness::Big => Block::try_from_raw_block::<BigEndian>(state, self),
+            crate::Endianness::Little => Block::try_from_raw_block::<LittleEndian>(state, self),
+        }
+    }
+    
+    /// Tries to convert a [`RawBlock`] into a [`Block`], using a [`PcapNgState`].
+    /// The byteorder is defined by the caller
+    pub fn try_into_block_with_byteorder<B: ByteOrder>(self, state: &PcapNgState) -> PcapResult<Block<'a>> {
         Block::try_from_raw_block::<B>(state, self)
     }
 }
