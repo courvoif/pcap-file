@@ -26,7 +26,7 @@ use crate::{Endianness, PcapError, PcapResult};
 /// // Read test.pcapng
 /// while let Some(block) = pcapng_reader.next_block() {
 ///     // Check if there is no error
-///     let block = block.unwrap();
+///     let (block, _) = block.unwrap();
 ///
 ///     // Write back parsed Block
 ///     pcapng_writer.write_block(&block).unwrap();

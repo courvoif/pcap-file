@@ -5,9 +5,8 @@ use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::enhanced_packet::EnhancedPacketBlock;
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
-use crate::errors::PcapError;
 use crate::Endianness;
-
+use crate::errors::PcapError;
 
 /// Parses a PcapNg from a slice of bytes.
 ///
@@ -34,7 +33,7 @@ use crate::Endianness;
 ///             // Don't forget to update src
 ///             src = rem;
 ///         },
-///         Err(PcapError::IncompleteBuffer) => {
+///         Err(PcapError::IncompleteBuffer(_,_)) => {
 ///             // Load more data into src
 ///         },
 ///         Err(_) => {
@@ -70,23 +69,27 @@ impl PcapNgParser {
     }
 
     /// Returns the remainder and the next [`Block`].
+    ///
+    /// # Errors
+    /// - Only [`PcapError::IncompleteBuffer`] is recoverable (by loading more data).
+    /// - Other errors will prevent the parser from advancing further.
+    ///   Some can be recovered by calling [`Self::next_raw_block`].
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
-        // Read next Block
-        match self.state.section.endianness {
-            Endianness::Big => {
-                let (rem, raw_block) = self.next_raw_block_inner::<BigEndian>(src)?;
-                let block = raw_block.try_into_block::<BigEndian>(&self.state)?;
-                Ok((rem, block))
-            },
-            Endianness::Little => {
-                let (rem, raw_block) = self.next_raw_block_inner::<LittleEndian>(src)?;
-                let block = raw_block.try_into_block::<LittleEndian>(&self.state)?;
-                Ok((rem, block))
-            },
-        }
+        // Read next RawBlock and convert it to block
+        self.next_raw_block(src).and_then(|(rem, raw)| {
+            let state = &self.state;
+            raw.try_into_block(state).map(|block| (rem, block))
+        })
     }
 
     /// Returns the remainder and the next [`RawBlock`].
+    /// More permissive than [`Self::next_block`].
+    ///
+    /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
+    ///
+    /// # Errors
+    /// - Only [`PcapError::IncompleteBuffer`] is recoverable (by loading more data).
+    /// - All other errors will prevent the parser from advancing further.
     pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapError> {
         // Read next Block
         match self.state.section.endianness {
@@ -100,6 +103,11 @@ impl PcapNgParser {
         let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
         self.state.update_from_raw_block::<B>(&raw_block)?;
         Ok((rem, raw_block))
+    }
+
+    /// Returns the current [`PcapNgState`].
+    pub fn state(&self) -> &PcapNgState {
+        &self.state
     }
 
     /// Returns the current [`SectionHeaderBlock`].
