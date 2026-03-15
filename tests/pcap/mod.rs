@@ -135,7 +135,11 @@ fn infinite_loop() {
     let mut pcap_reader = PcapReader::new(&data[..]).unwrap();
 
     let mut i = 0;
-    while pcap_reader.next_packet().is_some() {
+    while let Some(pkt) = pcap_reader.next_packet() {
+        let Ok(_) = pkt else {
+            break;
+        };
+        
         if i > 18 {
             panic!("infinite loop detected");
         }

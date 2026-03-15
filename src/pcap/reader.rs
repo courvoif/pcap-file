@@ -55,13 +55,34 @@ impl<R: Read> PcapReader<R> {
     }
 
     /// Returns the next [`PcapPacket`].
+    /// [`None`] means that the reader have reached the EoF.
+    /// Won't advance the reader past any malformed packets.
+    ///
+    /// # Errors
+    /// - Some variants of [`PcapError::IoError`] can be retried.
+    /// - Other variants can be retried using [`Self::next_raw_packet`] to parse the faulty packet.
     pub fn next_packet(&mut self) -> Option<Result<PcapPacket<'_>, PcapError>> {
-        let header = self.parser.header();
-        self.next_raw_packet()
-            .map(|res| res.and_then(|raw_pkt| PcapPacket::try_from_raw_packet(raw_pkt, header.ts_resolution, header.snaplen)))
+        match self.reader.has_data_left() {
+            Ok(has_data) => {
+                if has_data {
+                    Some(self.reader.parse_with(|src| self.parser.next_packet(src)))
+                } else {
+                    None
+                }
+            },
+            Err(e) => Some(Err(PcapError::IoError(e))),
+        }
     }
 
     /// Returns the next [`RawPcapPacket`].
+    /// [`None`] means that the reader have reached the EoF.
+    /// 
+    /// More permissive than [`Self::next_packet`], can be used to parse malformed files.
+    /// 
+    /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
+    ///
+    /// # Errors
+    /// - Only [`PcapError::IoError`] can happen, some of its variants can be retried.
     pub fn next_raw_packet(&mut self) -> Option<Result<RawPcapPacket<'_>, PcapError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
@@ -74,7 +95,7 @@ impl<R: Read> PcapReader<R> {
             Err(e) => Some(Err(PcapError::IoError(e))),
         }
     }
-
+    
     /// Returns the global header of the pcap.
     pub fn header(&self) -> PcapHeader {
         self.parser.header()
