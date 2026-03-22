@@ -3,10 +3,8 @@ use std::io::Write;
 use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::RawPcapPacket;
-use crate::errors::*;
-use crate::pcap::{PcapHeader, PcapPacket};
+use crate::pcap::{PcapHeader, PcapPacket, PcapValidationError, PcapWriteError};
 use crate::{Endianness, TsResolution};
-
 
 /// Writes a pcap to a writer.
 ///
@@ -60,7 +58,7 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// # Errors
     /// The writer can't be written to.
-    pub fn new(writer: W) -> PcapResult<PcapWriter<W>> {
+    pub fn new(writer: W) -> Result<PcapWriter<W>, PcapWriteError> {
         let header = PcapHeader { endianness: Endianness::native(), ..Default::default() };
 
         PcapWriter::with_header(writer, header)
@@ -72,7 +70,7 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// # Errors
     /// The writer can't be written to.
-    pub fn with_header(mut writer: W, header: PcapHeader) -> PcapResult<PcapWriter<W>> {
+    pub fn with_header(mut writer: W, header: PcapHeader) -> Result<PcapWriter<W>, PcapWriteError> {
         header.write_to(&mut writer)?;
 
         Ok(PcapWriter {
@@ -89,10 +87,13 @@ impl<W: Write> PcapWriter<W> {
     }
 
     /// Writes a [`PcapPacket`].
-    pub fn write_packet(&mut self, packet: &PcapPacket) -> PcapResult<usize> {
+    ///
+    /// # Errors
+    /// The included length of the packet must not be bigger than the snaplen of the file, otherwise an error is returned.
+    pub fn write_packet(&mut self, packet: &PcapPacket) -> Result<usize, PcapWriteError> {
         // Check that the included length of the packet is not bigger than the snaplen of the file
         if packet.len() > self.snaplen {
-            return Err(PcapError::PacketTooLarge(packet.len(), self.snaplen));
+            return Err(PcapValidationError::PacketLenTooBig(packet.len(), self.snaplen).into());
         }
 
         let raw_packet = packet.as_raw_packet(self.ts_resolution);
@@ -100,9 +101,11 @@ impl<W: Write> PcapWriter<W> {
     }
 
     /// Writes a [`RawPcapPacket`].
+    ///
+    /// # Notes
     /// The fields of the packet are not validated, it is the responsibility of the user to check that they are correct.
     /// The resulting pcap file may not be readable by some parsers if the fields are not correct.
-    pub fn write_raw_packet(&mut self, packet: &RawPcapPacket) -> PcapResult<usize> {
+    pub fn write_raw_packet(&mut self, packet: &RawPcapPacket) -> Result<usize, PcapWriteError> {
         match self.endianness {
             Endianness::Big => packet.write_to::<_, BigEndian>(&mut self.writer),
             Endianness::Little => packet.write_to::<_, LittleEndian>(&mut self.writer),
@@ -110,8 +113,8 @@ impl<W: Write> PcapWriter<W> {
     }
 
     /// Flush data
-    pub fn flush(&mut self) -> PcapResult<()> {
-        self.writer.flush().map_err(PcapError::IoError)
+    pub fn flush(&mut self) -> Result<(), PcapWriteError> {
+        self.writer.flush().map_err(PcapWriteError::Io)
     }
 
     /// Returns the endianess used by the writer.

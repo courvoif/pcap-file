@@ -2,18 +2,17 @@ use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::RawPcapPacket;
 use crate::Endianness;
-use crate::errors::*;
 use crate::pcap::PcapHeader;
 use crate::pcap::PcapPacket;
+use crate::pcap::PcapParseError;
 
 /// Parses a Pcap from a slice of bytes.
 ///
-/// You can match on [`PcapError::IncompleteBuffer`](crate::errors::PcapError) to known if the parser need more data.
+/// You can match on [`PcapParseError::IncompleteBuffer`](crate::pcap::PcapParseError) to know if the parser needs more data.
 ///
 /// # Example
 /// ```no_run
-/// use pcap_file::pcap::PcapParser;
-/// use pcap_file::PcapError;
+/// use pcap_file::pcap::{PcapParseError, PcapParser};
 ///
 /// let pcap = vec![0_u8; 0];
 /// let mut src = &pcap[..];
@@ -35,7 +34,7 @@ use crate::pcap::PcapPacket;
 ///                 break;
 ///             }
 ///         },
-///         Err(PcapError::IncompleteBuffer(_,_)) => {}, // Load more data into src
+///         Err(PcapParseError::IncompleteBuffer(_,_)) => {}, // Load more data into src
 ///         Err(_) => {
 ///             // Parsing error, unrecoverable
 ///         },
@@ -51,7 +50,7 @@ impl PcapParser {
     /// Creates a new [`PcapParser`].
     ///
     /// Returns the remainder and the parser.
-    pub fn new(slice: &[u8]) -> PcapResult<(&[u8], PcapParser)> {
+    pub fn new(slice: &[u8]) -> Result<(&[u8], PcapParser), PcapParseError> {
         let (slice, header) = PcapHeader::from_slice(slice)?;
         let parser = PcapParser { header };
         Ok((slice, parser))
@@ -60,17 +59,22 @@ impl PcapParser {
     /// Returns the remainder and the next [`PcapPacket`].
     /// 
     /// # Errors
-    /// - [`PcapError::IncompleteBuffer`] is recoverable (by loading more data).
+    /// - [`PcapParseError::IncompleteBuffer`] is recoverable (by loading more data).
     /// - Other errors will prevent the parser from advancing further.
     ///   Some can be recovered by calling [`PcapParser::next_raw_packet`].
-    pub fn next_packet<'a>(&self, slice: &'a [u8]) -> PcapResult<(&'a [u8], PcapPacket<'a>)> {
+    pub fn next_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], PcapPacket<'a>), PcapParseError> {
         let res = match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),
             Endianness::Little => RawPcapPacket::from_slice::<LittleEndian>(slice),
         };
 
         let header = &self.header;
-        res.and_then(|(rem, raw_pkt)| raw_pkt.try_into_pcap_packet(header.ts_resolution, header.snaplen).map(|pkt| (rem, pkt)))
+        res.and_then(|(rem, raw_pkt)| {
+            raw_pkt
+                .try_into_pcap_packet(header.ts_resolution, header.snaplen)
+                .map(|pkt| (rem, pkt))
+                .map_err(|e| e.into())
+        })
     }
 
     /// Returns the remainder and the next [`RawPcapPacket`].
@@ -81,7 +85,7 @@ impl PcapParser {
     /// 
     /// # Errors
     /// - Only [`PcapError::IncompleteBuffer`] can happen. It is recoverable by loading more data.
-    pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> PcapResult<(&'a [u8], RawPcapPacket<'a>)> {
+    pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], RawPcapPacket<'a>), PcapParseError> {
         match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),
             Endianness::Little => RawPcapPacket::from_slice::<LittleEndian>(slice),

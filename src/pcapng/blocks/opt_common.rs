@@ -8,9 +8,9 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
-use crate::pcapng::blocks::custom::{CustomCopiable, CustomNonCopiable};
+use crate::pcapng::blocks::custom::{CustomCopiable, CustomError, CustomNonCopiable};
+use crate::pcapng::errors::{OptionEntryError, OptionParseError, PcapNgWriteError};
 
 /// Comment
 pub const COMMENT: u16 = 0x0001;
@@ -57,40 +57,37 @@ impl<'a> CommonOption<'a> {
         }
     }
 
-    pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+    pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, OptionEntryError> {
         Ok(match code {
-            COMMENT =>
-                CommonOption::Comment(
-                    Cow::Borrowed(std::str::from_utf8(slice)?)),
-            CUSTOM_UTF8_OPTION_COPIABLE =>
-                CommonOption::CustomUtf8Copiable(
-                    CustomUtf8Option::from_slice::<B>(slice)?),
-            CUSTOM_UTF8_OPTION_NON_COPIABLE =>
-                CommonOption::CustomUtf8NonCopiable(
-                    CustomUtf8Option::from_slice::<B>(slice)?),
-            CUSTOM_BINARY_OPTION_COPIABLE =>
-                CommonOption::CustomBinaryCopiable(
-                    CustomBinaryOption::from_slice::<B>(slice)?),
-            CUSTOM_BINARY_OPTION_NON_COPIABLE =>
-                CommonOption::CustomBinaryNonCopiable(
-                    CustomBinaryOption::from_slice::<B>(slice)?),
-            _ => CommonOption::Unknown(
-                    UnknownOption::new(code, slice)),
+            COMMENT => CommonOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            CUSTOM_UTF8_OPTION_COPIABLE => CommonOption::CustomUtf8Copiable(CustomUtf8Option::from_slice::<B>(slice)?),
+            CUSTOM_UTF8_OPTION_NON_COPIABLE => CommonOption::CustomUtf8NonCopiable(CustomUtf8Option::from_slice::<B>(slice)?),
+            CUSTOM_BINARY_OPTION_COPIABLE => CommonOption::CustomBinaryCopiable(CustomBinaryOption::from_slice::<B>(slice)?),
+            CUSTOM_BINARY_OPTION_NON_COPIABLE => CommonOption::CustomBinaryNonCopiable(CustomBinaryOption::from_slice::<B>(slice)?),
+            _ => CommonOption::Unknown(UnknownOption::new(code, slice)),
         })
+    }
+
+    pub(crate) fn code_name(code: u16) -> &'static str {
+        match code {
+            COMMENT => "Comment",
+            CUSTOM_UTF8_OPTION_COPIABLE => "CustomUtf8Copiable",
+            CUSTOM_UTF8_OPTION_NON_COPIABLE => "CustomUtf8NonCopiable",
+            CUSTOM_BINARY_OPTION_COPIABLE => "CustomBinaryCopiable",
+            CUSTOM_BINARY_OPTION_NON_COPIABLE => "CustomBinaryNonCopiable",
+            _ => "Unknown",
+        }
     }
 }
 
 impl<'a> CustomBinaryOption<'a, true> {
     /// Converts this option's value into a type that implements [`CustomCopiable`].
-    pub fn interpret<T: CustomCopiable<'a>>(&'a self)
-        -> Result<Option<T>, PcapError>
-    {
+    pub fn interpret<T: CustomCopiable<'a>>(&'a self) -> Result<Option<T>, CustomError> {
         if self.pen != T::PEN {
-            return Ok(None)
+            return Ok(None);
         }
 
-        T::from_slice(&self.value)
-            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
+        T::from_slice(&self.value).map_err(|e| CustomError { pen: T::PEN, src: e.into() })
     }
 
     /// Converts this option into a [`CommonOption`].
@@ -101,15 +98,12 @@ impl<'a> CustomBinaryOption<'a, true> {
 
 impl<'a> CustomBinaryOption<'a, false> {
     /// Converts this option's value into a type that implements [`CustomNonCopiable`].
-    pub fn interpret<T: CustomNonCopiable<'a>>(&'a self, state: &T::State)
-        -> Result<Option<T>, PcapError>
-    {
+    pub fn interpret<T: CustomNonCopiable<'a>>(&'a self, state: &T::State) -> Result<Option<T>, CustomError> {
         if self.pen != T::PEN {
-            return Ok(None)
+            return Ok(None);
         }
 
-        T::from_slice(state, &self.value)
-            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
+        T::from_slice(state, &self.value).map_err(|e| CustomError { pen: T::PEN, src: e.into() })
     }
 
     /// Converts this option into a [`CommonOption`].
@@ -126,16 +120,19 @@ pub(crate) trait PcapNgOption<'a> {
         interface_id: Option<u32>,
         code: u16,
         slice: &'a [u8],
-    ) -> Result<Self, PcapError>
+    ) -> Result<Self, OptionEntryError>
     where
         Self: std::marker::Sized;
+
+    /// Return the name of the Option entry from its code
+    fn code_name(code: u16) -> &'static str;
 
     /// Parse all options in a block
     fn opts_from_slice<B: ByteOrder>(
         state: &PcapNgState,
         interface_id: Option<u32>,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Vec<Self>), PcapError>
+    ) -> Result<(&'a [u8], Vec<Self>), OptionParseError>
     where
         Self: std::marker::Sized,
     {
@@ -148,11 +145,11 @@ pub(crate) trait PcapNgOption<'a> {
 
         while !slice.is_empty() {
             if slice.len() < 4 {
-                return Err(PcapError::InvalidField("Option: slice.len() < 4"));
+                return Err(OptionParseError::OptionsContentTooSmall { needed: 4, actual: slice.len() });
             }
 
-            let code = slice.read_u16::<B>().unwrap();
-            let length = slice.read_u16::<B>().unwrap() as usize;
+            let code = slice.read_u16::<B>().expect("available length checked before");
+            let length = slice.read_u16::<B>().expect("available length checked before") as usize;
             let pad_len = (4 - (length % 4)) % 4;
 
             if code == 0 {
@@ -160,11 +157,15 @@ pub(crate) trait PcapNgOption<'a> {
             }
 
             if slice.len() < length + pad_len {
-                return Err(PcapError::InvalidField("Option: length + pad.len() > slice.len()"));
+                return Err(OptionParseError::OptionsContentTooSmall { needed: length + pad_len, actual: slice.len() });
             }
 
             let tmp_slice = &slice[..length];
-            let opt = Self::from_slice::<B>(state, interface_id, code, tmp_slice)?;
+            let opt = Self::from_slice::<B>(state, interface_id, code, tmp_slice).map_err(|e| OptionParseError::InvalidEntry {
+                code,
+                name: Self::code_name(code),
+                source: e,
+            })?;
 
             // Jump over the padding
             slice = &slice[length + pad_len..];
@@ -176,7 +177,12 @@ pub(crate) trait PcapNgOption<'a> {
     }
 
     /// Write the option to a writer
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError>;
+    fn write_to<B: ByteOrder, W: Write>(
+        &self,
+        state: &PcapNgState,
+        interface_id: Option<u32>,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError>;
 
     /// Write all options in a block
     fn write_opts_to<B: ByteOrder, W: Write>(
@@ -184,7 +190,7 @@ pub(crate) trait PcapNgOption<'a> {
         state: &PcapNgState,
         interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, PcapError>
+    ) -> Result<usize, PcapNgWriteError>
     where
         Self: std::marker::Sized,
     {
@@ -232,18 +238,15 @@ pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
 
 impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
     /// Parse an [`CustomBinaryOption`] from a slice
-    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, PcapError> {
-        let pen = src.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, src.len()))?;
+    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, OptionEntryError> {
+        let pen = src.read_u32::<B>().map_err(|_| OptionEntryError::WrongSize { expected: 4, actual: src.len() })?;
         let opt = CustomBinaryOption { pen, value: Cow::Borrowed(src) };
         Ok(opt)
     }
 
     /// Returns a version of self with all fields converted to owning versions.
     pub fn into_owned(self) -> CustomBinaryOption<'static, COPIABLE> {
-        CustomBinaryOption {
-            pen: self.pen,
-            value: Cow::Owned(self.value.into_owned())
-        }
+        CustomBinaryOption { pen: self.pen, value: Cow::Owned(self.value.into_owned()) }
     }
 }
 
@@ -258,21 +261,22 @@ pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
 
 impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
     /// Parse a [`CustomUtf8Option`] from a slice
-    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, PcapError> {
-        let pen = src.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, src.len()))?;
+    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, OptionEntryError> {
+        let pen = src.read_u32::<B>().map_err(|_| OptionEntryError::WrongSize { expected: 4, actual: src.len() })?;
         let opt = CustomUtf8Option { pen, value: Cow::Borrowed(std::str::from_utf8(src)?) };
         Ok(opt)
     }
 
     /// Returns a version of self with all fields converted to owning versions.
     pub fn into_owned(self) -> CustomUtf8Option<'static, COPIABLE> {
-        CustomUtf8Option {
-            pen: self.pen,
-            value: Cow::Owned(self.value.into_owned())
-        }
+        CustomUtf8Option { pen: self.pen, value: Cow::Owned(self.value.into_owned()) }
     }
 }
 
+// TODO: rename as WriteOpt
+// TODO: Replace the unchecked `len as u16` writes in these impls with checked
+// conversions so oversized option payloads return a typed error instead of
+// truncating on the wire.
 pub(crate) trait WriteOptTo {
     fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize>;
 }
@@ -378,14 +382,14 @@ impl<'a> WriteOptTo for CommonOption<'a> {
             CommonOption::CustomUtf8Copiable(a) => {
                 writer.write_u32::<B>(a.pen)?;
                 writer.write_all(a.value.as_bytes())?;
-            }
+            },
             CommonOption::CustomUtf8NonCopiable(a) => {
                 writer.write_u32::<B>(a.pen)?;
                 writer.write_all(a.value.as_bytes())?;
-            }
+            },
             CommonOption::Unknown(a) => {
                 writer.write_all(&a.value)?;
-            }
+            },
         };
 
         writer.write_all(&[0_u8; 3][..pad_len])?;
@@ -398,9 +402,9 @@ impl<'a> WriteOptTo for CommonOption<'a> {
 mod tests {
     use byteorder_slice::BigEndian;
 
-    use crate::PcapError;
     use crate::pcapng::PcapNgState;
     use crate::pcapng::blocks::opt_common::PcapNgOption;
+    use crate::pcapng::errors::{OptionEntryError, PcapNgWriteError};
 
     #[derive(Debug, PartialEq)]
     struct PcapNgOptionImpl {}
@@ -411,7 +415,7 @@ mod tests {
             _interface_id: Option<u32>,
             _code: u16,
             _slice: &'a [u8],
-        ) -> Result<Self, PcapError>
+        ) -> Result<Self, OptionEntryError>
         where
             Self: std::marker::Sized,
         {
@@ -423,11 +427,14 @@ mod tests {
             _state: &PcapNgState,
             _interface_id: Option<u32>,
             _writer: &mut W,
-        ) -> Result<usize, PcapError> {
+        ) -> Result<usize, PcapNgWriteError> {
             Ok(0)
         }
-    }
 
+        fn code_name(_code: u16) -> &'static str {
+            "Option"
+        }
+    }
 
     /// Test that a list of option without an endofopt can be parsed
     #[test]

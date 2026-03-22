@@ -6,8 +6,8 @@ use super::blocks::block_common::{Block, PcapNgBlock};
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
 use super::{PcapNgState, RawBlock};
-use crate::{Endianness, PcapError, PcapResult};
-
+use crate::Endianness;
+use crate::pcapng::errors::{ContentValidationError, PcapNgWriteError};
 
 /// Write a PcapNg to a writer.
 ///
@@ -58,33 +58,31 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// # Errors
     /// The writer can't be written to.
-    pub fn new(writer: W) -> PcapResult<Self> {
+    pub fn new(writer: W) -> Result<Self, PcapNgWriteError> {
         Self::with_endianness(writer, Endianness::native())
     }
 
     /// Create a new [`PcapNgWriter`] from an existing writer with the given endianness.
-    pub fn with_endianness(writer: W, endianness: Endianness) -> PcapResult<Self> {
+    pub fn with_endianness(writer: W, endianness: Endianness) -> Result<Self, PcapNgWriteError> {
         let section = SectionHeaderBlock { endianness, ..Default::default() };
 
         Self::with_section_header(writer, section)
     }
 
     /// Create a new [`PcapNgWriter`] from an existing writer with the given section header.
-    pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'_>) -> PcapResult<Self> {
+    pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'_>) -> Result<Self, PcapNgWriteError> {
         let mut state = PcapNgState::default();
 
         let endianness = section.endianness;
 
-        let block = section
-            .into_owned()
-            .into_block();
+        let block = section.into_owned().into_block();
 
         state.update_from_block(&block)?;
 
-        match endianness {
-            Endianness::Big => block.write_to::<BigEndian, _>(&state, &mut writer)?,
-            Endianness::Little => block.write_to::<LittleEndian, _>(&state, &mut writer)?,
-        };
+        let _ = match endianness {
+            Endianness::Big => block.write_to::<BigEndian, _>(&state, &mut writer),
+            Endianness::Little => block.write_to::<LittleEndian, _>(&state, &mut writer),
+        }?;
 
         Ok(Self { state, writer })
     }
@@ -120,25 +118,32 @@ impl<W: Write> PcapNgWriter<W> {
     /// pcap_ng_writer.write_block(&interface.into_block()).unwrap();
     /// pcap_ng_writer.write_block(&packet.into_block()).unwrap();
     /// ```
-    pub fn write_block(&mut self, block: &Block) -> PcapResult<usize> {
-
+    pub fn write_block(&mut self, block: &Block) -> Result<usize, PcapNgWriteError> {
         match block {
             Block::InterfaceStatistics(blk) => {
                 if blk.interface_id as usize >= self.state.interfaces.len() {
-                    return Err(PcapError::InvalidInterfaceId(blk.interface_id));
+                    return Err(PcapNgWriteError::Validation {
+                        field: "InterfaceStatistics.interface_id",
+                        source: ContentValidationError::InvalidInterfaceId(blk.interface_id),
+                    });
                 }
             },
             Block::EnhancedPacket(blk) => {
                 if blk.interface_id as usize >= self.state.interfaces.len() {
-                    return Err(PcapError::InvalidInterfaceId(blk.interface_id));
+                    return Err(PcapNgWriteError::Validation {
+                        field: "EnhancedPacket.interface_id",
+                        source: ContentValidationError::InvalidInterfaceId(blk.interface_id),
+                    });
                 }
             },
 
             _ => (),
         }
 
+        // TODO: Writing a new SectionHeaderBlock currently reuses the previous
+        // section endianness via `self.state`. When section endianness switches
+        // mid-stream, special-case the write byte order before updating state.
         self.state.update_from_block(block)?;
-
         match self.state.section.endianness {
             Endianness::Big => block.write_to::<BigEndian, _>(&self.state, &mut self.writer),
             Endianness::Little => block.write_to::<LittleEndian, _>(&self.state, &mut self.writer),
@@ -176,25 +181,31 @@ impl<W: Write> PcapNgWriter<W> {
     /// pcap_ng_writer.write_pcapng_block(interface).unwrap();
     /// pcap_ng_writer.write_pcapng_block(packet).unwrap();
     /// ```
-    pub fn write_pcapng_block<'a, B: PcapNgBlock<'a>>(&mut self, block: B) -> PcapResult<usize> {
+    pub fn write_pcapng_block<'a, B: PcapNgBlock<'a>>(&mut self, block: B) -> Result<usize, PcapNgWriteError> {
         self.write_block(&block.into_block())
     }
 
     /// Write a [`RawBlock`].
     ///
     /// Doesn't check the validity of the written blocks.
-    pub fn write_raw_block(&mut self, block: &RawBlock) -> PcapResult<usize> {
+    pub fn write_raw_block(&mut self, block: &RawBlock) -> Result<usize, PcapNgWriteError> {
         match self.state.section.endianness {
             Endianness::Big => {
-                let written = block.write_to::<BigEndian, _>(&mut self.writer)?;
+                // TODO: A raw Section Header Block may declare a different
+                // endianness than the current section. Detect that from the raw
+                // body and use it for writing when raw section switches are supported.
                 self.state.update_from_raw_block::<BigEndian>(block)?;
+                let written = block.write_to::<BigEndian, _>(&mut self.writer)?;
                 Ok(written)
             },
             Endianness::Little => {
-                let written = block.write_to::<LittleEndian, _>(&mut self.writer)?;
+                // TODO: A raw Section Header Block may declare a different
+                // endianness than the current section. Detect that from the raw
+                // body and use it for writing when raw section switches are supported.
                 self.state.update_from_raw_block::<LittleEndian>(block)?;
+                let written = block.write_to::<LittleEndian, _>(&mut self.writer)?;
                 Ok(written)
-            }
+            },
         }
     }
 
