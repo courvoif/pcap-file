@@ -3,18 +3,17 @@
 use std::borrow::Cow;
 use std::io::Write;
 
+use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
-use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
-
+use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
 
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
-/// 
+///
 /// Its presence is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SimplePacketBlock<'a> {
@@ -26,18 +25,18 @@ pub struct SimplePacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
         if slice.len() < 4 {
-            return Err(PcapError::InvalidField("SimplePacketBlock: block length < 4"));
+            return Err(BlockContentParseError::BlockContentTooSmall { needed: 4, actual: slice.len() });
         }
-        let original_len = slice.read_u32::<B>().unwrap();
 
+        let original_len = slice.read_u32::<B>().unwrap();
         let packet = SimplePacketBlock { original_len, data: Cow::Borrowed(slice) };
 
         Ok((&[], packet))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
 

@@ -5,7 +5,7 @@ use super::blocks::enhanced_packet::EnhancedPacketBlock;
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
 use super::{PcapNgParser, PcapNgState};
-use crate::errors::PcapError;
+use crate::pcapng::errors::PcapNgReadError;
 use crate::read_buffer::ReadBuffer;
 
 /// Reads a PcapNg from a reader.
@@ -36,7 +36,7 @@ impl<R: Read> PcapNgReader<R> {
     /// Creates a new [`PcapNgReader`] from a reader.
     ///
     /// Parses the first block which must be a valid SectionHeaderBlock.
-    pub fn new(reader: R) -> Result<PcapNgReader<R>, PcapError> {
+    pub fn new(reader: R) -> Result<PcapNgReader<R>, PcapNgReadError> {
         let mut reader = ReadBuffer::new(reader);
         let parser = reader.parse_with(PcapNgParser::new)?;
         Ok(Self { parser, reader })
@@ -50,15 +50,15 @@ impl<R: Read> PcapNgReader<R> {
     /// - Only some variants of [`PcapError::IoError`] are directly recoverable.
     /// - Other errors will prevent the reader from advancing further.
     ///   Some can be recovered by calling [`Self::next_raw_block`].
-    pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapError>> {
+    pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
                     // # SAFETY
                     // Block must NOT contain a mutable reference to the state.
-                    // Keep the annotations to be sure that only the lifetime is transmuted.
-                    let res: Result<Block<'_>, PcapError> = self.reader.parse_with(|src| self.parser.next_block(src));
-                    let res: Result<Block<'_>, PcapError> = unsafe { std::mem::transmute(res) };
+                    // Keep the annotations to be sure that only the lifetime is trnasmuted.
+                    let res: Result<Block<'_>, PcapNgReadError> = self.reader.parse_with(|src| self.parser.next_block(src));
+                    let res: Result<Block<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
 
                     let state = &self.parser.state;
 
@@ -67,7 +67,7 @@ impl<R: Read> PcapNgReader<R> {
                     None
                 }
             },
-            Err(e) => Some(Err(PcapError::IoError(e))),
+            Err(e) => Some(Err(PcapNgReadError::Io(e))),
         }
     }
 
@@ -80,15 +80,15 @@ impl<R: Read> PcapNgReader<R> {
     /// # Errors
     /// - Only some variants of [`PcapError::IoError`] are directly recoverable.
     /// - All other errors will prevent the reader from advancing further.
-    pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapError>> {
+    pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
                     // # SAFETY
                     // Block must NOT contain a mutable reference to the state.
                     // Keep the annotations to be sure that only the lifetime is transmuted.
-                    let res: Result<RawBlock<'_>, PcapError> = self.reader.parse_with(|src| self.parser.next_raw_block(src));
-                    let res: Result<RawBlock<'_>, PcapError> = unsafe { std::mem::transmute(res) };
+                    let res: Result<RawBlock<'_>, PcapNgReadError> = self.reader.parse_with(|src| self.parser.next_raw_block(src));
+                    let res: Result<RawBlock<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
 
                     let state = &self.parser.state;
 
@@ -97,7 +97,7 @@ impl<R: Read> PcapNgReader<R> {
                     None
                 }
             },
-            Err(e) => Some(Err(PcapError::IoError(e))),
+            Err(e) => Some(Err(PcapNgReadError::Io(e))),
         }
     }
 
