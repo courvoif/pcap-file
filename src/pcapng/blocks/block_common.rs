@@ -18,9 +18,8 @@ use super::section_header::SectionHeaderBlock;
 use super::simple_packet::SimplePacketBlock;
 use super::systemd_journal_export::SystemdJournalExportBlock;
 use super::unknown::UnknownBlock;
-use crate::PcapResult;
-use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
+use crate::pcapng::errors::{BlockContentParseError, BlockConversionError, PcapNgFormatError, PcapNgWriteError, RawBlockParseError};
 
 /// Section header block type
 pub const SECTION_HEADER_BLOCK: u32 = 0x0A0D0D0A;
@@ -70,45 +69,45 @@ pub struct RawBlock<'a> {
 
 impl<'a> RawBlock<'a> {
     /// Parses a borrowed [`RawBlock`] from a slice.
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), RawBlockParseError> {
         if slice.len() < 12 {
-            return Err(PcapError::IncompleteBuffer(12, slice.len()));
+            return Err(RawBlockParseError::IncompleteBuffer(12, slice.len()));
         }
 
-        let type_ = slice.read_u32::<B>().unwrap();
+        let type_ = slice.read_u32::<B>().expect("slice length checked above");
 
         // Special case for the section header because we don't know the endianness yet
         if type_ == SECTION_HEADER_BLOCK {
-            let initial_len = slice.read_u32::<BigEndian>().unwrap();
+            let initial_len = slice.read_u32::<BigEndian>().expect("slice length checked above");
 
             // Check the first field of the Section header to find the endianness
             let mut tmp_slice = slice;
-            let magic = tmp_slice.read_u32::<BigEndian>().unwrap();
+            let magic = tmp_slice.read_u32::<BigEndian>().expect("slice length checked above");
             let res = match magic {
                 0x1A2B3C4D => inner_parse::<BigEndian>(slice, type_, initial_len),
                 0x4D3C2B1A => inner_parse::<LittleEndian>(slice, type_, initial_len.swap_bytes()),
-                _ => Err(PcapError::InvalidField("SectionHeaderBlock: invalid magic number")),
+                _ => Err(PcapNgFormatError::InvalidMagicNumber(magic).into()),
             };
 
             return res;
         } else {
-            let initial_len = slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))?;
+            let initial_len = slice.read_u32::<B>().expect("slice length checked above");
             return inner_parse::<B>(slice, type_, initial_len);
         };
 
         // Section Header parsing
-        fn inner_parse<B: ByteOrder>(slice: &[u8], type_: u32, initial_len: u32) -> Result<(&[u8], RawBlock<'_>), PcapError> {
+        fn inner_parse<B: ByteOrder>(slice: &[u8], type_: u32, initial_len: u32) -> Result<(&[u8], RawBlock<'_>), RawBlockParseError> {
             if !initial_len.is_multiple_of(4) {
-                return Err(PcapError::InvalidField("Block: (initial_len % 4) != 0"));
+                return Err(PcapNgFormatError::BlockNotAligned(initial_len as usize).into());
             }
 
             if initial_len < 12 {
-                return Err(PcapError::InvalidField("Block: initial_len < 12"));
+                return Err(PcapNgFormatError::BlockTooShort(12, initial_len as usize).into());
             }
 
-            // Check if there is enough data for the body and the trailer_len
+            // Check if there is enough data in the slice for the body and the trailer_len
             if slice.len() < initial_len as usize - 8 {
-                return Err(PcapError::IncompleteBuffer(initial_len as usize - 8, slice.len()));
+                return Err(RawBlockParseError::IncompleteBuffer(initial_len as usize - 8, slice.len() + 8));
             }
 
             let body_len = initial_len - 12;
@@ -116,10 +115,10 @@ impl<'a> RawBlock<'a> {
 
             let mut rem = &slice[body_len as usize..];
 
-            let trailer_len = rem.read_u32::<B>().unwrap();
+            let trailer_len = rem.read_u32::<B>().expect("slice length checked above");
 
             if initial_len != trailer_len {
-                return Err(PcapError::InvalidField("Block: initial_length != trailer_length"));
+                return Err(PcapNgFormatError::BlockLengthMismatch(initial_len, trailer_len).into());
             }
 
             let block = RawBlock { type_, initial_len, body: Cow::Borrowed(body), trailer_len };
@@ -131,7 +130,7 @@ impl<'a> RawBlock<'a> {
     /// Writes a [`RawBlock`] to a writer.
     ///
     /// Uses the endianness of the header.
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapError> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, std::io::Error> {
         writer.write_u32::<B>(self.type_)?;
         writer.write_u32::<B>(self.initial_len)?;
         writer.write_all(&self.body[..])?;
@@ -142,16 +141,16 @@ impl<'a> RawBlock<'a> {
 
     /// Tries to convert a [`RawBlock`] into a [`Block`], using a [`PcapNgState`].
     /// The byteorder is defined by the `state`.
-    pub fn try_into_block(self, state: &PcapNgState) -> PcapResult<Block<'a>> {
+    pub fn try_into_block(self, state: &PcapNgState) -> Result<Block<'a>, BlockConversionError> {
         match state.section.endianness {
             crate::Endianness::Big => Block::try_from_raw_block::<BigEndian>(state, self),
             crate::Endianness::Little => Block::try_from_raw_block::<LittleEndian>(state, self),
         }
     }
-    
+
     /// Tries to convert a [`RawBlock`] into a [`Block`], using a [`PcapNgState`].
     /// The byteorder is defined by the caller
-    pub fn try_into_block_with_byteorder<B: ByteOrder>(self, state: &PcapNgState) -> PcapResult<Block<'a>> {
+    pub fn try_into_block_with_byteorder<B: ByteOrder>(self, state: &PcapNgState) -> Result<Block<'a>, BlockConversionError> {
         Block::try_from_raw_block::<B>(state, self)
     }
 }
@@ -184,16 +183,41 @@ pub enum Block<'a> {
 }
 
 impl<'a> Block<'a> {
-    /// Parses a [`Block`] from a slice, using a [`PcapNgState`].
-    pub fn from_slice<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
-        let (rem, raw_block) = RawBlock::from_slice::<B>(slice)?;
-        let block = Self::try_from_raw_block::<B>(state, raw_block)?;
+    /// Tries to create a [`Block`] from a [`RawBlock`], given a [`PcapNgState`].
+    ///
+    /// The RawBlock must be Borrowed.
+    pub fn try_from_raw_block<B: ByteOrder>(state: &PcapNgState, raw_block: RawBlock<'a>) -> Result<Block<'a>, BlockConversionError> {
+        let body = match raw_block.body {
+            Cow::Borrowed(b) => b,
+            // TODO: Accept owned RawBlock bodies without panicking, or encode the
+            // borrowed-only requirement in the public API.
+            _ => panic!("The raw block is not borrowed"),
+        };
 
-        Ok((rem, block))
+        match raw_block.type_ {
+            SECTION_HEADER_BLOCK => SectionHeaderBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SectionHeader(blk)),
+            INTERFACE_DESCRIPTION_BLOCK => {
+                InterfaceDescriptionBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::InterfaceDescription(blk))
+            },
+            PACKET_BLOCK => PacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::Packet(blk)),
+            SIMPLE_PACKET_BLOCK => SimplePacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SimplePacket(blk)),
+            NAME_RESOLUTION_BLOCK => NameResolutionBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::NameResolution(blk)),
+            INTERFACE_STATISTIC_BLOCK => {
+                InterfaceStatisticsBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::InterfaceStatistics(blk))
+            },
+            ENHANCED_PACKET_BLOCK => EnhancedPacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::EnhancedPacket(blk)),
+            SYSTEMD_JOURNAL_EXPORT_BLOCK => {
+                SystemdJournalExportBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SystemdJournalExport(blk))
+            },
+            CUSTOM_BLOCK_COPIABLE => CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomCopiable(blk)),
+            CUSTOM_BLOCK_NON_COPIABLE => CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomNonCopiable(blk)),
+            type_ => Ok(Block::Unknown(UnknownBlock::new(type_, raw_block.initial_len, body))),
+        }
+        .map_err(|source| BlockConversionError { name: block_name(raw_block.type_), type_: raw_block.type_, source })
     }
 
     /// Writes a [`Block`] to a writer, using a [`PcapNgState`].
-    pub fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         return match self {
             Self::SectionHeader(b) => inner_write_to::<B, _, W>(state, b, SECTION_HEADER_BLOCK, writer),
             Self::InterfaceDescription(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_DESCRIPTION_BLOCK, writer),
@@ -208,14 +232,17 @@ impl<'a> Block<'a> {
             Self::Unknown(b) => inner_write_to::<B, _, W>(state, b, b.type_, writer),
         };
 
+        // TODO: Replace the unchecked `len as u16` writes in these impls with checked
+        // conversions so oversized option payloads return a typed error instead of
+        // truncating on the wire.
         fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(
             state: &PcapNgState,
             block: &BL,
             block_code: u32,
             writer: &mut W,
-        ) -> Result<usize, PcapError> {
+        ) -> Result<usize, PcapNgWriteError> {
             // Fake write to compute the data length
-            let data_len = block.write_to::<B, _>(state, &mut std::io::sink()).unwrap();
+            let data_len = block.write_to::<B, _>(state, &mut std::io::sink())?;
             let pad_len = (4 - (data_len % 4)) % 4;
 
             let block_len = data_len + pad_len + 12;
@@ -227,60 +254,6 @@ impl<'a> Block<'a> {
             writer.write_u32::<B>(block_len as u32)?;
 
             Ok(block_len)
-        }
-    }
-
-    /// Tries to create a [`Block`] from a [`RawBlock`], given a [`PcapNgState`].
-    ///
-    /// The RawBlock must be Borrowed.
-    pub fn try_from_raw_block<B: ByteOrder>(state: &PcapNgState, raw_block: RawBlock<'a>) -> Result<Block<'a>, PcapError> {
-        let body = match raw_block.body {
-            Cow::Borrowed(b) => b,
-            _ => panic!("The raw block is not borrowed"),
-        };
-
-        match raw_block.type_ {
-            SECTION_HEADER_BLOCK => {
-                let (_, block) = SectionHeaderBlock::from_slice::<BigEndian>(state, body)?;
-                Ok(Block::SectionHeader(block))
-            },
-            INTERFACE_DESCRIPTION_BLOCK => {
-                let (_, block) = InterfaceDescriptionBlock::from_slice::<B>(state, body)?;
-                Ok(Block::InterfaceDescription(block))
-            },
-            PACKET_BLOCK => {
-                let (_, block) = PacketBlock::from_slice::<B>(state, body)?;
-                Ok(Block::Packet(block))
-            },
-            SIMPLE_PACKET_BLOCK => {
-                let (_, block) = SimplePacketBlock::from_slice::<B>(state, body)?;
-                Ok(Block::SimplePacket(block))
-            },
-            NAME_RESOLUTION_BLOCK => {
-                let (_, block) = NameResolutionBlock::from_slice::<B>(state, body)?;
-                Ok(Block::NameResolution(block))
-            },
-            INTERFACE_STATISTIC_BLOCK => {
-                let (_, block) = InterfaceStatisticsBlock::from_slice::<B>(state, body)?;
-                Ok(Block::InterfaceStatistics(block))
-            },
-            ENHANCED_PACKET_BLOCK => {
-                let (_, block) = EnhancedPacketBlock::from_slice::<B>(state, body)?;
-                Ok(Block::EnhancedPacket(block))
-            },
-            SYSTEMD_JOURNAL_EXPORT_BLOCK => {
-                let (_, block) = SystemdJournalExportBlock::from_slice::<B>(state, body)?;
-                Ok(Block::SystemdJournalExport(block))
-            },
-            CUSTOM_BLOCK_COPIABLE => {
-                let (_, block) = CustomBlock::from_slice::<B>(state, body)?;
-                Ok(Block::CustomCopiable(block))
-            },
-            CUSTOM_BLOCK_NON_COPIABLE => {
-                let (_, block) = CustomBlock::from_slice::<B>(state, body)?;
-                Ok(Block::CustomNonCopiable(block))
-            },
-            type_ => Ok(Block::Unknown(UnknownBlock::new(type_, raw_block.initial_len, body))),
         }
     }
 
@@ -448,13 +421,30 @@ impl<'a> Block<'a> {
 /// Common interface for the PcapNg blocks
 pub trait PcapNgBlock<'a> {
     /// Parse a new block from a slice, using a [`PcapNgState`].
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError>
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError>
     where
         Self: std::marker::Sized;
 
     /// Write the content of a block into a writer, using a [`PcapNgState`].
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError>;
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError>;
 
     /// Convert a block into the [`Block`] enumeration
     fn into_block(self) -> Block<'a>;
+}
+
+/// Convert a block type into its name
+pub fn block_name(type_: u32) -> &'static str {
+    match type_ {
+        SECTION_HEADER_BLOCK => "Section Header Block",
+        INTERFACE_DESCRIPTION_BLOCK => "Interface Description Block",
+        PACKET_BLOCK => "Packet Block",
+        SIMPLE_PACKET_BLOCK => "Simple Packet Block",
+        NAME_RESOLUTION_BLOCK => "Name Resolution Block",
+        INTERFACE_STATISTIC_BLOCK => "Interface Statistics Block",
+        ENHANCED_PACKET_BLOCK => "Enhanced Packet Block",
+        SYSTEMD_JOURNAL_EXPORT_BLOCK => "Systemd Journal Export Block",
+        CUSTOM_BLOCK_COPIABLE => "Custom Block (Copiable)",
+        CUSTOM_BLOCK_NON_COPIABLE => "Custom Block (Non-Copiable)",
+        _ => "Unknown Block",
+    }
 }

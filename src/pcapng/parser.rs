@@ -6,18 +6,17 @@ use super::blocks::enhanced_packet::EnhancedPacketBlock;
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
 use crate::Endianness;
-use crate::errors::PcapError;
+use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 
 /// Parses a PcapNg from a slice of bytes.
 ///
-/// You can match on [`PcapError::IncompleteBuffer`] to know if the parser need more data.
+/// You can match on [`PcapNgParseError::IncompleteBuffer`](crate::pcapng::PcapNgParseError) to know if the parser needs more data.
 ///
 /// # Example
 /// ```rust,no_run
 /// use std::fs::File;
 ///
-/// use pcap_file::pcapng::PcapNgParser;
-/// use pcap_file::PcapError;
+/// use pcap_file::pcapng::{PcapNgParseError, PcapNgParser};
 ///
 /// let pcap = std::fs::read("test.pcapng").expect("Error reading file");
 /// let mut src = &pcap[..];
@@ -33,7 +32,7 @@ use crate::errors::PcapError;
 ///             // Don't forget to update src
 ///             src = rem;
 ///         },
-///         Err(PcapError::IncompleteBuffer(_,_)) => {
+///         Err(PcapNgParseError::IncompleteBuffer(_,_)) => {
 ///             // Load more data into src
 ///         },
 ///         Err(_) => {
@@ -51,14 +50,15 @@ impl PcapNgParser {
     /// Creates a new [`PcapNgParser`].
     ///
     /// Parses the first block which must be a valid SectionHeaderBlock.
-    pub fn new(src: &[u8]) -> Result<(&[u8], Self), PcapError> {
+    pub fn new(src: &[u8]) -> Result<(&[u8], Self), PcapNgParseError> {
         // Always use BigEndian here because we can't know the SectionHeaderBlock endianness
         let mut state = PcapNgState::default();
 
-        let (rem, block) = Block::from_slice::<BigEndian>(&state, src)?;
+        let (rem, raw_block) = RawBlock::from_slice::<BigEndian>(src)?;
+        let block = Block::try_from_raw_block::<BigEndian>(&state, raw_block)?;
 
         if !matches!(&block, Block::SectionHeader(_)) {
-            return Err(PcapError::InvalidField("PcapNg: SectionHeader invalid or missing"));
+            return Err(PcapNgFormatError::MissingSectionHeader.into());
         };
 
         state.update_from_block(&block)?;
@@ -71,14 +71,15 @@ impl PcapNgParser {
     /// Returns the remainder and the next [`Block`].
     ///
     /// # Errors
-    /// - Only [`PcapError::IncompleteBuffer`] is recoverable (by loading more data).
+    /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
     /// - Other errors will prevent the parser from advancing further.
     ///   Some can be recovered by calling [`Self::next_raw_block`].
-    pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
+    pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
         // Read next RawBlock and convert it to block
         self.next_raw_block(src).and_then(|(rem, raw)| {
             let state = &self.state;
-            raw.try_into_block(state).map(|block| (rem, block))
+            let block = raw.try_into_block(state)?;
+            Ok((rem, block))
         })
     }
 
@@ -90,7 +91,7 @@ impl PcapNgParser {
     /// # Errors
     /// - Only [`PcapError::IncompleteBuffer`] is recoverable (by loading more data).
     /// - All other errors will prevent the parser from advancing further.
-    pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapError> {
+    pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
         // Read next Block
         match self.state.section.endianness {
             Endianness::Big => self.next_raw_block_inner::<BigEndian>(src),
@@ -99,7 +100,7 @@ impl PcapNgParser {
     }
 
     /// Inner function to parse the next raw block.
-    fn next_raw_block_inner<'a, B: ByteOrder>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapError> {
+    fn next_raw_block_inner<'a, B: ByteOrder>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
         let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
         self.state.update_from_raw_block::<B>(&raw_block)?;
         Ok((rem, raw_block))

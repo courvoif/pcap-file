@@ -1,8 +1,7 @@
 use std::io::Read;
 
 use super::{PcapParser, RawPcapPacket};
-use crate::errors::*;
-use crate::pcap::{PcapHeader, PcapPacket};
+use crate::pcap::{PcapHeader, PcapPacket, PcapReadError};
 use crate::read_buffer::ReadBuffer;
 
 /// Reads a pcap from a reader.
@@ -42,9 +41,9 @@ impl<R: Read> PcapReader<R> {
     /// The data stream is not in a valid pcap file format.
     ///
     /// The underlying data are not readable.
-    pub fn new(reader: R) -> Result<PcapReader<R>, PcapError> {
+    pub fn new(reader: R) -> Result<PcapReader<R>, PcapReadError> {
         let mut reader = ReadBuffer::new(reader);
-        let parser = reader.parse_with(PcapParser::new)?;
+        let parser = reader.parse_with2(PcapParser::new)?;
 
         Ok(PcapReader { parser, reader })
     }
@@ -61,41 +60,41 @@ impl<R: Read> PcapReader<R> {
     /// # Errors
     /// - Some variants of [`PcapError::IoError`] can be retried.
     /// - Other variants can be retried using [`Self::next_raw_packet`] to parse the faulty packet.
-    pub fn next_packet(&mut self) -> Option<Result<PcapPacket<'_>, PcapError>> {
+    pub fn next_packet(&mut self) -> Option<Result<PcapPacket<'_>, PcapReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
-                    Some(self.reader.parse_with(|src| self.parser.next_packet(src)))
+                    Some(self.reader.parse_with2(|src| self.parser.next_packet(src)))
                 } else {
                     None
                 }
             },
-            Err(e) => Some(Err(PcapError::IoError(e))),
+            Err(e) => Some(Err(PcapReadError::Io(e))),
         }
     }
 
     /// Returns the next [`RawPcapPacket`].
     /// [`None`] means that the reader have reached the EoF.
-    /// 
+    ///
     /// More permissive than [`Self::next_packet`], can be used to parse malformed files.
-    /// 
+    ///
     /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
     ///
     /// # Errors
     /// - Only [`PcapError::IoError`] can happen, some of its variants can be retried.
-    pub fn next_raw_packet(&mut self) -> Option<Result<RawPcapPacket<'_>, PcapError>> {
+    pub fn next_raw_packet(&mut self) -> Option<Result<RawPcapPacket<'_>, PcapReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
-                    Some(self.reader.parse_with(|src| self.parser.next_raw_packet(src)))
+                    Some(self.reader.parse_with2(|src| self.parser.next_raw_packet(src)))
                 } else {
                     None
                 }
             },
-            Err(e) => Some(Err(PcapError::IoError(e))),
+            Err(e) => Some(Err(PcapReadError::Io(e))),
         }
     }
-    
+
     /// Returns the global header of the pcap.
     pub fn header(&self) -> PcapHeader {
         self.parser.header()

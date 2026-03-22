@@ -4,15 +4,15 @@ use std::borrow::Cow;
 use std::io::Write;
 use std::time::Duration;
 
+use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
-use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
-use crate::errors::PcapError;
 use crate::pcapng::PcapNgState;
+use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
@@ -22,7 +22,7 @@ pub struct PacketBlock<'a> {
     pub interface_id: u16,
 
     /// Local drop counter.
-    /// 
+    ///
     /// It specifies the number of packets lost (by the interface and the operating system)
     /// between this packet and the preceding one.
     pub drop_count: u16,
@@ -44,14 +44,16 @@ pub struct PacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
         if slice.len() < 20 {
-            return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
+            return Err(BlockContentParseError::BlockContentTooSmall { needed: 20, actual: slice.len() });
         }
 
         let interface_id = slice.read_u16::<B>().unwrap();
         let drop_count = slice.read_u16::<B>().unwrap();
-        let timestamp = state.decode_timestamp::<B>(interface_id as u32, &mut slice)?;
+        let timestamp_high = slice.read_u32::<B>().unwrap();
+        let timestamp_low = slice.read_u32::<B>().unwrap();
+        let timestamp = state.decode_timestamp(interface_id as u32, timestamp_high, timestamp_low)?;
         let captured_len = slice.read_u32::<B>().unwrap();
         let original_len = slice.read_u32::<B>().unwrap();
 
@@ -59,7 +61,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let tot_len = captured_len as usize + pad_len;
 
         if slice.len() < tot_len {
-            return Err(PcapError::InvalidField("EnhancedPacketBlock: captured_len + padding > block length"));
+            return Err(BlockContentParseError::BlockContentTooSmall { needed: tot_len, actual: slice.len() });
         }
 
         let data = &slice[..captured_len as usize];
@@ -79,10 +81,14 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         writer.write_u16::<B>(self.interface_id)?;
         writer.write_u16::<B>(self.drop_count)?;
-        state.encode_timestamp::<B, W>(self.interface_id as u32, self.timestamp, writer)?;
+        let (timestamp_high, timestamp_low) = state
+            .encode_timestamp(self.interface_id as u32, self.timestamp)
+            .map_err(|source| PcapNgWriteError::Validation { field: "PacketBlock::timestamp", source })?;
+        writer.write_u32::<B>(timestamp_high)?;
+        writer.write_u32::<B>(timestamp_low)?;
         writer.write_u32::<B>(self.captured_len)?;
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
@@ -113,27 +119,51 @@ pub enum PacketOption<'a> {
     Common(CommonOption<'a>),
 }
 
+impl PacketOption<'_> {
+    const FLAGS: u16 = 2;
+    const HASH: u16 = 3;
+}
+
 impl<'a> PcapNgOption<'a> for PacketOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(
+        _state: &PcapNgState,
+        _interface_id: Option<u32>,
+        code: u16,
+        mut slice: &'a [u8],
+    ) -> Result<Self, OptionEntryError> {
         let opt = match code {
-            2 => {
+            Self::FLAGS => {
                 if slice.len() != 4 {
-                    return Err(PcapError::InvalidField("PacketOption: Flags length != 4"));
+                    return Err(OptionEntryError::WrongSize { expected: 4, actual: slice.len() });
                 }
-                PacketOption::Flags(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))?)
+                PacketOption::Flags(slice.read_u32::<B>().unwrap())
             },
-            3 => PacketOption::Hash(Cow::Borrowed(slice)),
+            Self::HASH => PacketOption::Hash(Cow::Borrowed(slice)),
             _ => PacketOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
-        Ok(match self {
-            PacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
-            PacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),
+    fn write_to<B: ByteOrder, W: Write>(
+        &self,
+        _state: &PcapNgState,
+        _interface_id: Option<u32>,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError> {
+        match self {
+            PacketOption::Flags(a) => a.write_opt_to::<B, W>(Self::FLAGS, writer),
+            PacketOption::Hash(a) => a.write_opt_to::<B, W>(Self::HASH, writer),
             PacketOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
-        }?)
+        }
+        .map_err(Into::into)
+    }
+
+    fn code_name(code: u16) -> &'static str {
+        match code {
+            Self::FLAGS => "Flags",
+            Self::HASH => "Hash",
+            _ => CommonOption::code_name(code),
+        }
     }
 }

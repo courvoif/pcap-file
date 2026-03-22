@@ -6,18 +6,17 @@ use std::borrow::Cow;
 use std::io::Write;
 use std::time::Duration;
 
+use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
-use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 use once_cell::sync::Lazy;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
-use crate::errors::PcapError;
-use crate::pcapng::PcapNgState;
 use crate::DataLink;
-
+use crate::pcapng::PcapNgState;
+use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.
@@ -40,16 +39,16 @@ pub struct InterfaceDescriptionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
+    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
         if slice.len() < 8 {
-            return Err(PcapError::InvalidField("InterfaceDescriptionBlock: block length < 8"));
+            return Err(BlockContentParseError::BlockContentTooSmall { needed: 8, actual: slice.len() });
         }
 
         let linktype = (slice.read_u16::<B>().unwrap() as u32).into();
 
         let reserved = slice.read_u16::<B>().unwrap();
         if reserved != 0 {
-            return Err(PcapError::InvalidField("InterfaceDescriptionBlock: reserved != 0"));
+            return Err(ContentValidationError::InvalidReservedField(reserved).into());
         }
 
         let snaplen = slice.read_u32::<B>().unwrap();
@@ -60,7 +59,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
+    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         writer.write_u16::<B>(u32::from(self.linktype) as u16)?;
         writer.write_u16::<B>(0)?;
         writer.write_u32::<B>(self.snaplen)?;
@@ -82,7 +81,7 @@ impl<'a> InterfaceDescriptionBlock<'a> {
 
     /// Returns the timestamp resolution of the interface.
     /// If no ts_resolution is set, defaults to μs.
-    pub fn ts_resolution(&self) -> Result<TsResolution, PcapError> {
+    pub fn ts_resolution(&self) -> Result<TsResolution, ContentValidationError> {
         let mut ts_resol = Ok(TsResolution::default());
 
         for opt in &self.options {
@@ -99,14 +98,13 @@ impl<'a> InterfaceDescriptionBlock<'a> {
     pub fn ts_offset(&self) -> Duration {
         for opt in &self.options {
             if let InterfaceDescriptionOption::IfTsOffset(offset) = opt {
-                return Duration::from_secs(*offset)
+                return Duration::from_secs(*offset);
             }
         }
 
         Duration::ZERO
     }
 }
-
 
 /* ----- */
 
@@ -162,73 +160,95 @@ pub enum InterfaceDescriptionOption<'a> {
     Common(CommonOption<'a>),
 }
 
+impl InterfaceDescriptionOption<'_> {
+    const IF_NAME: u16 = 2;
+    const IF_DESCRIPTION: u16 = 3;
+    const IF_IPV4_ADDR: u16 = 4;
+    const IF_IPV6_ADDR: u16 = 5;
+    const IF_MAC_ADDR: u16 = 6;
+    const IF_EU_ADDR: u16 = 7;
+    const IF_SPEED: u16 = 8;
+    const IF_TS_RESOL: u16 = 9;
+    const IF_T_ZONE: u16 = 10;
+    const IF_FILTER: u16 = 11;
+    const IF_OS: u16 = 12;
+    const IF_FCS_LEN: u16 = 13;
+    const IF_TS_OFFSET: u16 = 14;
+    const IF_HARDWARE: u16 = 15;
+}
+
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, _interface_id: Option<u32>, code: u16, mut slice: &'a [u8]) -> Result<Self, PcapError> {
+    fn from_slice<B: ByteOrder>(
+        _state: &PcapNgState,
+        _interface_id: Option<u32>,
+        code: u16,
+        mut slice: &'a [u8],
+    ) -> Result<Self, OptionEntryError> {
         let opt = match code {
-            2 => InterfaceDescriptionOption::IfName(Cow::Borrowed(std::str::from_utf8(slice)?)),
-            3 => InterfaceDescriptionOption::IfDescription(Cow::Borrowed(std::str::from_utf8(slice)?)),
-            4 => {
+            Self::IF_NAME => InterfaceDescriptionOption::IfName(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            Self::IF_DESCRIPTION => InterfaceDescriptionOption::IfDescription(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            Self::IF_IPV4_ADDR => {
                 if slice.len() != 8 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfIpv4Addr length != 8"));
+                    return Err(OptionEntryError::WrongSize { expected: 8, actual: slice.len() });
                 }
                 InterfaceDescriptionOption::IfIpv4Addr(Cow::Borrowed(slice))
             },
-            5 => {
+            Self::IF_IPV6_ADDR => {
                 if slice.len() != 17 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfIpv6Addr length != 17"));
+                    return Err(OptionEntryError::WrongSize { expected: 17, actual: slice.len() });
                 }
                 InterfaceDescriptionOption::IfIpv6Addr(Cow::Borrowed(slice))
             },
-            6 => {
+            Self::IF_MAC_ADDR => {
                 if slice.len() != 6 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfMacAddr length != 6"));
+                    return Err(OptionEntryError::WrongSize { expected: 6, actual: slice.len() });
                 }
                 InterfaceDescriptionOption::IfMacAddr(Cow::Borrowed(slice))
             },
-            7 => {
+            Self::IF_EU_ADDR => {
                 if slice.len() != 8 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfEuIAddr length != 8"));
+                    return Err(OptionEntryError::WrongSize { expected: 8, actual: slice.len() });
                 }
-                InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?)
+                InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>().unwrap())
             },
-            8 => {
+            Self::IF_SPEED => {
                 if slice.len() != 8 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfSpeed length != 8"));
+                    return Err(OptionEntryError::WrongSize { expected: 8, actual: slice.len() });
                 }
-                InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?)
+                InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>().unwrap())
             },
-            9 => {
+            Self::IF_TS_RESOL => {
                 if slice.len() != 1 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsResol length != 1"));
+                    return Err(OptionEntryError::WrongSize { expected: 1, actual: slice.len() });
                 }
-                InterfaceDescriptionOption::IfTsResol(slice.read_u8().map_err(|_| PcapError::IncompleteBuffer(1, slice.len()))?)
+                InterfaceDescriptionOption::IfTsResol(slice.read_u8().unwrap())
             },
-            10 => {
-                if slice.len() != 1 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTzone length != 1"));
+            Self::IF_T_ZONE => {
+                if slice.len() != 4 {
+                    return Err(OptionEntryError::WrongSize { expected: 4, actual: slice.len() });
                 }
-                InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, slice.len()))?)
+                InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>().unwrap())
             },
-            11 => {
+            Self::IF_FILTER => {
                 if slice.is_empty() {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFilter is empty"));
+                    return Err(OptionEntryError::WrongSize { expected: 0, actual: slice.len() });
                 }
                 InterfaceDescriptionOption::IfFilter(Cow::Borrowed(slice))
             },
-            12 => InterfaceDescriptionOption::IfOs(Cow::Borrowed(std::str::from_utf8(slice)?)),
-            13 => {
+            Self::IF_OS => InterfaceDescriptionOption::IfOs(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            Self::IF_FCS_LEN => {
                 if slice.len() != 1 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfFcsLen length != 1"));
+                    return Err(OptionEntryError::WrongSize { expected: 1, actual: slice.len() });
                 }
-                InterfaceDescriptionOption::IfFcsLen(slice.read_u8().map_err(|_| PcapError::IncompleteBuffer(1, slice.len()))?)
+                InterfaceDescriptionOption::IfFcsLen(slice.read_u8().unwrap())
             },
-            14 => {
+            Self::IF_TS_OFFSET => {
                 if slice.len() != 8 {
-                    return Err(PcapError::InvalidField("InterfaceDescriptionOption: IfTsOffset length != 8"));
+                    return Err(OptionEntryError::WrongSize { expected: 8, actual: slice.len() });
                 }
-                InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>().map_err(|_| PcapError::IncompleteBuffer(8, slice.len()))?)
+                InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>().unwrap())
             },
-            15 => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            Self::IF_HARDWARE => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
             _ => InterfaceDescriptionOption::Common(CommonOption::new::<B>(code, slice)?),
         };
@@ -236,27 +256,52 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
         Ok(opt)
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, _interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError> {
-        Ok(match self {
-            InterfaceDescriptionOption::IfName(a) => a.write_opt_to::<B, W>(2, writer),
-            InterfaceDescriptionOption::IfDescription(a) => a.write_opt_to::<B, W>(3, writer),
-            InterfaceDescriptionOption::IfIpv4Addr(a) => a.write_opt_to::<B, W>(4, writer),
-            InterfaceDescriptionOption::IfIpv6Addr(a) => a.write_opt_to::<B, W>(5, writer),
-            InterfaceDescriptionOption::IfMacAddr(a) => a.write_opt_to::<B, W>(6, writer),
-            InterfaceDescriptionOption::IfEuIAddr(a) => a.write_opt_to::<B, W>(7, writer),
-            InterfaceDescriptionOption::IfSpeed(a) => a.write_opt_to::<B, W>(8, writer),
-            InterfaceDescriptionOption::IfTsResol(a) => a.write_opt_to::<B, W>(9, writer),
-            InterfaceDescriptionOption::IfTzone(a) => a.write_opt_to::<B, W>(10, writer),
-            InterfaceDescriptionOption::IfFilter(a) => a.write_opt_to::<B, W>(11, writer),
-            InterfaceDescriptionOption::IfOs(a) => a.write_opt_to::<B, W>(12, writer),
-            InterfaceDescriptionOption::IfFcsLen(a) => a.write_opt_to::<B, W>(13, writer),
-            InterfaceDescriptionOption::IfTsOffset(a) => a.write_opt_to::<B, W>(14, writer),
-            InterfaceDescriptionOption::IfHardware(a) => a.write_opt_to::<B, W>(15, writer),
+    fn write_to<B: ByteOrder, W: Write>(
+        &self,
+        _state: &PcapNgState,
+        _interface_id: Option<u32>,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError> {
+        match self {
+            InterfaceDescriptionOption::IfName(a) => a.write_opt_to::<B, W>(Self::IF_NAME, writer),
+            InterfaceDescriptionOption::IfDescription(a) => a.write_opt_to::<B, W>(Self::IF_DESCRIPTION, writer),
+            InterfaceDescriptionOption::IfIpv4Addr(a) => a.write_opt_to::<B, W>(Self::IF_IPV4_ADDR, writer),
+            InterfaceDescriptionOption::IfIpv6Addr(a) => a.write_opt_to::<B, W>(Self::IF_IPV6_ADDR, writer),
+            InterfaceDescriptionOption::IfMacAddr(a) => a.write_opt_to::<B, W>(Self::IF_MAC_ADDR, writer),
+            InterfaceDescriptionOption::IfEuIAddr(a) => a.write_opt_to::<B, W>(Self::IF_EU_ADDR, writer),
+            InterfaceDescriptionOption::IfSpeed(a) => a.write_opt_to::<B, W>(Self::IF_SPEED, writer),
+            InterfaceDescriptionOption::IfTsResol(a) => a.write_opt_to::<B, W>(Self::IF_TS_RESOL, writer),
+            InterfaceDescriptionOption::IfTzone(a) => a.write_opt_to::<B, W>(Self::IF_T_ZONE, writer),
+            InterfaceDescriptionOption::IfFilter(a) => a.write_opt_to::<B, W>(Self::IF_FILTER, writer),
+            InterfaceDescriptionOption::IfOs(a) => a.write_opt_to::<B, W>(Self::IF_OS, writer),
+            InterfaceDescriptionOption::IfFcsLen(a) => a.write_opt_to::<B, W>(Self::IF_FCS_LEN, writer),
+            InterfaceDescriptionOption::IfTsOffset(a) => a.write_opt_to::<B, W>(Self::IF_TS_OFFSET, writer),
+            InterfaceDescriptionOption::IfHardware(a) => a.write_opt_to::<B, W>(Self::IF_HARDWARE, writer),
             InterfaceDescriptionOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
-        }?)
+        }
+        .map_err(Into::into)
+    }
+
+    fn code_name(code: u16) -> &'static str {
+        match code {
+            Self::IF_NAME => "IfName",
+            Self::IF_DESCRIPTION => "IfDescription",
+            Self::IF_IPV4_ADDR => "IfIpv4Addr",
+            Self::IF_IPV6_ADDR => "IfIpv6Addr",
+            Self::IF_MAC_ADDR => "IfMacAddr",
+            Self::IF_EU_ADDR => "IfEuIAddr",
+            Self::IF_SPEED => "IfSpeed",
+            Self::IF_TS_RESOL => "IfTsResol",
+            Self::IF_T_ZONE => "IfTzone",
+            Self::IF_FILTER => "IfFilter",
+            Self::IF_OS => "IfOs",
+            Self::IF_FCS_LEN => "IfFcsLen",
+            Self::IF_TS_OFFSET => "IfTsOffset",
+            Self::IF_HARDWARE => "IfHardware",
+            _ => CommonOption::code_name(code),
+        }
     }
 }
-
 
 /* ----- */
 
@@ -275,16 +320,16 @@ impl TsResolution {
     pub const SEC: Self = TsResolution(0);
 
     /// Creates a new [`TsResolution`] from an [`u8`] if is it in the range [0-9].
-    pub fn new(ts_resol: u8) -> Result<Self, PcapError> {
+    pub fn new(ts_resol: u8) -> Result<Self, ContentValidationError> {
         let is_bin = (ts_resol >> 7) & 0x1 == 1;
         let resol = ts_resol & 0x7F;
 
         if is_bin && resol > 30 {
-            return Err(PcapError::InvalidTsResolution(ts_resol));
+            return Err(ContentValidationError::InvalidTsResolution(ts_resol));
         }
 
         if !is_bin && resol > 9 {
-            return Err(PcapError::InvalidTsResolution(ts_resol));
+            return Err(ContentValidationError::InvalidTsResolution(ts_resol));
         }
 
         Ok(TsResolution(ts_resol))
@@ -300,8 +345,7 @@ impl TsResolution {
 
         if is_bin {
             TS_RESOL_BIN_TO_DURATION[resol as usize]
-        }
-        else {
+        } else {
             TS_RESOL_DEC_TO_DURATION[resol as usize]
         }
     }

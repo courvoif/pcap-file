@@ -1,7 +1,9 @@
 use std::io::{Error, ErrorKind, Read};
 
-use crate::PcapError;
-
+use crate::{
+    pcap::{PcapParseError, PcapReadError},
+    pcapng::errors::{PcapNgParseError, PcapNgReadError},
+};
 
 /// Internal structure that bufferize its input and allow to parse element from its buffer.
 #[derive(Debug)]
@@ -34,9 +36,9 @@ impl<R: Read> ReadBuffer<R> {
     /// Safety
     ///
     /// The parser must NOT keep a reference to the buffer in input.
-    pub fn parse_with<'a, 'b: 'a, 'c: 'a, F, O>(&'c mut self, mut parser: F) -> Result<O, PcapError>
+    pub fn parse_with<'a, 'b: 'a, 'c: 'a, F, O>(&'c mut self, mut parser: F) -> Result<O, PcapNgReadError>
     where
-        F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), PcapError>,
+        F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), PcapNgParseError>,
         F: 'b,
         O: 'a,
     {
@@ -52,19 +54,59 @@ impl<R: Read> ReadBuffer<R> {
                     return Ok(value);
                 },
 
-                Err(PcapError::IncompleteBuffer(_, _)) => {
+                Err(PcapNgParseError::IncompleteBuffer(_, _)) => {
                     // The parsed data len should never be more than the buffer capacity
                     if buf.len() == self.buffer.len() {
-                        return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
+                        return Err(PcapNgReadError::Io(Error::from(ErrorKind::UnexpectedEof)));
                     }
 
-                    let nb_read = self.fill_buf().map_err(PcapError::IoError)?;
+                    let nb_read = self.fill_buf().map_err(PcapNgReadError::Io)?;
                     if nb_read == 0 {
-                        return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
+                        return Err(PcapNgReadError::Io(Error::from(ErrorKind::UnexpectedEof)));
                     }
                 },
 
-                Err(e) => return Err(e),
+                Err(e) => return Err(e.into()),
+            }
+        }
+    }
+
+    /// Parse data from the internal buffer
+    ///
+    /// Safety
+    ///
+    /// The parser must NOT keep a reference to the buffer in input.
+    pub fn parse_with2<'a, 'b: 'a, 'c: 'a, F, O>(&'c mut self, mut parser: F) -> Result<O, PcapReadError>
+    where
+        F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), PcapParseError>,
+        F: 'b,
+        O: 'a,
+    {
+        loop {
+            let buf = &self.buffer[self.pos..self.len];
+
+            // Sound because 'b and 'c must outlive 'a so the buffer cannot be modified while someone has a ref on it
+            let buf: &'a [u8] = unsafe { std::mem::transmute(buf) };
+
+            match parser(buf) {
+                Ok((rem, value)) => {
+                    self.advance_with_slice(rem);
+                    return Ok(value);
+                },
+
+                Err(PcapParseError::IncompleteBuffer(_, _)) => {
+                    // The parsed data len should never be greater than the buffer capacity
+                    if buf.len() == self.buffer.len() {
+                        return Err(PcapReadError::Io(Error::from(ErrorKind::UnexpectedEof)));
+                    }
+
+                    let nb_read = self.fill_buf().map_err(PcapReadError::Io)?;
+                    if nb_read == 0 {
+                        return Err(PcapReadError::Io(Error::from(ErrorKind::UnexpectedEof)));
+                    }
+                },
+
+                Err(PcapParseError::Validation(val)) => return Err(PcapReadError::Validation(val)),
             }
         }
     }

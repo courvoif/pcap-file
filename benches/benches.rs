@@ -1,8 +1,6 @@
-use criterion::{criterion_group, criterion_main, Criterion};
-use pcap_file::pcap::{PcapParser, PcapReader};
-use pcap_file::pcapng::{PcapNgParser, PcapNgReader};
-use pcap_file::PcapError;
-
+use criterion::{Criterion, criterion_group, criterion_main};
+use pcap_file::pcap::{PcapParseError, PcapParser, PcapReader};
+use pcap_file::pcapng::{PcapNgParseError, PcapNgParser, PcapNgReader};
 
 /// Bench and compare Pcap readers and parsers
 pub fn pcap(c: &mut Criterion) {
@@ -19,7 +17,7 @@ pub fn pcap(c: &mut Criterion) {
                     Ok((rem, _)) => {
                         src = rem;
                     },
-                    Err(PcapError::IncompleteBuffer(_, _)) => break,
+                    Err(PcapParseError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }
@@ -32,7 +30,7 @@ pub fn pcap(c: &mut Criterion) {
             loop {
                 match parser.next_raw_packet(src) {
                     Ok((rem, _)) => src = rem,
-                    Err(PcapError::IncompleteBuffer(_, _)) => break,
+                    Err(PcapParseError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }
@@ -60,7 +58,6 @@ pub fn pcap(c: &mut Criterion) {
     });
 }
 
-
 /// Bench and compare PcapNg readers and parsers
 pub fn pcapng(c: &mut Criterion) {
     let pcapng = std::fs::read("benches/bench.pcapng").unwrap();
@@ -74,7 +71,7 @@ pub fn pcapng(c: &mut Criterion) {
             loop {
                 match parser.next_block(src) {
                     Ok((rem, _)) => src = rem,
-                    Err(PcapError::IncompleteBuffer(_, _)) => break,
+                    Err(PcapNgParseError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }
@@ -87,7 +84,7 @@ pub fn pcapng(c: &mut Criterion) {
             loop {
                 match parser.next_raw_block(src) {
                     Ok((rem, _)) => src = rem,
-                    Err(PcapError::IncompleteBuffer(_, _)) => break,
+                    Err(PcapNgParseError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }
             }

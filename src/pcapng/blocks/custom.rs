@@ -6,11 +6,12 @@ use std::io::Write;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::{ReadBytesExt, WriteBytesExt};
+use thiserror::Error;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::CustomBinaryOption;
 use crate::pcapng::PcapNgState;
-use crate::PcapError;
+use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
 
 /// Custom block
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -23,27 +24,23 @@ pub struct CustomBlock<'a, const COPIABLE: bool> {
 
 impl<'a> CustomBlock<'a, true> {
     /// Converts this block's payload into a type that implements [`CustomCopiable`].
-    pub fn interpret<T: CustomCopiable<'a>>(&'a self) -> Result<Option<T>, PcapError> {
+    pub fn interpret<T: CustomCopiable<'a>>(&'a self) -> Result<Option<T>, CustomError> {
         if self.pen != T::PEN {
-            return Ok(None)
+            return Ok(None);
         }
 
-        T::from_slice(&self.payload)
-            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
+        T::from_slice(&self.payload).map_err(|e| CustomError { pen: T::PEN, src: e.into() })
     }
 }
 
 impl<'a> CustomBlock<'a, false> {
     /// Converts this block's payload into a type that implements [`CustomNonCopiable`].
-    pub fn interpret<T: CustomNonCopiable<'a>>(&'a self, state: &T::State)
-        -> Result<Option<T>, PcapError>
-    {
+    pub fn interpret<T: CustomNonCopiable<'a>>(&'a self, state: &T::State) -> Result<Option<T>, CustomError> {
         if self.pen != T::PEN {
-            return Ok(None)
+            return Ok(None);
         }
 
-        T::from_slice(state, &self.payload)
-            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
+        T::from_slice(state, &self.payload).map_err(|e| CustomError { pen: T::PEN, src: e.into() })
     }
 }
 
@@ -53,110 +50,24 @@ impl<const COPIABLE: bool> CustomBlock<'_, COPIABLE> {
 
     /// Returns a version of self with all fields converted to owning versions.
     pub fn into_owned(self) -> CustomBlock<'static, COPIABLE> {
-        CustomBlock {
-            pen: self.pen,
-            payload: Cow::Owned(self.payload.into_owned())
-        }
-    }
-}
-
-/// Common interface for copiable custom block payloads
-pub trait CustomCopiable<'a> {
-    /// Private Enterprise Number of the entity which defined this payload format.
-    const PEN: u32;
-
-    /// Error returned by [`CustomCopiable::from_slice()`]
-    type FromSliceError: Error + 'static + Send + Sync;
-
-    /// Error returned by [`CustomCopiable::write_to()`]
-    type WriteToError: Error + 'static + Send + Sync;
-
-    /// Try to parse this payload from a slice.
-    fn from_slice(slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
-        where Self: Sized;
-
-    /// Write this payload into a writer.
-    fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), Self::WriteToError>;
-
-    /// Convert this block into a copiable [`CustomBlock`]
-    fn into_custom_block(self) -> Result<CustomBlock<'a, true>, PcapError>
-        where Self: Sized
-    {
-        let mut data = Vec::new();
-        self.write_to(&mut data)
-            .map_err(|e| PcapError::CustomConversionError(Self::PEN, e.into()))?;
-
-        Ok(CustomBlock { pen: Self::PEN, payload: Cow::Owned(data) })
-    }
-
-    /// Convert this block into a copiable [`CustomBinaryOption`]
-    fn into_custom_option(self) -> Result<CustomBinaryOption<'a, true>, PcapError>
-        where Self: Sized
-    {
-        let mut data = Vec::new();
-        self.write_to(&mut data)
-            .map_err(|e| PcapError::CustomConversionError(Self::PEN, e.into()))?;
-
-        Ok(CustomBinaryOption { pen: Self::PEN, value: Cow::Owned(data) })
-    }
-}
-
-/// Common interface for non-copiable custom block payloads
-pub trait CustomNonCopiable<'a> {
-    /// Private Enterprise Number of the entity which defined this payload format.
-    const PEN: u32;
-
-    /// State that may be required to parse/write the block.
-    type State;
-
-    /// Error returned by [`CustomNonCopiable::from_slice()`]
-    type FromSliceError: Error + 'static + Send + Sync;
-
-
-    /// Error returned by [`CustomNonCopiable::write_to()`]
-    type WriteToError: Error + 'static + Send + Sync;
-
-    /// Try to parse this payload from a slice.
-    fn from_slice(state: &Self::State, slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
-        where Self: Sized;
-
-    /// Write this payload into a writer.
-    fn write_to<W: Write>(&self, state: &Self::State, writer: &mut W)
-        -> Result<(), Self::WriteToError>;
-
-    /// Convert this block into a non-copiable [`CustomBlock`]
-    fn into_custom_block(self, state: &Self::State) -> Result<CustomBlock<'a, false>, PcapError>
-        where Self: Sized
-    {
-        let mut data = Vec::new();
-        self.write_to(state, &mut data)
-            .map_err(|e| PcapError::CustomConversionError(Self::PEN, e.into()))?;
-
-        Ok(CustomBlock { pen: Self::PEN, payload: Cow::Owned(data) })
-    }
-
-    /// Convert this block into a non-copiable [`CustomBinaryOption`]
-    fn into_custom_option(self, state: &Self::State) -> Result<CustomBinaryOption<'a, false>, PcapError>
-        where Self: Sized
-    {
-        let mut data = Vec::new();
-        self.write_to(state, &mut data)
-            .map_err(|e| PcapError::CustomConversionError(Self::PEN, e.into()))?;
-
-        Ok(CustomBinaryOption { pen: Self::PEN, value: Cow::Owned(data) })
+        CustomBlock { pen: self.pen, payload: Cow::Owned(self.payload.into_owned()) }
     }
 }
 
 impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
-    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError>
+    fn from_slice<B: ByteOrder>(_state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError>
     where
         Self: Sized,
     {
-        let pen = slice.read_u32::<B>()?;
+        if slice.len() < 4 {
+            return Err(BlockContentParseError::BlockContentTooSmall { needed: 4, actual: slice.len() });
+        }
+
+        let pen = slice.read_u32::<B>().unwrap();
         Ok((&[], CustomBlock { pen, payload: Cow::Borrowed(slice) }))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapError> {
+    fn write_to<B: ByteOrder, W: Write>(&self, _state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         writer.write_u32::<B>(self.pen)?;
         writer.write_all(&self.payload)?;
         Ok(4 + self.payload.len())
@@ -168,5 +79,109 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
         } else {
             Block::CustomNonCopiable(CustomBlock { pen: self.pen, payload: self.payload })
         }
+    }
+}
+
+/* ----- Custom Error ----- */
+
+/// Error in custom conversion
+#[derive(Debug, Error)]
+#[error("Error in custom conversion for PEN {pen:#X}")]
+pub struct CustomError {
+    /// Pen of the custom block/option
+    pub pen: u32,
+    /// Source of the error
+    #[source]
+    pub src: Box<dyn Error + Sync + Send + 'static>,
+}
+
+/* ----- trait CustomCopiable ----- */
+
+/// Common interface for copiable custom block payloads
+pub trait CustomCopiable<'a> {
+    /// Private Enterprise Number of the entity which defined this payload format.
+    const PEN: u32;
+
+    /// Error returned by [`CustomCopiable::from_slice()`]
+    type FromSliceError: Error + Sync + Send + 'static;
+
+    /// Error returned by [`CustomCopiable::write_to()`]
+    type WriteToError: Error + Sync + Send + 'static;
+
+    /// Try to parse this payload from a slice.
+    fn from_slice(slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
+    where
+        Self: Sized;
+
+    /// Write this payload into a writer.
+    fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), Self::WriteToError>;
+
+    /// Convert this block into a copiable [`CustomBlock`]
+    fn into_custom_block(self) -> Result<CustomBlock<'a, true>, CustomError>
+    where
+        Self: Sized,
+    {
+        let mut data = Vec::new();
+        self.write_to(&mut data).map_err(|e| CustomError { pen: Self::PEN, src: e.into() })?;
+
+        Ok(CustomBlock { pen: Self::PEN, payload: Cow::Owned(data) })
+    }
+
+    /// Convert this block into a copiable [`CustomBinaryOption`]
+    fn into_custom_option(self) -> Result<CustomBinaryOption<'a, true>, CustomError>
+    where
+        Self: Sized,
+    {
+        let mut data = Vec::new();
+        self.write_to(&mut data).map_err(|e| CustomError { pen: Self::PEN, src: e.into() })?;
+
+        Ok(CustomBinaryOption { pen: Self::PEN, value: Cow::Owned(data) })
+    }
+}
+
+/* ----- trait CustomNonCopiable ----- */
+
+/// Common interface for non-copiable custom block payloads
+pub trait CustomNonCopiable<'a> {
+    /// Private Enterprise Number of the entity which defined this payload format.
+    const PEN: u32;
+
+    /// State that may be required to parse/write the block.
+    type State;
+
+    /// Error returned by [`CustomNonCopiable::from_slice()`]
+    type FromSliceError: Error + Sync + Send + 'static;
+
+    /// Error returned by [`CustomNonCopiable::write_to()`]
+    type WriteToError: Error + Sync + Send + 'static;
+
+    /// Try to parse this payload from a slice.
+    fn from_slice(state: &Self::State, slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
+    where
+        Self: Sized;
+
+    /// Write this payload into a writer.
+    fn write_to<W: Write>(&self, state: &Self::State, writer: &mut W) -> Result<(), Self::WriteToError>;
+
+    /// Convert this block into a non-copiable [`CustomBlock`]
+    fn into_custom_block(self, state: &Self::State) -> Result<CustomBlock<'a, false>, CustomError>
+    where
+        Self: Sized,
+    {
+        let mut data = Vec::new();
+        self.write_to(state, &mut data).map_err(|e| CustomError { pen: Self::PEN, src: e.into() })?;
+
+        Ok(CustomBlock { pen: Self::PEN, payload: Cow::Owned(data) })
+    }
+
+    /// Convert this block into a non-copiable [`CustomBinaryOption`]
+    fn into_custom_option(self, state: &Self::State) -> Result<CustomBinaryOption<'a, false>, CustomError>
+    where
+        Self: Sized,
+    {
+        let mut data = Vec::new();
+        self.write_to(state, &mut data).map_err(|e| CustomError { pen: Self::PEN, src: e.into() })?;
+
+        Ok(CustomBinaryOption { pen: Self::PEN, value: Cow::Owned(data) })
     }
 }
