@@ -18,7 +18,7 @@ use super::section_header::SectionHeaderBlock;
 use super::simple_packet::SimplePacketBlock;
 use super::systemd_journal_export::SystemdJournalExportBlock;
 use super::unknown::UnknownBlock;
-use crate::pcapng::PcapNgState;
+use crate::pcapng::{ContentValidationError, PcapNgState};
 use crate::pcapng::errors::{BlockContentParseError, BlockConversionError, PcapNgFormatError, PcapNgWriteError, RawBlockParseError};
 
 /// Section header block type
@@ -244,9 +244,7 @@ impl<'a> Block<'a> {
             Self::Unknown(b) => inner_write_to::<B, _, W>(state, b, b.type_, writer),
         };
 
-        // TODO: Replace the unchecked `len as u16` writes in these impls with checked
-        // conversions so oversized option payloads return a typed error instead of
-        // truncating on the wire.
+        /// Writes a block to the writer, including its header and padding.
         fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(
             state: &PcapNgState,
             block: &BL,
@@ -257,15 +255,26 @@ impl<'a> Block<'a> {
             let data_len = block.write_to::<B, _>(state, &mut std::io::sink())?;
             let pad_len = (4 - (data_len % 4)) % 4;
 
+            // Block length calculation
             let block_len = data_len + pad_len + 12;
 
+            // Check that there wasn't an overflow
+            if block_len < data_len {
+                return Err(PcapNgWriteError::Validation { field: "block_length", source: ContentValidationError::BlockContentTooBig(data_len as u64) });
+            }
+
+            // Check that the block length fits within the u32 limit
+            let block_len: u32 = block_len.try_into().map_err(|_| {
+                PcapNgWriteError::Validation { field: "block_length", source: ContentValidationError::BlockContentTooBig(block_len as u64) }
+            })?;
+
             writer.write_u32::<B>(block_code)?;
-            writer.write_u32::<B>(block_len as u32)?;
+            writer.write_u32::<B>(block_len)?;
             block.write_to::<B, _>(state, writer)?;
             writer.write_all(&[0_u8; 3][..pad_len])?;
-            writer.write_u32::<B>(block_len as u32)?;
+            writer.write_u32::<B>(block_len)?;
 
-            Ok(block_len)
+            Ok(block_len as usize)
         }
     }
 
