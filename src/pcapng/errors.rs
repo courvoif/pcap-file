@@ -260,6 +260,9 @@ pub enum ContentValidationError {
     /// Error converting a custom block payload.
     #[error("Error in custom block conversion for PEN {0}: {1}")]
     CustomBlockConversionError(u32, Box<dyn std::error::Error + Sync + Send>),
+    /// The content of a block is too big to fit on a block.
+    #[error("Block content doesn't fit on a u32: {0}B")]
+    BlockContentTooBig(u64)
 }
 
 /* ----- OptionParseError ----- */
