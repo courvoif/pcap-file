@@ -281,6 +281,7 @@ pub(crate) trait WriteOptTo {
     fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError>;
 }
 
+/// Write an option with its header and padding.
 fn write_opt_with_header_pad<B: ByteOrder, W: Write>(
     writer: &mut W,
     code: u16,
@@ -337,6 +338,12 @@ impl WriteOptTo for u64 {
     }
 }
 
+impl WriteOptTo for i64 {
+    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_pad::<B, _>(writer, code, 8, |w| w.write_i64::<B>(*self))
+    }
+}
+
 impl<'a> WriteOptTo for CommonOption<'a> {
     fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         match self {
@@ -361,7 +368,7 @@ impl<'a> WriteOptTo for CommonOption<'a> {
                 w.write_all(&a.value.as_bytes())?;
                 Ok(())
             }),
-            CommonOption::Unknown(a) => write_opt_with_header_pad::<B, _>(writer, code, a.value.len(), |w| w.write_all(&a.value))
+            CommonOption::Unknown(a) => write_opt_with_header_pad::<B, _>(writer, code, a.value.len(), |w| w.write_all(&a.value)),
         }
     }
 }

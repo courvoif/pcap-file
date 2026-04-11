@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::io::Write;
-use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -23,8 +22,8 @@ pub struct EnhancedPacketBlock<'a> {
     /// (within the current Section of the file) is identified by the same number of this field.
     pub interface_id: u32,
 
-    /// Time elapsed since 1970-01-01 00:00:00 UTC.
-    pub timestamp: Duration,
+    /// Nanoseconds elapsed since 1970-01-01 00:00:00 UTC.
+    pub timestamp: i128,
 
     /// Actual length of the packet when it was transmitted on the network.
     pub original_len: u32,

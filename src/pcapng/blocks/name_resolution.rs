@@ -398,7 +398,13 @@ mod tests {
         };
 
         let error = block.write_to::<BigEndian, _>(&PcapNgState::default(), &mut Vec::new()).unwrap_err();
-        
-        dbg!(error);
+
+        assert!(matches!(
+            error,
+            PcapNgWriteError::Validation {
+                field: "Option length",
+                source: ContentValidationError::OptionTooBig(len),
+            } if len == u16::MAX as usize + 1
+        ));
     }
 }

@@ -93,7 +93,6 @@ impl<W: Write> PcapNgWriter<W> {
     /// ```rust,no_run
     /// use std::borrow::Cow;
     /// use std::fs::File;
-    /// use std::time::Duration;
     ///
     /// use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     /// use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
@@ -156,7 +155,6 @@ impl<W: Write> PcapNgWriter<W> {
     /// ```rust,no_run
     /// use std::borrow::Cow;
     /// use std::fs::File;
-    /// use std::time::Duration;
     ///
     /// use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     /// use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;

@@ -219,14 +219,13 @@ fn test_stateful_custom_block() {
     use pcap_file::{DataLink, Endianness};
     use std::borrow::Cow;
     use std::io::Write;
-    use std::time::Duration;
 
     // 1. Define a new custom block payload
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct MyStatefulPayload {
         magic_number: u64,
         interface_id: u32,
-        timestamp: Duration,
+        timestamp: i128,
     }
 
     // 1.1 Define a new custom error if needed
@@ -287,11 +286,7 @@ fn test_stateful_custom_block() {
         }
     }
 
-    let original_payload = MyStatefulPayload {
-        magic_number: 0xDEADBEEFCAFED00D,
-        interface_id: 0,
-        timestamp: Duration::from_nanos(123456789),
-    };
+    let original_payload = MyStatefulPayload { magic_number: 0xDEADBEEFCAFED00D, interface_id: 0, timestamp: 123456789 };
 
     let mut buffer = Vec::new();
     let mut pcapng_writer = PcapNgWriter::new(&mut buffer).expect("Failed to create writer");
@@ -317,7 +312,7 @@ fn test_stateful_custom_block() {
 
     let packet_block = EnhancedPacketBlock {
         interface_id: 0,
-        timestamp: Duration::ZERO,
+        timestamp: 0,
         original_len: 0,
         data: Cow::Owned(vec![]),
         options: vec![EnhancedPacketOption::Common(
