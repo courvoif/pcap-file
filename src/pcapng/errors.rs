@@ -1,6 +1,6 @@
-use std::time::Duration;
-
 use thiserror::Error;
+
+use crate::pcapng::blocks::interface_description::TsResolution;
 
 /* ----- PcapError ----- */
 
@@ -224,17 +224,9 @@ pub enum ContentValidationError {
     /// The interface ID does not exist in the current section state.
     #[error("Invalid interface ID: {0}")]
     InvalidInterfaceId(u32),
-    /// The timestamp cannot be represented in the raw 64-bit timestamp field.
-    #[error("Timestamp too big: {0:?} > 2^64 units")]
-    TimestampTooBig(Duration),
-    /// The timestamp is earlier than the interface timestamp offset.
-    #[error("Timestamp {timestamp:?} is smaller than interface offset {offset:?}")]
-    TimestampBeforeOffset {
-        /// Absolute timestamp to encode
-        timestamp: Duration,
-        /// Interface timestamp offset
-        offset: Duration,
-    },
+    /// The timestamp cannot be represented on the raw 64-bit timestamp field.
+    #[error("Timestamp can't be represented on a u64: ts = {}ns, ts_resolution = {}ns, offset = {}s", .0, .1.to_nano_secs(), 2)]
+    InvalidTimestamp(i128, TsResolution, i64),
     /// The Name Resolution record entry size is invalid.
     #[error("Wrong record size: expected {expected}B, got {actual}B")]
     RecordWrongSize {
@@ -268,7 +260,7 @@ pub enum ContentValidationError {
     BlockContentTooBig(u64),
     /// The content of a PcapNgOption is too big to be written
     #[error("Option content doesn't fit on a u16: {0}B")]
-    OptionTooBig(usize)
+    OptionTooBig(usize),
 }
 
 /* ----- OptionParseError ----- */
