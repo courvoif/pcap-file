@@ -237,7 +237,7 @@ pub enum ContentValidationError {
     },
     /// The Name Resolution record entry size is invalid.
     #[error("Wrong record size: expected {expected}B, got {actual}B")]
-    RecordEntryWrongSize {
+    RecordWrongSize {
         /// Expected size
         expected: usize,
         /// Actual size
@@ -245,12 +245,15 @@ pub enum ContentValidationError {
     },
     /// The Name Resolution record entry is smaller than its minimum valid size.
     #[error("Wrong record minimum size: expected at least {min}B, got {actual}B")]
-    RecordEntryWrongMinSize {
+    RecordWrongMinSize {
         /// Expected size
         min: usize,
         /// Actual size
         actual: usize,
     },
+    /// The Name Resolution record entry is too big to be written
+    #[error("Record length doesn't fit on a u16: {0}B")]
+    RecordTooBig(usize),
     /// A record name is not valid UTF-8.
     #[error("A record name is not in UTF8")]
     RecordNameNotUtf8(#[source] std::str::Utf8Error),
@@ -262,7 +265,10 @@ pub enum ContentValidationError {
     CustomBlockConversionError(u32, Box<dyn std::error::Error + Sync + Send>),
     /// The content of a block is too big to fit on a block.
     #[error("Block content doesn't fit on a u32: {0}B")]
-    BlockContentTooBig(u64)
+    BlockContentTooBig(u64),
+    /// The content of a PcapNgOption is too big to be written
+    #[error("Option content doesn't fit on a u16: {0}B")]
+    OptionTooBig(usize)
 }
 
 /* ----- OptionParseError ----- */
