@@ -35,7 +35,7 @@ use crate::pcap::PcapPacket;
 ///                 break;
 ///             }
 ///         },
-///         Err(PcapError::IncompleteBuffer) => {}, // Load more data into src
+///         Err(PcapError::IncompleteBuffer(_,_)) => {}, // Load more data into src
 ///         Err(_) => {},                           // Parsing error
 ///     }
 /// }

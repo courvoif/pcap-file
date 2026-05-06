@@ -34,7 +34,7 @@ use crate::Endianness;
 ///             // Don't forget to update src
 ///             src = rem;
 ///         },
-///         Err(PcapError::IncompleteBuffer) => {
+///         Err(PcapError::IncompleteBuffer(_,_)) => {
 ///             // Load more data into src
 ///         },
 ///         Err(_) => {
