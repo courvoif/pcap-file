@@ -73,14 +73,25 @@ impl PcapNgParser {
     /// # Errors
     /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
     /// - Other errors will prevent the parser from advancing further.
-    ///   Some can be recovered by calling [`Self::next_raw_block`].
+    ///   Some of these can be recovered by calling [`Self::next_raw_block`].
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
-        // Read next RawBlock and convert it to block
-        self.next_raw_block(src).and_then(|(rem, raw)| {
-            let state = &self.state;
-            let block = raw.try_into_block(state)?;
+        // This function doesn't call `self::next_raw_block()` because converting the Block before updating the state is faster and better for error handling.
+
+        /// Inner function to parse the next Block.
+        fn next_block_inner<'a, B: ByteOrder>(parser: &mut PcapNgParser, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
+            let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
+            let state = &parser.state;
+            let block = raw_block.try_into_block(state)?;
+
+            parser.state.update_from_block(&block)?;
             Ok((rem, block))
-        })
+        }
+
+        // Read next Block
+        match self.state.section.endianness {
+            Endianness::Big => next_block_inner::<BigEndian>(self, src),
+            Endianness::Little => next_block_inner::<LittleEndian>(self, src),
+        }
     }
 
     /// Returns the remainder and the next [`RawBlock`].
@@ -92,18 +103,21 @@ impl PcapNgParser {
     /// - Only [`PcapError::IncompleteBuffer`] is recoverable (by loading more data).
     /// - All other errors will prevent the parser from advancing further.
     pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
-        // Read next Block
-        match self.state.section.endianness {
-            Endianness::Big => self.next_raw_block_inner::<BigEndian>(src),
-            Endianness::Little => self.next_raw_block_inner::<LittleEndian>(src),
+        /// Inner function to parse the next RawBlock.
+        fn next_raw_block_inner<'a, B: ByteOrder>(
+            parser: &mut PcapNgParser,
+            src: &'a [u8],
+        ) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
+            let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
+            parser.state.update_from_raw_block::<B>(&raw_block)?;
+            Ok((rem, raw_block))
         }
-    }
 
-    /// Inner function to parse the next raw block.
-    fn next_raw_block_inner<'a, B: ByteOrder>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
-        let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
-        self.state.update_from_raw_block::<B>(&raw_block)?;
-        Ok((rem, raw_block))
+        // Read next RawBlock
+        match self.state.section.endianness {
+            Endianness::Big => next_raw_block_inner::<BigEndian>(self, src),
+            Endianness::Little => next_raw_block_inner::<LittleEndian>(self, src),
+        }
     }
 
     /// Returns the current [`PcapNgState`].

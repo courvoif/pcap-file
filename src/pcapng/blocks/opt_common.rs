@@ -1,16 +1,16 @@
 //! Generic block option types.
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use crate::pcapng::PcapNgState;
 use crate::pcapng::blocks::custom::{CustomCopiable, CustomError, CustomNonCopiable};
 use crate::pcapng::errors::{OptionEntryError, OptionParseError, PcapNgWriteError};
+use crate::pcapng::{ContentValidationError, PcapNgState};
 
 /// Comment
 pub const COMMENT: u16 = 0x0001;
@@ -273,128 +273,99 @@ impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
     }
 }
 
-// TODO: rename as WriteOpt
-// TODO: Replace the unchecked `len as u16` writes in these impls with checked
-// conversions so oversized option payloads return a typed error instead of
-// truncating on the wire.
-pub(crate) trait WriteOptTo {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize>;
+pub(crate) trait WriteOpt {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError>;
 }
 
-impl<'a> WriteOptTo for Cow<'a, [u8]> {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        let len = self.len();
-        let pad_len = (4 - len % 4) % 4;
+/// Write an option with its header and padding.
+fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
+    writer: &mut W,
+    code: u16,
+    len: usize,
+    content: impl FnOnce(&mut W) -> Result<(), std::io::Error>,
+) -> Result<usize, PcapNgWriteError> {
+    let pad_len = (4 - len % 4) % 4;
 
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(len as u16)?;
-        writer.write_all(self)?;
-        writer.write_all(&[0_u8; 3][..pad_len])?;
+    let len: u16 = len
+        .try_into()
+        .map_err(|_| PcapNgWriteError::Validation { field: "OptionEntry.length", source: ContentValidationError::OptionTooBig(len) })?;
 
-        Ok(len + pad_len + 4)
+    writer.write_u16::<B>(code)?;
+    writer.write_u16::<B>(len)?;
+    content(writer)?;
+    writer.write_all(&[0_u8; 3][..pad_len])?;
+
+    Ok(len as usize + pad_len + 4)
+}
+
+impl<'a> WriteOpt for Cow<'a, [u8]> {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, self.len(), |w| w.write_all(self))
     }
 }
 
-impl<'a> WriteOptTo for Cow<'a, str> {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        let len = self.len();
-        let pad_len = (4 - len % 4) % 4;
-
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(len as u16)?;
-        writer.write_all(self.as_bytes())?;
-        writer.write_all(&[0_u8; 3][..pad_len])?;
-
-        Ok(len + pad_len + 4)
+impl<'a> WriteOpt for Cow<'a, str> {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, self.len(), |w| w.write_all(self.as_bytes()))
     }
 }
 
-impl WriteOptTo for u8 {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(1)?;
-        writer.write_u8(*self)?;
-        writer.write_all(&[0_u8; 3])?;
-
-        Ok(8)
+impl WriteOpt for u8 {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, 1, |w| w.write_u8(*self))
     }
 }
 
-impl WriteOptTo for u16 {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(2)?;
-        writer.write_u16::<B>(*self)?;
-        writer.write_all(&[0_u8; 2])?;
-
-        Ok(8)
+impl WriteOpt for u16 {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, 2, |w| w.write_u16::<B>(*self))
     }
 }
 
-impl WriteOptTo for u32 {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(4)?;
-        writer.write_u32::<B>(*self)?;
-
-        Ok(8)
+impl WriteOpt for u32 {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, 4, |w| w.write_u32::<B>(*self))
     }
 }
 
-impl WriteOptTo for u64 {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(8)?;
-        writer.write_u64::<B>(*self)?;
-
-        Ok(12)
+impl WriteOpt for u64 {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, 8, |w| w.write_u64::<B>(*self))
     }
 }
 
-impl<'a> WriteOptTo for CommonOption<'a> {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        let len = match self {
-            CommonOption::Comment(a) => a.len(),
-            CommonOption::CustomBinaryCopiable(a) => a.value.len() + 4,
-            CommonOption::CustomBinaryNonCopiable(a) => a.value.len() + 4,
-            CommonOption::CustomUtf8Copiable(a) => a.value.len() + 4,
-            CommonOption::CustomUtf8NonCopiable(a) => a.value.len() + 4,
-            CommonOption::Unknown(a) => a.value.len(),
-        };
+impl WriteOpt for i64 {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, 8, |w| w.write_i64::<B>(*self))
+    }
+}
 
-        let pad_len = (4 - len % 4) % 4;
-
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(len as u16)?;
-
+impl<'a> WriteOpt for CommonOption<'a> {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         match self {
-            CommonOption::Comment(a) => {
-                writer.write_all(a.as_bytes())?;
-            },
-            CommonOption::CustomBinaryCopiable(a) => {
-                writer.write_u32::<B>(a.pen)?;
-                writer.write_all(&a.value)?;
-            },
-            CommonOption::CustomBinaryNonCopiable(a) => {
-                writer.write_u32::<B>(a.pen)?;
-                writer.write_all(&a.value)?;
-            },
-            CommonOption::CustomUtf8Copiable(a) => {
-                writer.write_u32::<B>(a.pen)?;
-                writer.write_all(a.value.as_bytes())?;
-            },
-            CommonOption::CustomUtf8NonCopiable(a) => {
-                writer.write_u32::<B>(a.pen)?;
-                writer.write_all(a.value.as_bytes())?;
-            },
-            CommonOption::Unknown(a) => {
-                writer.write_all(&a.value)?;
-            },
-        };
-
-        writer.write_all(&[0_u8; 3][..pad_len])?;
-
-        Ok(len + pad_len + 4)
+            CommonOption::Comment(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.len(), |w| w.write_all(a.as_bytes())),
+            CommonOption::CustomBinaryCopiable(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                w.write_u32::<B>(a.pen)?;
+                w.write_all(&a.value)?;
+                Ok(())
+            }),
+            CommonOption::CustomBinaryNonCopiable(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                w.write_u32::<B>(a.pen)?;
+                w.write_all(&a.value)?;
+                Ok(())
+            }),
+            CommonOption::CustomUtf8Copiable(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                w.write_u32::<B>(a.pen)?;
+                w.write_all(a.value.as_bytes())?;
+                Ok(())
+            }),
+            CommonOption::CustomUtf8NonCopiable(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                w.write_u32::<B>(a.pen)?;
+                w.write_all(a.value.as_bytes())?;
+                Ok(())
+            }),
+            CommonOption::Unknown(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len(), |w| w.write_all(&a.value)),
+        }
     }
 }
 

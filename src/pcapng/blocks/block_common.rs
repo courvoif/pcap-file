@@ -18,7 +18,7 @@ use super::section_header::SectionHeaderBlock;
 use super::simple_packet::SimplePacketBlock;
 use super::systemd_journal_export::SystemdJournalExportBlock;
 use super::unknown::UnknownBlock;
-use crate::pcapng::PcapNgState;
+use crate::pcapng::{ContentValidationError, PcapNgState};
 use crate::pcapng::errors::{BlockContentParseError, BlockConversionError, PcapNgFormatError, PcapNgWriteError, RawBlockParseError};
 
 /// Section header block type
@@ -185,35 +185,47 @@ pub enum Block<'a> {
 impl<'a> Block<'a> {
     /// Tries to create a [`Block`] from a [`RawBlock`], given a [`PcapNgState`].
     ///
-    /// The RawBlock must be Borrowed.
+    /// If `raw_block` borrows its body, the returned [`Block`] will borrow from
+    /// that same buffer whenever possible.
+    ///
+    /// If `raw_block` owns its body, the block content is parsed and then
+    /// converted into an owned [`Block`] before being returned.
     pub fn try_from_raw_block<B: ByteOrder>(state: &PcapNgState, raw_block: RawBlock<'a>) -> Result<Block<'a>, BlockConversionError> {
-        let body = match raw_block.body {
-            Cow::Borrowed(b) => b,
-            // TODO: Accept owned RawBlock bodies without panicking, or encode the
-            // borrowed-only requirement in the public API.
-            _ => panic!("The raw block is not borrowed"),
-        };
-
-        match raw_block.type_ {
-            SECTION_HEADER_BLOCK => SectionHeaderBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SectionHeader(blk)),
-            INTERFACE_DESCRIPTION_BLOCK => {
-                InterfaceDescriptionBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::InterfaceDescription(blk))
-            },
-            PACKET_BLOCK => PacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::Packet(blk)),
-            SIMPLE_PACKET_BLOCK => SimplePacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SimplePacket(blk)),
-            NAME_RESOLUTION_BLOCK => NameResolutionBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::NameResolution(blk)),
-            INTERFACE_STATISTIC_BLOCK => {
-                InterfaceStatisticsBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::InterfaceStatistics(blk))
-            },
-            ENHANCED_PACKET_BLOCK => EnhancedPacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::EnhancedPacket(blk)),
-            SYSTEMD_JOURNAL_EXPORT_BLOCK => {
-                SystemdJournalExportBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SystemdJournalExport(blk))
-            },
-            CUSTOM_BLOCK_COPIABLE => CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomCopiable(blk)),
-            CUSTOM_BLOCK_NON_COPIABLE => CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomNonCopiable(blk)),
-            type_ => Ok(Block::Unknown(UnknownBlock::new(type_, raw_block.initial_len, body))),
+        fn parse_body<'a, B: ByteOrder>(
+            state: &PcapNgState,
+            type_: u32,
+            initial_len: u32,
+            body: &'a [u8],
+        ) -> Result<Block<'a>, BlockConversionError> {
+            match type_ {
+                SECTION_HEADER_BLOCK => SectionHeaderBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SectionHeader(blk)),
+                INTERFACE_DESCRIPTION_BLOCK => {
+                    InterfaceDescriptionBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::InterfaceDescription(blk))
+                },
+                PACKET_BLOCK => PacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::Packet(blk)),
+                SIMPLE_PACKET_BLOCK => SimplePacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SimplePacket(blk)),
+                NAME_RESOLUTION_BLOCK => NameResolutionBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::NameResolution(blk)),
+                INTERFACE_STATISTIC_BLOCK => {
+                    InterfaceStatisticsBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::InterfaceStatistics(blk))
+                },
+                ENHANCED_PACKET_BLOCK => EnhancedPacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::EnhancedPacket(blk)),
+                SYSTEMD_JOURNAL_EXPORT_BLOCK => {
+                    SystemdJournalExportBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SystemdJournalExport(blk))
+                },
+                CUSTOM_BLOCK_COPIABLE => CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomCopiable(blk)),
+                CUSTOM_BLOCK_NON_COPIABLE => CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomNonCopiable(blk)),
+                _ => Ok(Block::Unknown(UnknownBlock::new(type_, initial_len, body))),
+            }
+            .map_err(|source| BlockConversionError { name: block_name(type_), type_, source })
         }
-        .map_err(|source| BlockConversionError { name: block_name(raw_block.type_), type_: raw_block.type_, source })
+
+        let type_ = raw_block.type_;
+        let initial_len = raw_block.initial_len;
+
+        match raw_block.body {
+            Cow::Borrowed(body) => parse_body::<B>(state, type_, initial_len, body),
+            Cow::Owned(body) => parse_body::<B>(state, type_, initial_len, &body).map(|block| block.into_owned()),
+        }
     }
 
     /// Writes a [`Block`] to a writer, using a [`PcapNgState`].
@@ -232,9 +244,7 @@ impl<'a> Block<'a> {
             Self::Unknown(b) => inner_write_to::<B, _, W>(state, b, b.type_, writer),
         };
 
-        // TODO: Replace the unchecked `len as u16` writes in these impls with checked
-        // conversions so oversized option payloads return a typed error instead of
-        // truncating on the wire.
+        /// Writes a block to the writer, including its header and padding.
         fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(
             state: &PcapNgState,
             block: &BL,
@@ -245,15 +255,26 @@ impl<'a> Block<'a> {
             let data_len = block.write_to::<B, _>(state, &mut std::io::sink())?;
             let pad_len = (4 - (data_len % 4)) % 4;
 
+            // Block length calculation
             let block_len = data_len + pad_len + 12;
 
+            // Check that there wasn't an overflow
+            if block_len < data_len {
+                return Err(PcapNgWriteError::Validation { field: "Block.total_length", source: ContentValidationError::BlockContentTooBig(data_len as u64) });
+            }
+
+            // Check that the block length fits within the u32 limit
+            let block_len: u32 = block_len.try_into().map_err(|_| {
+                PcapNgWriteError::Validation { field: "Block.total_length", source: ContentValidationError::BlockContentTooBig(block_len as u64) }
+            })?;
+
             writer.write_u32::<B>(block_code)?;
-            writer.write_u32::<B>(block_len as u32)?;
+            writer.write_u32::<B>(block_len)?;
             block.write_to::<B, _>(state, writer)?;
             writer.write_all(&[0_u8; 3][..pad_len])?;
-            writer.write_u32::<B>(block_len as u32)?;
+            writer.write_u32::<B>(block_len)?;
 
-            Ok(block_len)
+            Ok(block_len as usize)
         }
     }
 
@@ -446,5 +467,43 @@ pub fn block_name(type_: u32) -> &'static str {
         CUSTOM_BLOCK_COPIABLE => "Custom Block (Copiable)",
         CUSTOM_BLOCK_NON_COPIABLE => "Custom Block (Non-Copiable)",
         _ => "Unknown Block",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use byteorder_slice::BigEndian;
+
+    use super::{Block, RawBlock, SECTION_HEADER_BLOCK};
+    use crate::Endianness;
+    use crate::pcapng::PcapNgState;
+
+    #[test]
+    fn try_from_raw_block_accepts_owned_bodies() {
+        let raw_block = RawBlock {
+            type_: SECTION_HEADER_BLOCK,
+            initial_len: 28,
+            body: Cow::Owned(vec![
+                0x1A, 0x2B, 0x3C, 0x4D, // byte-order magic
+                0x00, 0x01, // major version
+                0x00, 0x00, // minor version
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // section length
+            ]),
+            trailer_len: 28,
+        };
+
+        let block = Block::try_from_raw_block::<BigEndian>(&PcapNgState::default(), raw_block).unwrap();
+
+        match block {
+            Block::SectionHeader(block) => {
+                assert_eq!(block.endianness, Endianness::Big);
+                assert_eq!(block.major_version, 1);
+                assert_eq!(block.minor_version, 0);
+                assert!(block.options.is_empty());
+            },
+            other => panic!("expected SectionHeader block, got {other:?}"),
+        }
     }
 }

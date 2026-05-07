@@ -9,7 +9,7 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::Endianness;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
@@ -57,7 +57,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
 
         // Start of implementation
         if slice.len() < 16 {
-            return Err(BlockContentParseError::BlockContentTooSmall { needed: 20, actual: slice.len() });
+            return Err(BlockContentParseError::BlockContentTooSmall { needed: 16, actual: slice.len() });
         }
 
         let magic = slice.read_u32::<BigEndian>().unwrap();
@@ -177,12 +177,11 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         match self {
-            SectionHeaderOption::Hardware(a) => a.write_opt_to::<B, W>(Self::HARDWARE, writer),
-            SectionHeaderOption::OS(a) => a.write_opt_to::<B, W>(Self::OS_, writer),
-            SectionHeaderOption::UserApplication(a) => a.write_opt_to::<B, W>(Self::USER_APPLICATION, writer),
-            SectionHeaderOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
+            SectionHeaderOption::Hardware(a) => a.write_opt::<B, W>(Self::HARDWARE, writer),
+            SectionHeaderOption::OS(a) => a.write_opt::<B, W>(Self::OS_, writer),
+            SectionHeaderOption::UserApplication(a) => a.write_opt::<B, W>(Self::USER_APPLICATION, writer),
+            SectionHeaderOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
         }
-        .map_err(Into::into)
     }
 
     fn code_name(code: u16) -> &'static str {

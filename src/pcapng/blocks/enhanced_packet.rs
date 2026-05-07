@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::io::Write;
-use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -10,7 +9,7 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
@@ -23,8 +22,8 @@ pub struct EnhancedPacketBlock<'a> {
     /// (within the current Section of the file) is identified by the same number of this field.
     pub interface_id: u32,
 
-    /// Time elapsed since 1970-01-01 00:00:00 UTC.
-    pub timestamp: Duration,
+    /// Nanoseconds elapsed since 1970-01-01 00:00:00 UTC.
+    pub timestamp: i128,
 
     /// Actual length of the packet when it was transmitted on the network.
     pub original_len: u32,
@@ -152,10 +151,10 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         match self {
-            EnhancedPacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer).map_err(Into::into),
-            EnhancedPacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer).map_err(Into::into),
-            EnhancedPacketOption::DropCount(a) => a.write_opt_to::<B, W>(4, writer).map_err(Into::into),
-            EnhancedPacketOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer).map_err(Into::into),
+            EnhancedPacketOption::Flags(a) => a.write_opt::<B, W>(2, writer),
+            EnhancedPacketOption::Hash(a) => a.write_opt::<B, W>(3, writer),
+            EnhancedPacketOption::DropCount(a) => a.write_opt::<B, W>(4, writer),
+            EnhancedPacketOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
         }
     }
 

@@ -10,7 +10,7 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
 
@@ -95,7 +95,7 @@ impl<'a> Record<'a> {
         let record = match type_ {
             0 => {
                 if length != 0 {
-                    return Err(ContentValidationError::RecordEntryWrongSize { expected: 0, actual: length }.into());
+                    return Err(ContentValidationError::RecordWrongSize { expected: 0, actual: length }.into());
                 }
 
                 Record::End
@@ -123,7 +123,7 @@ impl<'a> Record<'a> {
     }
 
     /// Write a [`Record`] to a writer
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         match self {
             Record::End => {
                 writer.write_u16::<B>(0)?;
@@ -131,50 +131,53 @@ impl<'a> Record<'a> {
 
                 Ok(4)
             },
-
-            // TODO: Replace the unchecked `len as u16` writes in these impls with checked
-            // conversions so oversized option payloads return a typed error instead of
-            // truncating on the wire.
             Record::Ipv4(a) => {
                 let len = a.write_to::<B, _>(&mut std::io::sink())?;
                 let pad_len = (4 - len % 4) % 4;
 
+                let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
+                    field: "Ipv4Record.length",
+                    source: ContentValidationError::RecordTooBig(len),
+                })?;
+
                 writer.write_u16::<B>(1)?;
-                writer.write_u16::<B>(len as u16)?;
+                writer.write_u16::<B>(len)?;
                 a.write_to::<B, _>(writer)?;
                 writer.write_all(&[0_u8; 3][..pad_len])?;
 
-                Ok(4 + len + pad_len)
+                Ok(4 + len as usize + pad_len)
             },
-
-            // TODO: Replace the unchecked `len as u16` writes in these impls with checked
-            // conversions so oversized option payloads return a typed error instead of
-            // truncating on the wire.
             Record::Ipv6(a) => {
                 let len = a.write_to::<B, _>(&mut std::io::sink())?;
                 let pad_len = (4 - len % 4) % 4;
 
+                let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
+                    field: "Ipv6Record.length",
+                    source: ContentValidationError::RecordTooBig(len),
+                })?;
+
                 writer.write_u16::<B>(2)?;
-                writer.write_u16::<B>(len as u16)?;
+                writer.write_u16::<B>(len)?;
                 a.write_to::<B, _>(writer)?;
                 writer.write_all(&[0_u8; 3][..pad_len])?;
 
-                Ok(4 + len + pad_len)
+                Ok(4 + len as usize + pad_len)
             },
-
-            // TODO: Replace the unchecked `len as u16` writes in these impls with checked
-            // conversions so oversized option payloads return a typed error instead of
-            // truncating on the wire.
             Record::Unknown(a) => {
                 let len = a.value.len();
                 let pad_len = (4 - len % 4) % 4;
 
+                let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
+                    field: "UnknownRecord.length",
+                    source: ContentValidationError::RecordTooBig(len),
+                })?;
+
                 writer.write_u16::<B>(a.type_)?;
-                writer.write_u16::<B>(len as u16)?;
+                writer.write_u16::<B>(len)?;
                 writer.write_all(&a.value)?;
                 writer.write_all(&[0_u8; 3][..pad_len])?;
 
-                Ok(4 + len + pad_len)
+                Ok(4 + len as usize + pad_len)
             },
         }
     }
@@ -193,7 +196,7 @@ impl<'a> Ipv4Record<'a> {
     /// Parse a [`Ipv4Record`] from a slice
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
         if slice.len() < 6 {
-            return Err(ContentValidationError::RecordEntryWrongMinSize { min: 6, actual: slice.len() }.into());
+            return Err(ContentValidationError::RecordWrongMinSize { min: 6, actual: slice.len() }.into());
         }
 
         let ip_addr_oct: [u8; 4] = slice.read_slice(4).unwrap().try_into().unwrap();
@@ -247,7 +250,7 @@ impl<'a> Ipv6Record<'a> {
     /// Parse a [`Ipv6Record`] from a slice
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
         if slice.len() < 18 {
-            return Err(ContentValidationError::RecordEntryWrongMinSize { min: 18, actual: slice.len() }.into());
+            return Err(ContentValidationError::RecordWrongMinSize { min: 18, actual: slice.len() }.into());
         }
 
         let ip_addr_oct: [u8; 16] = slice.read_slice(16).unwrap().try_into().unwrap();
@@ -359,12 +362,11 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         match self {
-            NameResolutionOption::NsDnsName(a) => a.write_opt_to::<B, W>(Self::NS_DNS_NAME, writer),
-            NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt_to::<B, W>(Self::NS_DNS_IPV4_ADDR, writer),
-            NameResolutionOption::NsDnsIpv6Addr(a) => a.write_opt_to::<B, W>(Self::NS_DNS_IPV6_ADDR, writer),
-            NameResolutionOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
+            NameResolutionOption::NsDnsName(a) => a.write_opt::<B, W>(Self::NS_DNS_NAME, writer),
+            NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt::<B, W>(Self::NS_DNS_IPV4_ADDR, writer),
+            NameResolutionOption::NsDnsIpv6Addr(a) => a.write_opt::<B, W>(Self::NS_DNS_IPV6_ADDR, writer),
+            NameResolutionOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
         }
-        .map_err(Into::into)
     }
 
     fn code_name(code: u16) -> &'static str {
@@ -374,5 +376,34 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
             Self::NS_DNS_IPV6_ADDR => "NsDnsIpv6Addr",
             _ => CommonOption::code_name(code),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::borrow::Cow;
+
+    use byteorder_slice::BigEndian;
+
+    use super::{NameResolutionBlock, NameResolutionOption, PcapNgBlock};
+    use crate::pcapng::PcapNgState;
+    use crate::pcapng::errors::{ContentValidationError, PcapNgWriteError};
+
+    #[test]
+    fn write_rejects_oversized_name_resolution_option() {
+        let block = NameResolutionBlock {
+            records: vec![],
+            options: vec![NameResolutionOption::NsDnsName(Cow::Owned("a".repeat(u16::MAX as usize + 1)))],
+        };
+
+        let error = block.write_to::<BigEndian, _>(&PcapNgState::default(), &mut Vec::new()).unwrap_err();
+
+        assert!(matches!(
+            error,
+            PcapNgWriteError::Validation {
+                field: "OptionEntry.length",
+                source: ContentValidationError::OptionTooBig(len),
+            } if len == u16::MAX as usize + 1
+        ));
     }
 }
