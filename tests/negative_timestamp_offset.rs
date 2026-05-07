@@ -34,7 +34,7 @@ fn writer_roundtrip_preserves_negative_timestamp_offset() {
     match interface_block {
         Block::InterfaceDescription(block) => {
             assert!(
-                block.options.iter().any(|opt| *opt == InterfaceDescriptionOption::IfTsOffset(-2)),
+                block.options.contains(&InterfaceDescriptionOption::IfTsOffset(-2)),
                 "Missing signed if_tsoffset option after round-trip"
             );
         },

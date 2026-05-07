@@ -20,6 +20,7 @@ pub(crate) struct ReadBuffer<R: Read> {
     pub(crate) bytes_used: u64,
 }
 
+// TODO: Unify parse_with and parse_with-2
 impl<R: Read> ReadBuffer<R> {
     /// Creates a new ReadBuffer with capacity of 8_000_000
     pub fn new(reader: R) -> Self {

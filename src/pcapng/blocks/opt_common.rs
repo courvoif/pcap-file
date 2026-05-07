@@ -292,10 +292,10 @@ fn write_opt_with_header_pad<B: ByteOrder, W: Write>(
 
     let len: u16 = len
         .try_into()
-        .map_err(|_| PcapNgWriteError::Validation { field: "Option length", source: ContentValidationError::OptionTooBig(len) })?;
+        .map_err(|_| PcapNgWriteError::Validation { field: "OptionEntry.length", source: ContentValidationError::OptionTooBig(len) })?;
 
     writer.write_u16::<B>(code)?;
-    writer.write_u16::<B>(len as u16)?;
+    writer.write_u16::<B>(len)?;
     content(writer)?;
     writer.write_all(&[0_u8; 3][..pad_len])?;
 
@@ -360,12 +360,12 @@ impl<'a> WriteOptTo for CommonOption<'a> {
             }),
             CommonOption::CustomUtf8Copiable(a) => write_opt_with_header_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
                 w.write_u32::<B>(a.pen)?;
-                w.write_all(&a.value.as_bytes())?;
+                w.write_all(a.value.as_bytes())?;
                 Ok(())
             }),
             CommonOption::CustomUtf8NonCopiable(a) => write_opt_with_header_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
                 w.write_u32::<B>(a.pen)?;
-                w.write_all(&a.value.as_bytes())?;
+                w.write_all(a.value.as_bytes())?;
                 Ok(())
             }),
             CommonOption::Unknown(a) => write_opt_with_header_pad::<B, _>(writer, code, a.value.len(), |w| w.write_all(&a.value)),

@@ -10,6 +10,9 @@ pub enum PcapNgError {
     /// Error while parsing pcapng data.
     #[error(transparent)]
     Parse(#[from] PcapNgParseError),
+    /// Error while reading pcapng data.
+    #[error(transparent)]
+    Read(#[from] PcapNgReadError),
     /// Error while writing pcapng data.
     #[error(transparent)]
     Write(#[from] PcapNgWriteError),
@@ -30,7 +33,7 @@ pub enum PcapNgParseError {
     /// # Fields
     /// - 0: needed size to parse the data
     /// - 1: actual size of the buffer
-    #[error("The buffer too small: need {0}B, got {1}B")]
+    #[error("The buffer is too small: need {0}B, got {1}B")]
     IncompleteBuffer(usize, usize),
 
     /// The raw block format is invalid.
@@ -80,7 +83,7 @@ pub enum PcapNgReadError {
 impl From<PcapNgParseError> for PcapNgReadError {
     fn from(value: PcapNgParseError) -> Self {
         match value {
-            PcapNgParseError::IncompleteBuffer(_, _) => Self::Io(std::io::ErrorKind::UnexpectedEof.into()),
+            PcapNgParseError::IncompleteBuffer(_, _) => Self::Io(std::io::Error::from(std::io::ErrorKind::UnexpectedEof)),
             PcapNgParseError::InvalidFormat(e) => Self::InvalidFormat(e),
             PcapNgParseError::BlockConversion(e) => Self::BlockConversion(e),
             PcapNgParseError::StateUpdate(e) => Self::StateUpdate(e),
@@ -98,7 +101,7 @@ pub enum PcapNgWriteError {
     Io(#[from] std::io::Error),
 
     /// A field failed validation before being written.
-    #[error("Field `{field}` failed its validation during writing")]
+    #[error("Field `{field}` failed validation during writing")]
     Validation {
         /// Name of the field that failed validation.
         field: &'static str,
@@ -129,7 +132,7 @@ pub enum PcapNgFormatError {
     /// # Fields
     /// - 0: minimum block size for the expected block type
     /// - 1: actual block size
-    #[error("Block is too short: minimum {0}B, actual {1}B,")]
+    #[error("Block is too short: minimum {0}B, actual {1}B")]
     BlockTooShort(usize, usize),
     /// The two block length fields do not match.
     /// # Fields
@@ -148,7 +151,7 @@ pub enum RawBlockParseError {
     /// # Fields
     /// - 0: needed size to parse the data
     /// - 1: actual size of the buffer
-    #[error("The buffer too small: need {0}B, got {1}B")]
+    #[error("The buffer is too small: need {0}B, got {1}B")]
     IncompleteBuffer(usize, usize),
 
     /// The raw block format is invalid.
@@ -225,7 +228,7 @@ pub enum ContentValidationError {
     #[error("Invalid interface ID: {0}")]
     InvalidInterfaceId(u32),
     /// The timestamp cannot be represented on the raw 64-bit timestamp field.
-    #[error("Timestamp can't be represented on a u64: ts = {}ns, ts_resolution = {}ns, offset = {}s", .0, .1.to_nano_secs(), 2)]
+    #[error("Timestamp can't be represented on a u64: ts = {}ns, ts_resolution = {}ns, offset = {}s", .0, .1.to_nano_secs(), .2)]
     InvalidTimestamp(i128, TsResolution, i64),
     /// The Name Resolution record entry size is invalid.
     #[error("Wrong record size: expected {expected}B, got {actual}B")]
@@ -247,7 +250,7 @@ pub enum ContentValidationError {
     #[error("Record length doesn't fit on a u16: {0}B")]
     RecordTooBig(usize),
     /// A record name is not valid UTF-8.
-    #[error("A record name is not in UTF8")]
+    #[error("A record name is not valid UTF-8")]
     RecordNameNotUtf8(#[source] std::str::Utf8Error),
     /// A Name Resolution record does not contain any names.
     #[error("Record without any name")]
@@ -269,7 +272,7 @@ pub enum ContentValidationError {
 #[derive(Debug, Error)]
 pub enum OptionParseError {
     /// The buffer is too short to parse the options.
-    #[error("The option field is to small to parse the options: need {needed}B, got {actual}B")]
+    #[error("The option field is too small to parse the options: need {needed}B, got {actual}B")]
     OptionsContentTooSmall {
         /// Needed size to parse the option list.
         needed: usize,
@@ -303,7 +306,7 @@ pub enum OptionEntryError {
     },
 
     /// The option payload is not valid UTF-8.
-    #[error("Invalid UTF8 format")]
+    #[error("Invalid UTF-8 format")]
     InvalidUtf8(#[from] std::str::Utf8Error),
     /// Validation error while decoding an option entry.
     #[error(transparent)]
