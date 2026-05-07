@@ -47,9 +47,10 @@ impl<R: Read> PcapNgReader<R> {
     /// Won't advance the reader past any malformed packets.
     ///
     /// # Errors
-    /// - Only some variants of [`PcapError::IoError`] are directly recoverable.
+    /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
+    /// - [`PcapNgReadError::BlockConversion`] can be recovered by calling [`Self::next_raw_block`].
     /// - Other errors will prevent the reader from advancing further.
-    ///   Some can be recovered by calling [`Self::next_raw_block`].
+    #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
     pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
@@ -78,8 +79,9 @@ impl<R: Read> PcapNgReader<R> {
     /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
     ///
     /// # Errors
-    /// - Only some variants of [`PcapError::IoError`] are directly recoverable.
+    /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
     /// - All other errors will prevent the reader from advancing further.
+    #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
     pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {

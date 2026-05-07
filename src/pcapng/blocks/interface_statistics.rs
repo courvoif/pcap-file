@@ -1,7 +1,6 @@
 //! Interface Statistics Block.
 
 use std::io::Write;
-use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -9,7 +8,7 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
@@ -22,8 +21,8 @@ pub struct InterfaceStatisticsBlock<'a> {
     /// is identified by same number of this field.
     pub interface_id: u32,
 
-    /// Time this statistics refers to.
-    pub timestamp: Duration,
+    /// Time this statistics refers to (Nanoseconds elapsed since 1970-01-01 00:00:00 UTC.)
+    pub timestamp: i128,
 
     /// Options
     pub options: Vec<InterfaceStatisticsOption<'a>>,
@@ -69,12 +68,12 @@ pub enum InterfaceStatisticsOption<'a> {
     /// The isb_starttime option specifies the time the capture started.
     ///
     /// The time is relative to 1970-01-01 00:00:00 UTC.
-    IsbStartTime(Duration),
+    IsbStartTime(i128),
 
     /// The isb_endtime option specifies the time the capture ended.
     ///
     /// The time is relative to 1970-01-01 00:00:00 UTC.
-    IsbEndTime(Duration),
+    IsbEndTime(i128),
 
     /// The isb_ifrecv option specifies the 64-bit unsigned integer number of packets received from the physical interface
     /// starting from the beginning of the capture.
@@ -178,14 +177,14 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         match self {
-            InterfaceStatisticsOption::IsbStartTime(a) => write_timestamp::<B, W>(Self::ISB_START_TIME, a, state, interface_id, writer),
-            InterfaceStatisticsOption::IsbEndTime(a) => write_timestamp::<B, W>(Self::ISB_END_TIME, a, state, interface_id, writer),
-            InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt_to::<B, W>(Self::ISB_IF_RECV, writer).map_err(Into::into),
-            InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt_to::<B, W>(Self::ISB_IF_DROP, writer).map_err(Into::into),
-            InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt_to::<B, W>(Self::ISB_FILTER_ACCEPT, writer).map_err(Into::into),
-            InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt_to::<B, W>(Self::ISB_OS_DROP, writer).map_err(Into::into),
-            InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt_to::<B, W>(Self::ISB_USR_DELIV, writer).map_err(Into::into),
-            InterfaceStatisticsOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer).map_err(Into::into),
+            InterfaceStatisticsOption::IsbStartTime(a) => write_timestamp::<B, W>(Self::ISB_START_TIME, *a, state, interface_id, writer),
+            InterfaceStatisticsOption::IsbEndTime(a) => write_timestamp::<B, W>(Self::ISB_END_TIME, *a, state, interface_id, writer),
+            InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt::<B, W>(Self::ISB_IF_RECV, writer),
+            InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt::<B, W>(Self::ISB_IF_DROP, writer),
+            InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt::<B, W>(Self::ISB_FILTER_ACCEPT, writer),
+            InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt::<B, W>(Self::ISB_OS_DROP, writer),
+            InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt::<B, W>(Self::ISB_USR_DELIV, writer),
+            InterfaceStatisticsOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
         }
     }
 
@@ -206,7 +205,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
 /// Helper for writing options that contain timestamps.
 fn write_timestamp<B: ByteOrder, W: Write>(
     code: u16,
-    timestamp: &Duration,
+    timestamp: i128,
     state: &PcapNgState,
     interface_id: Option<u32>,
     writer: &mut W,
@@ -216,8 +215,8 @@ fn write_timestamp<B: ByteOrder, W: Write>(
     writer.write_u16::<B>(code)?;
     writer.write_u16::<B>(TIMESTAMP_LENGTH)?;
     let (timestamp_high, timestamp_low) = state
-        .encode_timestamp(interface_id.unwrap(), *timestamp)
-        .map_err(|source| PcapNgWriteError::Validation { field: "InterfaceStatisticsOption::timestamp", source })?;
+        .encode_timestamp(interface_id.unwrap(), timestamp)
+        .map_err(|source| PcapNgWriteError::Validation { field: "InterfaceStatisticsOption.timestamp", source })?;
     writer.write_u32::<B>(timestamp_high)?;
     writer.write_u32::<B>(timestamp_low)?;
     Ok(OPTION_LENGTH)

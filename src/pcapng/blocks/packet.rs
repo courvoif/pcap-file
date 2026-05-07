@@ -2,7 +2,6 @@
 
 use std::borrow::Cow;
 use std::io::Write;
-use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -10,7 +9,7 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
@@ -27,8 +26,8 @@ pub struct PacketBlock<'a> {
     /// between this packet and the preceding one.
     pub drop_count: u16,
 
-    /// Time elapsed since 1970-01-01 00:00:00 UTC.
-    pub timestamp: Duration,
+    /// Nanoseconds elapsed since 1970-01-01 00:00:00 UTC.
+    pub timestamp: i128,
 
     /// Number of octets captured from the packet (i.e. the length of the Packet Data field).
     pub captured_len: u32,
@@ -86,7 +85,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         writer.write_u16::<B>(self.drop_count)?;
         let (timestamp_high, timestamp_low) = state
             .encode_timestamp(self.interface_id as u32, self.timestamp)
-            .map_err(|source| PcapNgWriteError::Validation { field: "PacketBlock::timestamp", source })?;
+            .map_err(|source| PcapNgWriteError::Validation { field: "PacketBlock.timestamp", source })?;
         writer.write_u32::<B>(timestamp_high)?;
         writer.write_u32::<B>(timestamp_low)?;
         writer.write_u32::<B>(self.captured_len)?;
@@ -152,11 +151,10 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         match self {
-            PacketOption::Flags(a) => a.write_opt_to::<B, W>(Self::FLAGS, writer),
-            PacketOption::Hash(a) => a.write_opt_to::<B, W>(Self::HASH, writer),
-            PacketOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
+            PacketOption::Flags(a) => a.write_opt::<B, W>(Self::FLAGS, writer),
+            PacketOption::Hash(a) => a.write_opt::<B, W>(Self::HASH, writer),
+            PacketOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
         }
-        .map_err(Into::into)
     }
 
     fn code_name(code: u16) -> &'static str {

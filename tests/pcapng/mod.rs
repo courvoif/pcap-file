@@ -209,6 +209,40 @@ fn parser_handles_section_endianness_switch() {
 }
 
 #[test]
+fn writer_handles_section_endianness_switch() {
+    use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
+    use pcap_file::pcapng::blocks::section_header::SectionHeaderBlock;
+    use pcap_file::pcapng::blocks::{Block, PcapNgBlock};
+    use pcap_file::{DataLink, Endianness};
+
+    let little_section = SectionHeaderBlock { endianness: Endianness::Little, section_length: 128, ..Default::default() };
+    let little_interface = InterfaceDescriptionBlock { linktype: DataLink::ETHERNET, snaplen: 64, options: vec![] };
+    let big_section = SectionHeaderBlock { endianness: Endianness::Big, section_length: 256, ..Default::default() };
+    let big_interface = InterfaceDescriptionBlock { linktype: DataLink::RAW, snaplen: 128, options: vec![] };
+
+    let mut writer = PcapNgWriter::with_section_header(Vec::new(), little_section.clone()).unwrap();
+    writer.write_block(&little_interface.clone().into_block()).unwrap();
+    writer.write_block(&big_section.clone().into_block()).unwrap();
+    writer.write_block(&big_interface.clone().into_block()).unwrap();
+
+    // Check each block value //
+    let (rem, mut parser) = PcapNgParser::new(writer.get_ref()).unwrap();
+    assert_eq!(parser.section(), &little_section);
+
+    let (rem, block) = parser.next_block(rem).unwrap();
+    assert_eq!(block, Block::InterfaceDescription(little_interface));
+
+    let (rem, block) = parser.next_block(rem).unwrap();
+    assert_eq!(block, Block::SectionHeader(big_section.clone()));
+    assert_eq!(parser.section(), &big_section);
+
+    let (rem, block) = parser.next_block(rem).unwrap();
+    assert_eq!(block, Block::InterfaceDescription(big_interface));
+    
+    assert!(rem.is_empty());
+}
+
+#[test]
 fn test_stateful_custom_block() {
     use byteorder_slice::{
         BigEndian, LittleEndian,
@@ -219,14 +253,13 @@ fn test_stateful_custom_block() {
     use pcap_file::{DataLink, Endianness};
     use std::borrow::Cow;
     use std::io::Write;
-    use std::time::Duration;
 
     // 1. Define a new custom block payload
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct MyStatefulPayload {
         magic_number: u64,
         interface_id: u32,
-        timestamp: Duration,
+        timestamp: i128,
     }
 
     // 1.1 Define a new custom error if needed
@@ -287,11 +320,7 @@ fn test_stateful_custom_block() {
         }
     }
 
-    let original_payload = MyStatefulPayload {
-        magic_number: 0xDEADBEEFCAFED00D,
-        interface_id: 0,
-        timestamp: Duration::from_nanos(123456789),
-    };
+    let original_payload = MyStatefulPayload { magic_number: 0xDEADBEEFCAFED00D, interface_id: 0, timestamp: 123456789 };
 
     let mut buffer = Vec::new();
     let mut pcapng_writer = PcapNgWriter::new(&mut buffer).expect("Failed to create writer");
@@ -317,7 +346,7 @@ fn test_stateful_custom_block() {
 
     let packet_block = EnhancedPacketBlock {
         interface_id: 0,
-        timestamp: Duration::ZERO,
+        timestamp: 0,
         original_len: 0,
         data: Cow::Owned(vec![]),
         options: vec![EnhancedPacketOption::Common(

@@ -4,7 +4,6 @@
 
 use std::borrow::Cow;
 use std::io::Write;
-use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -13,7 +12,7 @@ use derive_into_owned::IntoOwned;
 use once_cell::sync::Lazy;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::DataLink;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
@@ -95,14 +94,14 @@ impl<'a> InterfaceDescriptionBlock<'a> {
     }
 
     /// Returns the timestamp offset of the interface, or zero if it has none.
-    pub fn ts_offset(&self) -> Duration {
+    pub fn ts_offset(&self) -> i64 {
         for opt in &self.options {
             if let InterfaceDescriptionOption::IfTsOffset(offset) = opt {
-                return Duration::from_secs(*offset);
+                return *offset;
             }
         }
 
-        Duration::ZERO
+        0
     }
 }
 
@@ -151,7 +150,7 @@ pub enum InterfaceDescriptionOption<'a> {
 
     /// The if_tsoffset option is a 64-bit integer value that specifies an offset (in seconds)
     /// that must be added to the timestamp of each packet to obtain the absolute timestamp of a packet.
-    IfTsOffset(u64),
+    IfTsOffset(i64),
 
     /// The if_hardware option is a UTF-8 string containing the description of the interface hardware.
     IfHardware(Cow<'a, str>),
@@ -246,7 +245,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
                 if slice.len() != 8 {
                     return Err(OptionEntryError::WrongSize { expected: 8, actual: slice.len() });
                 }
-                InterfaceDescriptionOption::IfTsOffset(slice.read_u64::<B>().unwrap())
+                InterfaceDescriptionOption::IfTsOffset(slice.read_i64::<B>().unwrap())
             },
             Self::IF_HARDWARE => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
@@ -263,23 +262,22 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         match self {
-            InterfaceDescriptionOption::IfName(a) => a.write_opt_to::<B, W>(Self::IF_NAME, writer),
-            InterfaceDescriptionOption::IfDescription(a) => a.write_opt_to::<B, W>(Self::IF_DESCRIPTION, writer),
-            InterfaceDescriptionOption::IfIpv4Addr(a) => a.write_opt_to::<B, W>(Self::IF_IPV4_ADDR, writer),
-            InterfaceDescriptionOption::IfIpv6Addr(a) => a.write_opt_to::<B, W>(Self::IF_IPV6_ADDR, writer),
-            InterfaceDescriptionOption::IfMacAddr(a) => a.write_opt_to::<B, W>(Self::IF_MAC_ADDR, writer),
-            InterfaceDescriptionOption::IfEuIAddr(a) => a.write_opt_to::<B, W>(Self::IF_EU_ADDR, writer),
-            InterfaceDescriptionOption::IfSpeed(a) => a.write_opt_to::<B, W>(Self::IF_SPEED, writer),
-            InterfaceDescriptionOption::IfTsResol(a) => a.write_opt_to::<B, W>(Self::IF_TS_RESOL, writer),
-            InterfaceDescriptionOption::IfTzone(a) => a.write_opt_to::<B, W>(Self::IF_T_ZONE, writer),
-            InterfaceDescriptionOption::IfFilter(a) => a.write_opt_to::<B, W>(Self::IF_FILTER, writer),
-            InterfaceDescriptionOption::IfOs(a) => a.write_opt_to::<B, W>(Self::IF_OS, writer),
-            InterfaceDescriptionOption::IfFcsLen(a) => a.write_opt_to::<B, W>(Self::IF_FCS_LEN, writer),
-            InterfaceDescriptionOption::IfTsOffset(a) => a.write_opt_to::<B, W>(Self::IF_TS_OFFSET, writer),
-            InterfaceDescriptionOption::IfHardware(a) => a.write_opt_to::<B, W>(Self::IF_HARDWARE, writer),
-            InterfaceDescriptionOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
+            InterfaceDescriptionOption::IfName(a) => a.write_opt::<B, W>(Self::IF_NAME, writer),
+            InterfaceDescriptionOption::IfDescription(a) => a.write_opt::<B, W>(Self::IF_DESCRIPTION, writer),
+            InterfaceDescriptionOption::IfIpv4Addr(a) => a.write_opt::<B, W>(Self::IF_IPV4_ADDR, writer),
+            InterfaceDescriptionOption::IfIpv6Addr(a) => a.write_opt::<B, W>(Self::IF_IPV6_ADDR, writer),
+            InterfaceDescriptionOption::IfMacAddr(a) => a.write_opt::<B, W>(Self::IF_MAC_ADDR, writer),
+            InterfaceDescriptionOption::IfEuIAddr(a) => a.write_opt::<B, W>(Self::IF_EU_ADDR, writer),
+            InterfaceDescriptionOption::IfSpeed(a) => a.write_opt::<B, W>(Self::IF_SPEED, writer),
+            InterfaceDescriptionOption::IfTsResol(a) => a.write_opt::<B, W>(Self::IF_TS_RESOL, writer),
+            InterfaceDescriptionOption::IfTzone(a) => a.write_opt::<B, W>(Self::IF_T_ZONE, writer),
+            InterfaceDescriptionOption::IfFilter(a) => a.write_opt::<B, W>(Self::IF_FILTER, writer),
+            InterfaceDescriptionOption::IfOs(a) => a.write_opt::<B, W>(Self::IF_OS, writer),
+            InterfaceDescriptionOption::IfFcsLen(a) => a.write_opt::<B, W>(Self::IF_FCS_LEN, writer),
+            InterfaceDescriptionOption::IfTsOffset(a) => a.write_opt::<B, W>(Self::IF_TS_OFFSET, writer),
+            InterfaceDescriptionOption::IfHardware(a) => a.write_opt::<B, W>(Self::IF_HARDWARE, writer),
+            InterfaceDescriptionOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
         }
-        .map_err(Into::into)
     }
 
     fn code_name(code: u16) -> &'static str {
