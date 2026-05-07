@@ -278,7 +278,6 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::IfHardware(a) => a.write_opt_to::<B, W>(Self::IF_HARDWARE, writer),
             InterfaceDescriptionOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }
-        .map_err(Into::into)
     }
 
     fn code_name(code: u16) -> &'static str {

@@ -122,7 +122,7 @@ impl<W: Write> PcapNgWriter<W> {
             Block::InterfaceStatistics(blk) => {
                 if blk.interface_id as usize >= self.state.interfaces.len() {
                     return Err(PcapNgWriteError::Validation {
-                        field: "InterfaceStatistics.interface_id",
+                        field: "InterfaceStatisticsBlock.interface_id",
                         source: ContentValidationError::InvalidInterfaceId(blk.interface_id),
                     });
                 }
@@ -130,7 +130,7 @@ impl<W: Write> PcapNgWriter<W> {
             Block::EnhancedPacket(blk) => {
                 if blk.interface_id as usize >= self.state.interfaces.len() {
                     return Err(PcapNgWriteError::Validation {
-                        field: "EnhancedPacket.interface_id",
+                        field: "EnhancedPacketBlock.interface_id",
                         source: ContentValidationError::InvalidInterfaceId(blk.interface_id),
                     });
                 }

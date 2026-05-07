@@ -57,7 +57,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
 
         // Start of implementation
         if slice.len() < 16 {
-            return Err(BlockContentParseError::BlockContentTooSmall { needed: 20, actual: slice.len() });
+            return Err(BlockContentParseError::BlockContentTooSmall { needed: 16, actual: slice.len() });
         }
 
         let magic = slice.read_u32::<BigEndian>().unwrap();
@@ -182,7 +182,6 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
             SectionHeaderOption::UserApplication(a) => a.write_opt_to::<B, W>(Self::USER_APPLICATION, writer),
             SectionHeaderOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }
-        .map_err(Into::into)
     }
 
     fn code_name(code: u16) -> &'static str {

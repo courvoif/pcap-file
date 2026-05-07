@@ -179,12 +179,12 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         match self {
             InterfaceStatisticsOption::IsbStartTime(a) => write_timestamp::<B, W>(Self::ISB_START_TIME, *a, state, interface_id, writer),
             InterfaceStatisticsOption::IsbEndTime(a) => write_timestamp::<B, W>(Self::ISB_END_TIME, *a, state, interface_id, writer),
-            InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt_to::<B, W>(Self::ISB_IF_RECV, writer).map_err(Into::into),
-            InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt_to::<B, W>(Self::ISB_IF_DROP, writer).map_err(Into::into),
-            InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt_to::<B, W>(Self::ISB_FILTER_ACCEPT, writer).map_err(Into::into),
-            InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt_to::<B, W>(Self::ISB_OS_DROP, writer).map_err(Into::into),
-            InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt_to::<B, W>(Self::ISB_USR_DELIV, writer).map_err(Into::into),
-            InterfaceStatisticsOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer).map_err(Into::into),
+            InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt_to::<B, W>(Self::ISB_IF_RECV, writer),
+            InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt_to::<B, W>(Self::ISB_IF_DROP, writer),
+            InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt_to::<B, W>(Self::ISB_FILTER_ACCEPT, writer),
+            InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt_to::<B, W>(Self::ISB_OS_DROP, writer),
+            InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt_to::<B, W>(Self::ISB_USR_DELIV, writer),
+            InterfaceStatisticsOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }
     }
 
@@ -216,7 +216,7 @@ fn write_timestamp<B: ByteOrder, W: Write>(
     writer.write_u16::<B>(TIMESTAMP_LENGTH)?;
     let (timestamp_high, timestamp_low) = state
         .encode_timestamp(interface_id.unwrap(), timestamp)
-        .map_err(|source| PcapNgWriteError::Validation { field: "InterfaceStatisticsOption::timestamp", source })?;
+        .map_err(|source| PcapNgWriteError::Validation { field: "InterfaceStatisticsOption.timestamp", source })?;
     writer.write_u32::<B>(timestamp_high)?;
     writer.write_u32::<B>(timestamp_low)?;
     Ok(OPTION_LENGTH)

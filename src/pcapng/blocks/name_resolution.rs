@@ -136,7 +136,7 @@ impl<'a> Record<'a> {
                 let pad_len = (4 - len % 4) % 4;
 
                 let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
-                    field: "IPv4 Record length",
+                    field: "Ipv4Record.length",
                     source: ContentValidationError::RecordTooBig(len),
                 })?;
 
@@ -152,7 +152,7 @@ impl<'a> Record<'a> {
                 let pad_len = (4 - len % 4) % 4;
 
                 let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
-                    field: "Ipv6 Record length",
+                    field: "Ipv6Record.length",
                     source: ContentValidationError::RecordTooBig(len),
                 })?;
 
@@ -168,12 +168,12 @@ impl<'a> Record<'a> {
                 let pad_len = (4 - len % 4) % 4;
 
                 let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
-                    field: "Unknown Record length",
+                    field: "UnknownRecord.length",
                     source: ContentValidationError::RecordTooBig(len),
                 })?;
 
                 writer.write_u16::<B>(a.type_)?;
-                writer.write_u16::<B>(len as u16)?;
+                writer.write_u16::<B>(len)?;
                 writer.write_all(&a.value)?;
                 writer.write_all(&[0_u8; 3][..pad_len])?;
 
@@ -367,7 +367,6 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
             NameResolutionOption::NsDnsIpv6Addr(a) => a.write_opt_to::<B, W>(Self::NS_DNS_IPV6_ADDR, writer),
             NameResolutionOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }
-        .map_err(Into::into)
     }
 
     fn code_name(code: u16) -> &'static str {
@@ -402,7 +401,7 @@ mod tests {
         assert!(matches!(
             error,
             PcapNgWriteError::Validation {
-                field: "Option length",
+                field: "OptionEntry.length",
                 source: ContentValidationError::OptionTooBig(len),
             } if len == u16::MAX as usize + 1
         ));

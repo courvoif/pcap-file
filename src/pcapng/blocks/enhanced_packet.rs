@@ -151,10 +151,10 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         match self {
-            EnhancedPacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer).map_err(Into::into),
-            EnhancedPacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer).map_err(Into::into),
-            EnhancedPacketOption::DropCount(a) => a.write_opt_to::<B, W>(4, writer).map_err(Into::into),
-            EnhancedPacketOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer).map_err(Into::into),
+            EnhancedPacketOption::Flags(a) => a.write_opt_to::<B, W>(2, writer),
+            EnhancedPacketOption::Hash(a) => a.write_opt_to::<B, W>(3, writer),
+            EnhancedPacketOption::DropCount(a) => a.write_opt_to::<B, W>(4, writer),
+            EnhancedPacketOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
         }
     }
 
