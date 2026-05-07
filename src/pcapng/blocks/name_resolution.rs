@@ -10,7 +10,7 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
 
@@ -362,10 +362,10 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         match self {
-            NameResolutionOption::NsDnsName(a) => a.write_opt_to::<B, W>(Self::NS_DNS_NAME, writer),
-            NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt_to::<B, W>(Self::NS_DNS_IPV4_ADDR, writer),
-            NameResolutionOption::NsDnsIpv6Addr(a) => a.write_opt_to::<B, W>(Self::NS_DNS_IPV6_ADDR, writer),
-            NameResolutionOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
+            NameResolutionOption::NsDnsName(a) => a.write_opt::<B, W>(Self::NS_DNS_NAME, writer),
+            NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt::<B, W>(Self::NS_DNS_IPV4_ADDR, writer),
+            NameResolutionOption::NsDnsIpv6Addr(a) => a.write_opt::<B, W>(Self::NS_DNS_IPV6_ADDR, writer),
+            NameResolutionOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
         }
     }
 

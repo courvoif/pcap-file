@@ -8,7 +8,7 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
@@ -179,12 +179,12 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         match self {
             InterfaceStatisticsOption::IsbStartTime(a) => write_timestamp::<B, W>(Self::ISB_START_TIME, *a, state, interface_id, writer),
             InterfaceStatisticsOption::IsbEndTime(a) => write_timestamp::<B, W>(Self::ISB_END_TIME, *a, state, interface_id, writer),
-            InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt_to::<B, W>(Self::ISB_IF_RECV, writer),
-            InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt_to::<B, W>(Self::ISB_IF_DROP, writer),
-            InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt_to::<B, W>(Self::ISB_FILTER_ACCEPT, writer),
-            InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt_to::<B, W>(Self::ISB_OS_DROP, writer),
-            InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt_to::<B, W>(Self::ISB_USR_DELIV, writer),
-            InterfaceStatisticsOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
+            InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt::<B, W>(Self::ISB_IF_RECV, writer),
+            InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt::<B, W>(Self::ISB_IF_DROP, writer),
+            InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt::<B, W>(Self::ISB_FILTER_ACCEPT, writer),
+            InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt::<B, W>(Self::ISB_OS_DROP, writer),
+            InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt::<B, W>(Self::ISB_USR_DELIV, writer),
+            InterfaceStatisticsOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
         }
     }
 

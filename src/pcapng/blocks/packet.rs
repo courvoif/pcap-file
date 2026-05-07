@@ -9,7 +9,7 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOptTo};
+use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
@@ -151,9 +151,9 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         match self {
-            PacketOption::Flags(a) => a.write_opt_to::<B, W>(Self::FLAGS, writer),
-            PacketOption::Hash(a) => a.write_opt_to::<B, W>(Self::HASH, writer),
-            PacketOption::Common(a) => a.write_opt_to::<B, W>(a.code(), writer),
+            PacketOption::Flags(a) => a.write_opt::<B, W>(Self::FLAGS, writer),
+            PacketOption::Hash(a) => a.write_opt::<B, W>(Self::HASH, writer),
+            PacketOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
         }
     }
 
