@@ -106,7 +106,7 @@ fn test_custom_block() {
     }
 
     // 2. Implement the required traits for the custom payload
-    impl CustomCopiable<'_> for MyCustomPayload {
+    impl CustomPayloadCopiable<'_> for MyCustomPayload {
         // A unique PEN for our test block
         const PEN: u32 = 70000;
         type WriteToError = IoError;
@@ -124,13 +124,16 @@ fn test_custom_block() {
         }
     }
 
+    impl CustomPayloadBlock<'_> for MyCustomPayload {}
+    impl CustomPayloadOption<'_> for MyCustomPayload {}
+
     let original_payload = MyCustomPayload { magic_number: 0xDEADBEEFCAFED00D };
 
     let section = SectionHeaderBlock {
         options: vec![SectionHeaderOption::Common(
             original_payload
                 .clone()
-                .into_custom_option()
+                .into_custom_binary_option_copiable()
                 .expect("Failed to encode custom option")
                 .into_common_option(),
         )],
@@ -140,7 +143,7 @@ fn test_custom_block() {
     let mut buffer = Vec::new();
     let mut pcapng_writer = PcapNgWriter::with_section_header(&mut buffer, section).expect("Failed to create writer");
 
-    let block_to_write = original_payload.clone().into_custom_block().expect("Failed to encode custom block").into_block();
+    let block_to_write = original_payload.clone().into_custom_block_copiable().expect("Failed to encode custom block").into_block();
 
     pcapng_writer.write_block(&block_to_write).expect("Failed to write custom block");
 
@@ -238,7 +241,7 @@ fn writer_handles_section_endianness_switch() {
 
     let (rem, block) = parser.next_block(rem).unwrap();
     assert_eq!(block, Block::InterfaceDescription(big_interface));
-    
+
     assert!(rem.is_empty());
 }
 
@@ -273,7 +276,7 @@ fn test_stateful_custom_block() {
     }
 
     // 2. Implement the required traits for the custom payload
-    impl CustomNonCopiable<'_> for MyStatefulPayload {
+    impl CustomPayloadNonCopiable<'_> for MyStatefulPayload {
         // A unique PEN for our test block
         const PEN: u32 = 70000;
 
@@ -320,6 +323,9 @@ fn test_stateful_custom_block() {
         }
     }
 
+    impl CustomPayloadBlock<'_> for MyStatefulPayload {}
+    impl CustomPayloadOption<'_> for MyStatefulPayload {}
+
     let original_payload = MyStatefulPayload { magic_number: 0xDEADBEEFCAFED00D, interface_id: 0, timestamp: 123456789 };
 
     let mut buffer = Vec::new();
@@ -338,7 +344,7 @@ fn test_stateful_custom_block() {
 
     let block_to_write = original_payload
         .clone()
-        .into_custom_block(pcapng_writer.state())
+        .into_custom_block_non_copiable(pcapng_writer.state())
         .expect("Failed to encode custom block")
         .into_block();
 
@@ -352,7 +358,7 @@ fn test_stateful_custom_block() {
         options: vec![EnhancedPacketOption::Common(
             original_payload
                 .clone()
-                .into_custom_option(pcapng_writer.state())
+                .into_custom_binary_option_non_copiable(pcapng_writer.state())
                 .expect("Failed to encode custom option")
                 .into_common_option(),
         )],
