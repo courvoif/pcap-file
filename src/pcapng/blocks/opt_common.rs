@@ -8,7 +8,7 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use crate::pcapng::blocks::custom::{CustomCopiable, CustomError, CustomNonCopiable};
+use crate::pcapng::blocks::custom::{CustomBinaryOption, CustomUtf8Option};
 use crate::pcapng::errors::{OptionEntryError, OptionParseError, PcapNgWriteError};
 use crate::pcapng::{ContentValidationError, PcapNgState};
 
@@ -77,38 +77,6 @@ impl<'a> CommonOption<'a> {
             CUSTOM_BINARY_OPTION_NON_COPIABLE => "CustomBinaryNonCopiable",
             _ => "Unknown",
         }
-    }
-}
-
-impl<'a> CustomBinaryOption<'a, true> {
-    /// Converts this option's value into a type that implements [`CustomCopiable`].
-    pub fn interpret<T: CustomCopiable<'a>>(&'a self) -> Result<Option<T>, CustomError> {
-        if self.pen != T::PEN {
-            return Ok(None);
-        }
-
-        T::from_slice(&self.value).map_err(|e| CustomError { pen: T::PEN, src: e.into() })
-    }
-
-    /// Converts this option into a [`CommonOption`].
-    pub fn into_common_option(self) -> CommonOption<'a> {
-        CommonOption::CustomBinaryCopiable(self)
-    }
-}
-
-impl<'a> CustomBinaryOption<'a, false> {
-    /// Converts this option's value into a type that implements [`CustomNonCopiable`].
-    pub fn interpret<T: CustomNonCopiable<'a>>(&'a self, state: &T::State) -> Result<Option<T>, CustomError> {
-        if self.pen != T::PEN {
-            return Ok(None);
-        }
-
-        T::from_slice(state, &self.value).map_err(|e| CustomError { pen: T::PEN, src: e.into() })
-    }
-
-    /// Converts this option into a [`CommonOption`].
-    pub fn into_common_option(self) -> CommonOption<'a> {
-        CommonOption::CustomBinaryNonCopiable(self)
     }
 }
 
@@ -224,52 +192,6 @@ impl<'a> UnknownOption<'a> {
     /// Creates a new [`UnknownOption`]
     pub fn new(code: u16, value: &'a [u8]) -> Self {
         UnknownOption { code, value: Cow::Borrowed(value) }
-    }
-}
-
-/// Custom binary option
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
-    /// Option PEN identifier
-    pub pen: u32,
-    /// Option value
-    pub value: Cow<'a, [u8]>,
-}
-
-impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
-    /// Parse an [`CustomBinaryOption`] from a slice
-    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, OptionEntryError> {
-        let pen = src.read_u32::<B>().map_err(|_| OptionEntryError::WrongSize { expected: 4, actual: src.len() })?;
-        let opt = CustomBinaryOption { pen, value: Cow::Borrowed(src) };
-        Ok(opt)
-    }
-
-    /// Returns a version of self with all fields converted to owning versions.
-    pub fn into_owned(self) -> CustomBinaryOption<'static, COPIABLE> {
-        CustomBinaryOption { pen: self.pen, value: Cow::Owned(self.value.into_owned()) }
-    }
-}
-
-/// Custom string (UTF-8) option
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
-    /// Option PEN identifier
-    pub pen: u32,
-    /// Option value
-    pub value: Cow<'a, str>,
-}
-
-impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
-    /// Parse a [`CustomUtf8Option`] from a slice
-    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, OptionEntryError> {
-        let pen = src.read_u32::<B>().map_err(|_| OptionEntryError::WrongSize { expected: 4, actual: src.len() })?;
-        let opt = CustomUtf8Option { pen, value: Cow::Borrowed(std::str::from_utf8(src)?) };
-        Ok(opt)
-    }
-
-    /// Returns a version of self with all fields converted to owning versions.
-    pub fn into_owned(self) -> CustomUtf8Option<'static, COPIABLE> {
-        CustomUtf8Option { pen: self.pen, value: Cow::Owned(self.value.into_owned()) }
     }
 }
 
