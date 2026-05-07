@@ -139,9 +139,6 @@ impl<W: Write> PcapNgWriter<W> {
             _ => (),
         }
 
-        // TODO: Writing a new SectionHeaderBlock currently reuses the previous
-        // section endianness via `self.state`. When section endianness switches
-        // mid-stream, special-case the write byte order before updating state.
         self.state.update_from_block(block)?;
         match self.state.section.endianness {
             Endianness::Big => block.write_to::<BigEndian, _>(&self.state, &mut self.writer),
@@ -187,20 +184,23 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// Doesn't check the validity of the written blocks.
     pub fn write_raw_block(&mut self, block: &RawBlock) -> Result<usize, PcapNgWriteError> {
+        // Update state before write to handle endianess changes when a new SectionHeader is encountered
         match self.state.section.endianness {
             Endianness::Big => {
-                // TODO: A raw Section Header Block may declare a different
-                // endianness than the current section. Detect that from the raw
-                // body and use it for writing when raw section switches are supported.
                 self.state.update_from_raw_block::<BigEndian>(block)?;
+            },
+            Endianness::Little => {
+                self.state.update_from_raw_block::<LittleEndian>(block)?;
+            },
+        }
+
+        // Write the block to the writer
+        match self.state.section.endianness {
+            Endianness::Big => {
                 let written = block.write_to::<BigEndian, _>(&mut self.writer)?;
                 Ok(written)
             },
             Endianness::Little => {
-                // TODO: A raw Section Header Block may declare a different
-                // endianness than the current section. Detect that from the raw
-                // body and use it for writing when raw section switches are supported.
-                self.state.update_from_raw_block::<LittleEndian>(block)?;
                 let written = block.write_to::<LittleEndian, _>(&mut self.writer)?;
                 Ok(written)
             },
