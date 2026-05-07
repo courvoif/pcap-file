@@ -4,6 +4,7 @@ edition = "2021"
 version = "3.0.0-rc.2"
 authors = ["Courvoif <courvoif@pm.me>"]
 description = "A crate to parse, read and write Pcap and PcapNg"
+rust-version = "1.87"
 
 license = "MIT"
 documentation = "https://docs.rs/pcap-file/"
