@@ -322,7 +322,8 @@ impl TsResolution {
         let is_bin = (ts_resol >> 7) & 0x1 == 1;
         let resol = ts_resol & 0x7F;
 
-        if is_bin && resol > 30 {
+        // 2^29 is the last power of 2 inferior to 1_000_000_000 which is the number of nanosec in one second
+        if is_bin && resol > 29 {
             return Err(ContentValidationError::InvalidTsResolution(ts_resol));
         }
 
@@ -335,7 +336,8 @@ impl TsResolution {
 
     /// Returns the number of nanoseconds coresponding to the [`TsResolution`].
     pub fn to_nano_secs(&self) -> u32 {
-        static TS_RESOL_BIN_TO_DURATION: Lazy<Vec<u32>> = Lazy::new(|| (0..30).map(|i| 2_u32.pow(30 - i)).collect());
+        static TS_RESOL_BIN_TO_DURATION: Lazy<Vec<u32>> =
+            Lazy::new(|| (0..30).map(|i| (1_000_000_000_u64 / 2_u64.pow(i)) as u32).collect());
         static TS_RESOL_DEC_TO_DURATION: Lazy<Vec<u32>> = Lazy::new(|| (0..10).map(|i| 10_u32.pow(9 - i)).collect());
 
         let is_bin = (self.0 >> 7) & 0x1 == 1;
@@ -358,5 +360,22 @@ impl Default for TsResolution {
     /// Default to micro-seconds resolution
     fn default() -> Self {
         Self::MICRO
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TsResolution;
+
+    #[test]
+    fn binary_timestamp_resolution() {
+        let resolution = TsResolution::new(0x80 | 10).unwrap();
+        assert_eq!(resolution.to_nano_secs(), 976562);
+    }
+
+    #[test]
+    fn decimal_timestamp_resolution() {
+        let resolution = TsResolution::new(6).unwrap();
+        assert_eq!(resolution.to_nano_secs(), 1_000);
     }
 }
