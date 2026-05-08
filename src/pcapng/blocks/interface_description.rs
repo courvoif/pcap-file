@@ -3,7 +3,9 @@
 //! Interface Description Block (IDB).
 
 use std::borrow::Cow;
+use std::fmt::Display;
 use std::io::Write;
+use std::num::TryFromIntError;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -16,6 +18,8 @@ use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::DataLink;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
+
+/* ----- InterfaceDescriptionBlock ----- */
 
 /// An Interface Description Block (IDB) is the container for information describing an interface
 /// on which packet data is captured.
@@ -85,7 +89,7 @@ impl<'a> InterfaceDescriptionBlock<'a> {
 
         for opt in &self.options {
             if let InterfaceDescriptionOption::IfTsResol(resol) = opt {
-                ts_resol = TsResolution::new(*resol);
+                ts_resol = TsResolution::from_u8(*resol);
                 break;
             }
         }
@@ -105,7 +109,7 @@ impl<'a> InterfaceDescriptionBlock<'a> {
     }
 }
 
-/* ----- */
+/* ----- InterfaceDescriptionOption ----- */
 
 /// The Interface Description Block (IDB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -301,58 +305,99 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
     }
 }
 
-/* ----- */
+/* ----- TsResolution ----- */
+
+static TS_RESOL_DEC_TO_DURATION: Lazy<Vec<i128>> = Lazy::new(|| (0..10).map(|i| 10_i128.pow(9 - i)).collect());
 
 /// Timestamp resolution of an interface.
+///
+/// Can be either binary (2^-resol)s or decimal (10^-resol)s.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct TsResolution(u8);
+pub struct TsResolution {
+    /// Whether the resolution is binary or decimal.
+    is_bin: bool,
+    /// The resolution itself.
+    resol: u8,
+}
 
 impl TsResolution {
-    /// Micro-second resolution
-    pub const MICRO: Self = TsResolution(6);
-    /// Milli-second resolution
-    pub const MILLI: Self = TsResolution(3);
-    /// Nano-second resolution
-    pub const NANO: Self = TsResolution(9);
     /// Second resolution
-    pub const SEC: Self = TsResolution(0);
+    pub const SEC: Self = TsResolution { is_bin: false, resol: 0 };
+    /// Milli-second resolution
+    pub const MILLI: Self = TsResolution { is_bin: false, resol: 3 };
+    /// Micro-second resolution
+    pub const MICRO: Self = TsResolution { is_bin: false, resol: 6 };
+    /// Nano-second resolution
+    pub const NANO: Self = TsResolution { is_bin: false, resol: 9 };
 
-    /// Creates a new [`TsResolution`] from an [`u8`] if is it in the range [0-9].
-    pub fn new(ts_resol: u8) -> Result<Self, ContentValidationError> {
-        let is_bin = (ts_resol >> 7) & 0x1 == 1;
-        let resol = ts_resol & 0x7F;
-
+    /// Creates a new [`TsResolution`].
+    ///
+    /// - If binary, the resolution must be in the range [0-29].
+    /// - If decimal, the resolution must be in the range [0-9].
+    pub fn new(is_bin: bool, resol: u8) -> Result<Self, ContentValidationError> {
         // 2^29 is the last power of 2 inferior to 1_000_000_000 which is the number of nanosec in one second
         if is_bin && resol > 29 {
-            return Err(ContentValidationError::InvalidTsResolution(ts_resol));
+            let resol_enc = TsResolution { is_bin, resol }.to_u8();
+            return Err(ContentValidationError::InvalidTsResolution(resol_enc, is_bin, resol));
         }
 
         if !is_bin && resol > 9 {
-            return Err(ContentValidationError::InvalidTsResolution(ts_resol));
+            let resol_enc = TsResolution { is_bin, resol }.to_u8();
+            return Err(ContentValidationError::InvalidTsResolution(resol_enc, is_bin, resol));
         }
 
-        Ok(TsResolution(ts_resol))
+        Ok(TsResolution { is_bin, resol })
     }
 
-    /// Returns the number of nanoseconds coresponding to the [`TsResolution`].
-    pub fn to_nano_secs(&self) -> u32 {
-        static TS_RESOL_BIN_TO_DURATION: Lazy<Vec<u32>> =
-            Lazy::new(|| (0..30).map(|i| (1_000_000_000_u64 / 2_u64.pow(i)) as u32).collect());
-        static TS_RESOL_DEC_TO_DURATION: Lazy<Vec<u32>> = Lazy::new(|| (0..10).map(|i| 10_u32.pow(9 - i)).collect());
+    /// Creates a new [`TsResolution`] from an [`u8`].
+    ///
+    /// - If binary, the resolution must be in the range [0-29].
+    /// - If decimal, the resolution must be in the range [0-9].
+    pub fn from_u8(ts_resol: u8) -> Result<Self, ContentValidationError> {
+        let is_bin = (ts_resol >> 7) & 0x1 == 1;
+        let resol = ts_resol & 0x7F;
 
-        let is_bin = (self.0 >> 7) & 0x1 == 1;
-        let resol = self.0 & 0x7F;
+        Self::new(is_bin, resol)
+    }
 
-        if is_bin {
-            TS_RESOL_BIN_TO_DURATION[resol as usize]
+    /// Encodes the [`TsResolution`] into an [`u8`] for storage in the file.
+    pub fn to_u8(self) -> u8 {
+        (self.is_bin as u8) << 7 | self.resol
+    }
+
+    /// Decode an encoded timestamp using the current resolution.
+    pub fn decode_timestamp(&self, ts_raw: u64) -> i128 {
+        if self.is_bin {
+            // We don't use a pre-computed TS_RESOL_BIN here because we would lose too much precision for higher resolutions.
+            // Example: 2^29 resol => 10^9 / 2^29 => 1.86ns resolution rounded to 1ns
+            (ts_raw as i128 * 1_000_000_000_i128) / (1_i128 << self.resol)
         } else {
-            TS_RESOL_DEC_TO_DURATION[resol as usize]
+            ts_raw as i128 * TS_RESOL_DEC_TO_DURATION[self.resol as usize]
         }
     }
 
-    /// Returns the number of nanoseconds coresponding to the [`TsResolution`] in 10^-ts.
-    pub fn to_raw(&self) -> u8 {
-        self.0
+    /// Encode a timestamp with the current resolution.
+    ///
+    /// # Errors
+    /// - Timestamp can't be encoded with the current resolution on a u64
+    pub fn encode_timestamp(&self, timestamp_ns: i128) -> Result<u64, TryFromIntError> {
+        let ts = if self.is_bin {
+            (timestamp_ns * (1_i128 << self.resol)) / 1_000_000_000_i128
+        } else {
+            timestamp_ns / TS_RESOL_DEC_TO_DURATION[self.resol as usize]
+        };
+
+        ts.try_into()
+    }
+
+    /// Returns whether the resolution is binary or decimal.
+    pub fn is_bin(&self) -> bool {
+        self.is_bin
+    }
+
+    /// Returns the resolution value.
+    pub fn resolution(&self) -> u8 {
+        self.resol
     }
 }
 
@@ -363,19 +408,45 @@ impl Default for TsResolution {
     }
 }
 
+impl Display for TsResolution {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.is_bin {
+            write!(f, "2^-{}s", self.resol)
+        } else {
+            write!(f, "10^-{}s", self.resol)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::TsResolution;
 
+    /// Test that multiple encode / decode doesn't drift more than by one step.
     #[test]
-    fn binary_timestamp_resolution() {
-        let resolution = TsResolution::new(0x80 | 10).unwrap();
-        assert_eq!(resolution.to_nano_secs(), 976562);
+    fn binary_timestamp_roundtrip_loses_at_most_one_tick_min() {
+        let resolution = TsResolution::new(true, 10).unwrap();
+
+        let mut raw = 1;
+        for _ in 0..100 {
+            let ts = resolution.decode_timestamp(raw);
+            raw = resolution.encode_timestamp(ts).unwrap();
+        }
+
+        assert_eq!(raw, 0);
     }
 
+    /// Test that multiple encode / decode doesn't drift more than by one step.
     #[test]
-    fn decimal_timestamp_resolution() {
-        let resolution = TsResolution::new(6).unwrap();
-        assert_eq!(resolution.to_nano_secs(), 1_000);
+    fn binary_timestamp_roundtrip_loses_at_most_one_tick_max() {
+        let resolution = TsResolution::new(true, 10).unwrap();
+
+        let mut raw = u64::MAX;
+        for _ in 0..100 {
+            let ts = resolution.decode_timestamp(raw);
+            raw = resolution.encode_timestamp(ts).unwrap();
+        }
+
+        assert_eq!(raw, 18446744073709551614);
     }
 }

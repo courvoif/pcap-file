@@ -222,13 +222,13 @@ pub enum ContentValidationError {
     #[error("Invalid reserved field: {0}")]
     InvalidReservedField(u16),
     /// The timestamp resolution value is invalid.
-    #[error("Invalid timestamp resolution: {0}")]
-    InvalidTsResolution(u8),
+    #[error("Invalid timestamp resolution: {0:#X} (is_bin: {1}, resol:{2})")]
+    InvalidTsResolution(u8, bool, u8),
     /// The interface ID does not exist in the current section state.
     #[error("Invalid interface ID: {0}")]
     InvalidInterfaceId(u32),
     /// The timestamp cannot be represented on the raw 64-bit timestamp field.
-    #[error("Timestamp can't be represented on a u64: ts = {}ns, ts_resolution = {}ns, offset = {}s", .0, .1.to_nano_secs(), .2)]
+    #[error("Timestamp can't be represented on a u64: ts = {}ns, ts_resolution = {}, offset = {}s", .0, .1, .2)]
     InvalidTimestamp(i128, TsResolution, i64),
     /// The Name Resolution record entry size is invalid.
     #[error("Wrong record size: expected {expected}B, got {actual}B")]
