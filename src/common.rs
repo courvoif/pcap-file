@@ -275,6 +275,13 @@ pub enum DataLink {
     USB_2_0_FULL_SPEED,
     USB_2_0_HIGH_SPEED,
     AUERSWALD_LOG,
+    ZWAVE_TAP,
+    SILABS_DEBUG_CHANNEL,
+    FIRA_UCI,
+    MDB,
+    DECT_NR,
+    EDK2_MM,
+    DEBUG_ONLY,
 
     Unknown(u32),
 }
@@ -492,6 +499,13 @@ impl From<u32> for DataLink {
             294 => DataLink::USB_2_0_FULL_SPEED,
             295 => DataLink::USB_2_0_HIGH_SPEED,
             296 => DataLink::AUERSWALD_LOG,
+            297 => DataLink::ZWAVE_TAP,
+            298 => DataLink::SILABS_DEBUG_CHANNEL,
+            299 => DataLink::FIRA_UCI,
+            300 => DataLink::MDB,
+            301 => DataLink::DECT_NR,
+            302 => DataLink::EDK2_MM,
+            303 => DataLink::DEBUG_ONLY,
 
             _ => DataLink::Unknown(n),
         }
@@ -712,6 +726,13 @@ impl From<DataLink> for u32 {
             DataLink::USB_2_0_FULL_SPEED => 294,
             DataLink::USB_2_0_HIGH_SPEED => 295,
             DataLink::AUERSWALD_LOG => 296,
+            DataLink::ZWAVE_TAP => 297,
+            DataLink::SILABS_DEBUG_CHANNEL => 298,
+            DataLink::FIRA_UCI => 299,
+            DataLink::MDB => 300,
+            DataLink::DECT_NR => 301,
+            DataLink::EDK2_MM => 302,
+            DataLink::DEBUG_ONLY => 303,
 
             DataLink::Unknown(n) => n,
         }
