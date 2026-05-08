@@ -7,8 +7,7 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use crate::TsResolution;
-use crate::pcap::{PcapParseError, PcapValidationError, PcapWriteError};
+use crate::pcap::{PcapParseError, PcapValidationError, PcapWriteError, TsResolution};
 
 /// A valid pcap packet.
 ///

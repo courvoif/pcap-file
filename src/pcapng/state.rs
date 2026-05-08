@@ -87,7 +87,7 @@ impl PcapNgState {
             .get(interface_id as usize)
             .ok_or(ContentValidationError::InvalidInterfaceId(interface_id))?;
 
-        let ts_nanos = (ts_raw as i128 * ts_resolution.to_nano_secs() as i128) + (*ts_offset as i128 * 1_000_000_000);
+        let ts_nanos = ts_resolution.decode_timestamp(ts_raw) + (*ts_offset as i128 * 1_000_000_000);
 
         Ok(ts_nanos)
     }
@@ -101,14 +101,13 @@ impl PcapNgState {
 
         let offset_ns = (*ts_offset as i128) * 1_000_000_000;
 
-        let ts_relative = timestamp
-            .checked_sub(offset_ns)
-            .ok_or(ContentValidationError::InvalidTimestamp(timestamp, *ts_resolution, *ts_offset))?;
+        let ts_relative =
+            timestamp
+                .checked_sub(offset_ns)
+                .ok_or(ContentValidationError::InvalidTimestamp(timestamp, *ts_resolution, *ts_offset))?;
 
-        let ts_raw = ts_relative / (ts_resolution.to_nano_secs() as i128);
-
-        let ts_raw: u64 = ts_raw
-            .try_into()
+        let ts_raw = ts_resolution
+            .encode_timestamp(ts_relative)
             .map_err(|_| ContentValidationError::InvalidTimestamp(timestamp, *ts_resolution, *ts_offset))?;
 
         let timestamp_high = (ts_raw >> 32) as u32;

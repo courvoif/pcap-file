@@ -42,6 +42,18 @@ impl<R: Read> PcapNgReader<R> {
         Ok(Self { parser, reader })
     }
 
+    /// Creates a new [`PcapNgReader`] with a custom internal buffer capacity.
+    ///
+    /// Use this when the stream can contain blocks larger than the default
+    /// reader buffer.
+    ///
+    /// Parses the first block which must be a valid SectionHeaderBlock.
+    pub fn with_capacity(reader: R, capacity: usize) -> Result<PcapNgReader<R>, PcapNgReadError> {
+        let mut reader = ReadBuffer::with_capacity(reader, capacity);
+        let parser = reader.parse_with(PcapNgParser::new)?;
+        Ok(Self { parser, reader })
+    }
+
     /// Returns the next [`Block`] and the current [`PcapNgState`].
     /// [`None`] means that the reader have reached the EoF.
     /// Won't advance the reader past any malformed packets.
