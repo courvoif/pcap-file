@@ -48,6 +48,22 @@ impl<R: Read> PcapReader<R> {
         Ok(PcapReader { parser, reader })
     }
 
+    /// Creates a new [`PcapReader`] with a custom internal buffer capacity.
+    ///
+    /// Use this when the stream can contain packets larger than the default
+    /// reader buffer.
+    ///
+    /// # Errors
+    /// The data stream is not in a valid pcap file format.
+    ///
+    /// The underlying data are not readable.
+    pub fn with_capacity(reader: R, capacity: usize) -> Result<PcapReader<R>, PcapReadError> {
+        let mut reader = ReadBuffer::with_capacity(reader, capacity);
+        let parser = reader.parse_with(PcapParser::new)?;
+
+        Ok(PcapReader { parser, reader })
+    }
+
     /// Consumes [`Self`], returning the wrapped reader.
     pub fn into_reader(self) -> R {
         self.reader.into_inner()
