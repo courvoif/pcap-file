@@ -88,6 +88,8 @@ impl<W: Write> PcapNgWriter<W> {
     }
 
     /// Write a [`Block`].
+    /// 
+    /// Errors are not recoverable because they can leave the Writer in a wrong state.
     ///
     /// # Example
     /// ```rust,no_run
@@ -147,6 +149,8 @@ impl<W: Write> PcapNgWriter<W> {
     }
 
     /// Write a [`PcapNgBlock`].
+    /// 
+    /// Errors are not recoverable because they can leave the Writer in a wrong state.
     ///
     /// # Example
     /// ```rust,no_run
@@ -181,6 +185,8 @@ impl<W: Write> PcapNgWriter<W> {
     }
 
     /// Write a [`RawBlock`].
+    /// 
+    /// Errors are not recoverable because they can leave the Writer in a wrong state.
     ///
     /// Doesn't check the validity of the written blocks.
     pub fn write_raw_block(&mut self, block: &RawBlock) -> Result<usize, PcapNgWriteError> {

@@ -3,8 +3,8 @@ use std::io::Write;
 use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::RawPcapPacket;
-use crate::pcap::{PcapHeader, PcapPacket, PcapValidationError, PcapWriteError};
-use crate::{Endianness, TsResolution};
+use crate::Endianness;
+use crate::pcap::{PcapHeader, PcapPacket, PcapValidationError, PcapWriteError, TsResolution};
 
 /// Writes a pcap to a writer.
 ///

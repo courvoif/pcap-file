@@ -143,7 +143,11 @@ fn test_custom_block() {
     let mut buffer = Vec::new();
     let mut pcapng_writer = PcapNgWriter::with_section_header(&mut buffer, section).expect("Failed to create writer");
 
-    let block_to_write = original_payload.clone().into_custom_block_copiable().expect("Failed to encode custom block").into_block();
+    let block_to_write = original_payload
+        .clone()
+        .into_custom_block_copiable()
+        .expect("Failed to encode custom block")
+        .into_block();
 
     pcapng_writer.write_block(&block_to_write).expect("Failed to write custom block");
 
@@ -243,6 +247,89 @@ fn writer_handles_section_endianness_switch() {
     assert_eq!(block, Block::InterfaceDescription(big_interface));
 
     assert!(rem.is_empty());
+}
+
+#[test]
+fn reader_with_capacity_handles_large_blocks() {
+    use std::borrow::Cow;
+
+    use pcap_file::DataLink;
+    use pcap_file::pcapng::blocks::PcapNgBlock;
+    use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
+    use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
+
+    let data = vec![0xA5; 8_000_001];
+    let interface = InterfaceDescriptionBlock::new(DataLink::ETHERNET, data.len() as u32);
+    let packet = EnhancedPacketBlock {
+        interface_id: 0,
+        timestamp: 1_000_000_000,
+        original_len: data.len() as u32,
+        data: Cow::Borrowed(&data),
+        options: vec![],
+    };
+
+    let mut writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big).unwrap();
+    writer.write_block(&interface.into_block()).unwrap();
+    writer.write_block(&packet.into_block()).unwrap();
+    let pcapng = writer.into_inner();
+
+    let mut reader = PcapNgReader::with_capacity(&pcapng[..], pcapng.len()).unwrap();
+    let _ = reader.next_block().unwrap().unwrap();
+    let (block, _) = reader.next_block().unwrap().unwrap();
+    let packet = block.as_enhanced_packet().unwrap();
+
+    assert_eq!(packet.data.len(), data.len());
+    assert_eq!(&*packet.data, data.as_slice());
+    assert!(reader.next_block().is_none());
+}
+
+#[test]
+fn raw_reader_recovers_after_typed_block_validation_error() {
+    use byteorder_slice::BigEndian;
+    use pcap_file::DataLink;
+    use pcap_file::pcapng::blocks::PcapNgBlock;
+    use pcap_file::pcapng::blocks::block_common::{ENHANCED_PACKET_BLOCK, RawBlock};
+    use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
+    use pcap_file::pcapng::{ContentValidationError, PcapNgReadError};
+
+    let interface = InterfaceDescriptionBlock::new(DataLink::ETHERNET, 0xFFFF);
+    let invalid_packet = RawBlock {
+        type_: ENHANCED_PACKET_BLOCK,
+        initial_len: 32,
+        body: vec![
+            0x00, 0x00, 0x00, 0x07, // invalid interface_id
+            0x00, 0x00, 0x00, 0x00, // timestamp_high
+            0x00, 0x00, 0x00, 0x00, // timestamp_low
+            0x00, 0x00, 0x00, 0x00, // captured_len
+            0x00, 0x00, 0x00, 0x00, // original_len
+        ]
+        .into(),
+        trailer_len: 32,
+    };
+
+    let mut writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big).unwrap();
+    writer.write_block(&interface.into_block()).unwrap();
+    invalid_packet.write_to::<BigEndian, _>(writer.get_mut()).unwrap();
+    let pcapng = writer.into_inner();
+
+    let mut reader = PcapNgReader::new(&pcapng[..]).unwrap();
+    let _ = reader.next_block().unwrap().unwrap();
+
+    let typed_error = reader.next_block().unwrap().unwrap_err();
+    match typed_error {
+        PcapNgReadError::BlockConversion(error) => {
+            assert!(matches!(
+                error.source,
+                pcap_file::pcapng::BlockContentParseError::Validation(ContentValidationError::InvalidInterfaceId(7))
+            ));
+        },
+        other => panic!("Expected block conversion error, got {other:?}"),
+    }
+
+    let (raw_block, _) = reader.next_raw_block().unwrap().unwrap();
+    assert_eq!(raw_block.type_, ENHANCED_PACKET_BLOCK);
+    assert_eq!(raw_block.body.len(), 20);
+    assert!(reader.next_raw_block().is_none());
 }
 
 #[test]

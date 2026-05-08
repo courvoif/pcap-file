@@ -3,8 +3,7 @@ extern crate pcap_file;
 use std::borrow::Cow;
 use std::time::Duration;
 
-use pcap_file::TsResolution;
-use pcap_file::pcap::{PcapHeader, PcapPacket, PcapReader, PcapWriter};
+use pcap_file::pcap::{PcapHeader, PcapPacket, PcapReader, PcapValidationError, PcapWriter, RawPcapPacket, TsResolution};
 
 static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
 
@@ -139,11 +138,54 @@ fn infinite_loop() {
         let Ok(_) = pkt else {
             break;
         };
-        
+
         if i > 18 {
             panic!("infinite loop detected");
         }
 
         i += 1;
     }
+}
+
+#[test]
+fn reader_with_capacity_handles_large_packets() {
+    let data = vec![0xA5; 8_000_001];
+    let packet = PcapPacket::new(Duration::new(1, 0), data.len() as u32, Cow::Borrowed(data.as_slice())).unwrap();
+    let header = PcapHeader { snaplen: data.len() as u32, ..Default::default() };
+
+    let mut writer = PcapWriter::with_header(Vec::new(), header).unwrap();
+    writer.write_packet(&packet).unwrap();
+    let pcap = writer.into_writer();
+
+    let mut reader = PcapReader::with_capacity(&pcap[..], pcap.len()).unwrap();
+    let packet = reader.next_packet().unwrap().unwrap();
+
+    assert_eq!(packet.len(), data.len() as u32);
+    assert_eq!(packet.data(), &data);
+    assert!(reader.next_packet().is_none());
+}
+
+#[test]
+fn raw_reader_recovers_after_typed_packet_validation_error() {
+    let packet = RawPcapPacket {
+        ts_sec: 1,
+        ts_frac: 0,
+        incl_len: 4,
+        orig_len: 2,
+        data: Cow::Borrowed(&[1, 2, 3, 4]),
+    };
+
+    let mut writer = PcapWriter::new(Vec::new()).unwrap();
+    writer.write_raw_packet(&packet).unwrap();
+    let pcap = writer.into_writer();
+
+    let mut reader = PcapReader::new(&pcap[..]).unwrap();
+    let typed_error = reader.next_packet().unwrap().unwrap_err();
+    assert!(matches!(typed_error, pcap_file::pcap::PcapReadError::Validation(PcapValidationError::OriginLenTooSmall(2, 4))));
+
+    let raw_packet = reader.next_raw_packet().unwrap().unwrap();
+    assert_eq!(raw_packet.incl_len, 4);
+    assert_eq!(raw_packet.orig_len, 2);
+    assert_eq!(&*raw_packet.data, &[1, 2, 3, 4]);
+    assert!(reader.next_raw_packet().is_none());
 }
