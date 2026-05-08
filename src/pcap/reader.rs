@@ -43,7 +43,7 @@ impl<R: Read> PcapReader<R> {
     /// The underlying data are not readable.
     pub fn new(reader: R) -> Result<PcapReader<R>, PcapReadError> {
         let mut reader = ReadBuffer::new(reader);
-        let parser = reader.parse_with2(PcapParser::new)?;
+        let parser = reader.parse_with(PcapParser::new)?;
 
         Ok(PcapReader { parser, reader })
     }
@@ -64,7 +64,7 @@ impl<R: Read> PcapReader<R> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
-                    Some(self.reader.parse_with2(|src| self.parser.next_packet(src)))
+                    Some(self.reader.parse_with(|src| self.parser.next_packet(src)))
                 } else {
                     None
                 }
@@ -86,7 +86,7 @@ impl<R: Read> PcapReader<R> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
                 if has_data {
-                    Some(self.reader.parse_with2(|src| self.parser.next_raw_packet(src)))
+                    Some(self.reader.parse_with(|src| self.parser.next_raw_packet(src)))
                 } else {
                     None
                 }
