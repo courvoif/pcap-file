@@ -3,8 +3,7 @@ extern crate pcap_file;
 use std::borrow::Cow;
 use std::time::Duration;
 
-use pcap_file::TsResolution;
-use pcap_file::pcap::{PcapHeader, PcapPacket, PcapReader, PcapValidationError, PcapWriter, RawPcapPacket};
+use pcap_file::pcap::{PcapHeader, PcapPacket, PcapReader, PcapValidationError, PcapWriter, RawPcapPacket, TsResolution};
 
 static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
 

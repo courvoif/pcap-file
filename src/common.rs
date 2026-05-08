@@ -1,14 +1,5 @@
 use byteorder_slice::ByteOrder;
 
-/// Timestamp resolution of the pcap
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum TsResolution {
-    /// Microsecond resolution
-    MicroSecond,
-    /// Nanosecond resolution
-    NanoSecond,
-}
-
 /// Endianness of the pcap
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Endianness {

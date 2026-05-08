@@ -4,8 +4,8 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
-use crate::pcap::{PcapParseError, PcapValidationError, PcapWriteError};
-use crate::{DataLink, Endianness, TsResolution};
+use crate::pcap::{PcapParseError, PcapValidationError, PcapWriteError, TsResolution};
+use crate::{DataLink, Endianness};
 
 /// Pcap Global Header
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
