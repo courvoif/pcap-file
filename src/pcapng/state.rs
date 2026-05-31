@@ -1,15 +1,13 @@
-use byteorder_slice::ByteOrder;
-
 use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::interface_description::{InterfaceDescriptionBlock, TsResolution};
 use super::blocks::section_header::SectionHeaderBlock;
 use super::blocks::{INTERFACE_DESCRIPTION_BLOCK, SECTION_HEADER_BLOCK};
+use crate::Endianness;
 use crate::pcapng::errors::{ContentValidationError, StateUpdateError};
 
 #[cfg(doc)]
 use {
     super::blocks::interface_description::InterfaceDescriptionOption,
-    crate::Endianness,
     crate::pcapng::{PcapNgReader, PcapNgWriter},
 };
 
@@ -23,7 +21,9 @@ use {
 /// Normally this state is maintained internally by a [`PcapNgReader`] or
 /// [`PcapNgWriter`], but it's also possible to create a new [`PcapNgState`]
 /// with [`PcapNgState::default`], and then update it by calling
-/// [`PcapNgState::update_from_block`] or [`PcapNgState::update_from_raw_block`].
+/// [`PcapNgState::update_from_block`]. For raw blocks, call
+/// [`PcapNgState::decode_block_if_needed`] first, then update the state with
+/// the decoded block when one is returned.
 ///
 #[derive(Debug, Default)]
 pub struct PcapNgState {
@@ -46,6 +46,24 @@ impl PcapNgState {
         &self.interfaces[..]
     }
 
+    /// Returns the endiabness of the current section.
+    pub fn endianness(&self) -> Endianness {
+        self.section.endianness
+    }
+
+    /// Decode the given [`RawBlock`] if it contains state information.
+    ///
+    /// Returns [`None`] for blocks that don't affect the state.
+    pub fn decode_block_if_needed<'a>(&self, raw_block: &RawBlock<'a>) -> Result<Option<Block<'a>>, StateUpdateError> {
+        match raw_block.type_ {
+            SECTION_HEADER_BLOCK | INTERFACE_DESCRIPTION_BLOCK => {
+                let block = raw_block.clone().try_into_block(self)?;
+                Ok(Some(block))
+            },
+            _ => Ok(None),
+        }
+    }
+
     /// Update the state based on the next [`Block`].
     pub fn update_from_block(&mut self, block: &Block) {
         match block {
@@ -64,16 +82,13 @@ impl PcapNgState {
         }
     }
 
-    /// Update the state based on the next [`RawBlock`].
-    pub fn update_from_raw_block<B: ByteOrder>(&mut self, raw_block: &RawBlock) -> Result<(), StateUpdateError> {
-        match raw_block.type_ {
-            SECTION_HEADER_BLOCK | INTERFACE_DESCRIPTION_BLOCK => {
-                let block = raw_block.clone().try_into_block_with_byteorder::<B>(self)?;
-
-                self.update_from_block(&block);
-                Ok(())
-            },
-            _ => Ok(()),
+    /// Return the endianness to use to write the [`Block`].
+    ///
+    /// Takes an optional block as an argument to be used in conjunction with [`Self::decode_block_if_needed`].
+    pub fn block_endianness(&self, block: Option<&Block>) -> Endianness {
+        match block {
+            Some(Block::SectionHeader(block)) => block.endianness,
+            _ => self.endianness(),
         }
     }
 

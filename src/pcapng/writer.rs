@@ -124,11 +124,7 @@ impl<W: Write> PcapNgWriter<W> {
         // The state is updated only after a successful write.
         // The endianess is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
 
-        let endianess = if let Block::SectionHeader(sec_hdr) = block {
-            sec_hdr.endianness
-        } else {
-            self.state.section.endianness
-        };
+        let endianess = self.state.block_endianness(Some(block));
 
         let nb_written = match endianess {
             Endianness::Big => block.write_to::<BigEndian, _>(&self.state, &mut self.writer)?,
@@ -181,31 +177,24 @@ impl<W: Write> PcapNgWriter<W> {
     /// Errors are not recoverable because they can leave the Writer in a wrong state.
     ///
     /// Doesn't check the validity of the written blocks.
-    pub fn write_raw_block(&mut self, block: &RawBlock) -> Result<usize, PcapNgWriteError> {
-        // TODO: handle state update failure
-        // Does raw parsing need to update state at all ?
-
-        // Update state before write to handle endianess changes when a new SectionHeader is encountered
-        match self.state.section.endianness {
-            Endianness::Big => {
-                self.state.update_from_raw_block::<BigEndian>(block)?;
-            },
-            Endianness::Little => {
-                self.state.update_from_raw_block::<LittleEndian>(block)?;
-            },
-        }
+    pub fn write_raw_block(&mut self, raw_block: &RawBlock) -> Result<usize, PcapNgWriteError> {
+        // The order of operation is important to prevent writing invalid files in case of error.
+        // The state is updated only after a successful write.
+        // The endianess is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
+        let opt_block = self.state.decode_block_if_needed(raw_block)?;
+        let endianess = self.state.block_endianness(opt_block.as_ref());
 
         // Write the block to the writer
-        match self.state.section.endianness {
-            Endianness::Big => {
-                let written = block.write_to::<BigEndian, _>(&mut self.writer)?;
-                Ok(written)
-            },
-            Endianness::Little => {
-                let written = block.write_to::<LittleEndian, _>(&mut self.writer)?;
-                Ok(written)
-            },
+        let nb_written = match endianess {
+            Endianness::Big => raw_block.write_to::<BigEndian, _>(&mut self.writer)?,
+            Endianness::Little => raw_block.write_to::<LittleEndian, _>(&mut self.writer)?,
+        };
+
+        if let Some(block) = opt_block {
+            self.state.update_from_block(&block);
         }
+
+        Ok(nb_written)
     }
 
     /// Consume [`self`], returning the wrapped writer.

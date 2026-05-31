@@ -109,7 +109,11 @@ impl PcapNgParser {
             src: &'a [u8],
         ) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
             let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
-            parser.state.update_from_raw_block::<B>(&raw_block)?;
+
+            if let Some(block) = parser.state.decode_block_if_needed(&raw_block)? {
+                parser.state.update_from_block(&block);
+            }
+            
             Ok((rem, raw_block))
         }
 
