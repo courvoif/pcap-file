@@ -10,7 +10,7 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
-use crate::pcapng::PcapNgState;
+use crate::pcapng::{ContentValidationError, PcapNgState};
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
@@ -28,9 +28,6 @@ pub struct PacketBlock<'a> {
 
     /// Nanoseconds elapsed since 1970-01-01 00:00:00 UTC.
     pub timestamp: i128,
-
-    /// Number of octets captured from the packet (i.e. the length of the Packet Data field).
-    pub captured_len: u32,
 
     /// Actual length of the packet when it was transmitted on the network.
     pub original_len: u32,
@@ -56,6 +53,10 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let captured_len = slice.read_u32::<B>().unwrap();
         let original_len = slice.read_u32::<B>().unwrap();
 
+        if original_len < captured_len {
+            return Err(ContentValidationError::InvalidOriginalLen(original_len, captured_len as usize).into());
+        }
+
         let pad_len = (4 - (captured_len as usize % 4)) % 4;
         let tot_len = captured_len as usize + pad_len;
 
@@ -71,7 +72,6 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
             interface_id,
             drop_count,
             timestamp,
-            captured_len,
             original_len,
             data: Cow::Borrowed(data),
             options,
@@ -81,18 +81,34 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        writer.write_u16::<B>(self.interface_id)?;
-        writer.write_u16::<B>(self.drop_count)?;
+        // Integrity checks are done before any writting to prevent invalid state in the file
+        if (self.interface_id as usize) >= state.interfaces.len() {
+            return Err(PcapNgWriteError::Validation {
+                field: "PacketBlock.interface_id",
+                source: crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id as u32),
+            });
+        }
+
+        if (self.original_len as usize) < self.data.len() {
+            return Err(PcapNgWriteError::Validation {
+                field: "PacketBlock.original_len",
+                source: crate::pcapng::ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+            });
+        }
+
         let (timestamp_high, timestamp_low) = state
             .encode_timestamp(self.interface_id as u32, self.timestamp)
             .map_err(|source| PcapNgWriteError::Validation { field: "PacketBlock.timestamp", source })?;
+
+        writer.write_u16::<B>(self.interface_id)?;
+        writer.write_u16::<B>(self.drop_count)?;
         writer.write_u32::<B>(timestamp_high)?;
         writer.write_u32::<B>(timestamp_low)?;
-        writer.write_u32::<B>(self.captured_len)?;
+        writer.write_u32::<B>(self.data.len() as u32)?;
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
 
-        let pad_len = (4 - (self.captured_len as usize % 4)) % 4;
+        let pad_len = (4 - (self.data.len() % 4)) % 4;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
         let opt_len = PacketOption::write_opts_to::<B, _>(&self.options, state, Some(self.interface_id as u32), writer)?;

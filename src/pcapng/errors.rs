@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::pcapng::blocks::interface_description::TsResolution;
+use crate::{DataLink, pcapng::blocks::interface_description::TsResolution};
 
 /* ----- PcapError ----- */
 
@@ -204,10 +204,6 @@ pub enum StateUpdateError {
     /// A state-relevant raw block could not be converted into a typed block.
     #[error("Failed to convert raw block to update the pcapng state")]
     BlockConversion(#[from] BlockConversionError),
-
-    /// A typed block failed state validation.
-    #[error("Failed to validate the pcapng state")]
-    Validation(#[from] ContentValidationError),
 }
 
 /* ----- ContentValidationError ----- */
@@ -224,12 +220,34 @@ pub enum ContentValidationError {
     /// The timestamp resolution value is invalid.
     #[error("Invalid timestamp resolution: {0:#X} (is_bin: {1}, resol:{2})")]
     InvalidTsResolution(u8, bool, u8),
+    /// The linktype in invalid (superior to u16::MAX)
+    #[error("Invalid Linktype: {0:?}")]
+    InvalidLinktype(DataLink),
+
+    /// No interface in the current section state.
+    #[error("Section without any interface")]
+    NoInterface,
     /// The interface ID does not exist in the current section state.
     #[error("Invalid interface ID: {0}")]
     InvalidInterfaceId(u32),
+
     /// The timestamp cannot be represented on the raw 64-bit timestamp field.
     #[error("Timestamp can't be represented on a u64: ts = {}ns, ts_resolution = {}, offset = {}s", .0, .1, .2)]
     InvalidTimestamp(i128, TsResolution, i64),
+
+    /// The original length of the packet is lower than its actual length
+    #[error("The original length of the packet is lower than its actual length: {0}B on wire, {1}B captured")]
+    InvalidOriginalLen(u32, usize),
+
+    /// The captured length of the packet does not match the expected length.
+    #[error("Invalid captured length: expected {expected}B, got {actual}B")]
+    InvalidCapturedLen {
+        /// Expected captured length
+        expected: usize,
+        /// Actual captured length
+        actual: usize,
+    },
+
     /// The Name Resolution record entry size is invalid.
     #[error("Wrong record size: expected {expected}B, got {actual}B")]
     RecordWrongSize {
@@ -255,12 +273,15 @@ pub enum ContentValidationError {
     /// A Name Resolution record does not contain any names.
     #[error("Record without any name")]
     RecordNamesEmpty,
+
     /// Error converting a custom block payload.
     #[error("Error in custom block conversion for PEN {0}: {1}")]
     CustomBlockConversionError(u32, Box<dyn std::error::Error + Sync + Send>),
+
     /// The content of a block is too big to fit on a block.
     #[error("Block content doesn't fit on a u32: {0}B")]
     BlockContentTooBig(u64),
+
     /// The content of a PcapNgOption is too big to be written
     #[error("Option content doesn't fit on a u16: {0}B")]
     OptionTooBig(usize),

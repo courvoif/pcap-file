@@ -63,7 +63,12 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        writer.write_u16::<B>(u32::from(self.linktype) as u16)?;
+        let datalink: u16 = u32::from(self.linktype).try_into().map_err(|_| PcapNgWriteError::Validation {
+            field: "InterfaceDescriptionBlock.linktype",
+            source: ContentValidationError::InvalidLinktype(self.linktype),
+        })?;
+
+        writer.write_u16::<B>(datalink)?;
         writer.write_u16::<B>(0)?;
         writer.write_u32::<B>(self.snaplen)?;
 
@@ -84,12 +89,12 @@ impl<'a> InterfaceDescriptionBlock<'a> {
 
     /// Returns the timestamp resolution of the interface.
     /// If no ts_resolution is set, defaults to μs.
-    pub fn ts_resolution(&self) -> Result<TsResolution, ContentValidationError> {
-        let mut ts_resol = Ok(TsResolution::default());
+    pub fn ts_resolution(&self) -> TsResolution {
+        let mut ts_resol = TsResolution::default();
 
         for opt in &self.options {
             if let InterfaceDescriptionOption::IfTsResol(resol) = opt {
-                ts_resol = TsResolution::from_u8(*resol);
+                ts_resol = *resol;
                 break;
             }
         }
@@ -136,7 +141,7 @@ pub enum InterfaceDescriptionOption<'a> {
     IfSpeed(u64),
 
     /// The if_tsresol option identifies the resolution of timestamps.
-    IfTsResol(u8),
+    IfTsResol(TsResolution),
 
     /// The if_tzone option identifies the time zone for GMT support.
     IfTzone(u32),
@@ -224,7 +229,10 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
                 if slice.len() != 1 {
                     return Err(OptionEntryError::WrongSize { expected: 1, actual: slice.len() });
                 }
-                InterfaceDescriptionOption::IfTsResol(slice.read_u8().unwrap())
+
+                let raw_resol = slice.read_u8().unwrap();
+                let resol = TsResolution::from_u8(raw_resol)?;
+                InterfaceDescriptionOption::IfTsResol(resol)
             },
             Self::IF_T_ZONE => {
                 if slice.len() != 4 {
@@ -273,7 +281,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::IfMacAddr(a) => a.write_opt::<B, W>(Self::IF_MAC_ADDR, writer),
             InterfaceDescriptionOption::IfEuIAddr(a) => a.write_opt::<B, W>(Self::IF_EU_ADDR, writer),
             InterfaceDescriptionOption::IfSpeed(a) => a.write_opt::<B, W>(Self::IF_SPEED, writer),
-            InterfaceDescriptionOption::IfTsResol(a) => a.write_opt::<B, W>(Self::IF_TS_RESOL, writer),
+            InterfaceDescriptionOption::IfTsResol(a) => a.to_u8().write_opt::<B, W>(Self::IF_TS_RESOL, writer),
             InterfaceDescriptionOption::IfTzone(a) => a.write_opt::<B, W>(Self::IF_T_ZONE, writer),
             InterfaceDescriptionOption::IfFilter(a) => a.write_opt::<B, W>(Self::IF_FILTER, writer),
             InterfaceDescriptionOption::IfOs(a) => a.write_opt::<B, W>(Self::IF_OS, writer),

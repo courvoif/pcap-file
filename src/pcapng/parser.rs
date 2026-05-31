@@ -61,7 +61,7 @@ impl PcapNgParser {
             return Err(PcapNgFormatError::MissingSectionHeader.into());
         };
 
-        state.update_from_block(&block)?;
+        state.update_from_block(&block);
 
         let parser = PcapNgParser { state };
 
@@ -83,7 +83,7 @@ impl PcapNgParser {
             let state = &parser.state;
             let block = raw_block.try_into_block(state)?;
 
-            parser.state.update_from_block(&block)?;
+            parser.state.update_from_block(&block);
             Ok((rem, block))
         }
 
