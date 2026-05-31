@@ -47,7 +47,7 @@ impl PcapNgState {
     }
 
     /// Update the state based on the next [`Block`].
-    pub fn update_from_block(&mut self, block: &Block) -> Result<(), StateUpdateError> {
+    pub fn update_from_block(&mut self, block: &Block) {
         match block {
             Block::SectionHeader(blk) => {
                 self.section = blk.clone().into_owned();
@@ -55,14 +55,13 @@ impl PcapNgState {
                 self.ts_parameters.clear();
             },
             Block::InterfaceDescription(blk) => {
-                let ts_resolution = blk.ts_resolution()?;
+                let ts_resolution = blk.ts_resolution();
                 let ts_offset = blk.ts_offset();
                 self.ts_parameters.push((ts_resolution, ts_offset));
                 self.interfaces.push(blk.clone().into_owned());
             },
             _ => {},
         }
-        Ok(())
     }
 
     /// Update the state based on the next [`RawBlock`].
@@ -71,7 +70,7 @@ impl PcapNgState {
             SECTION_HEADER_BLOCK | INTERFACE_DESCRIPTION_BLOCK => {
                 let block = raw_block.clone().try_into_block_with_byteorder::<B>(self)?;
 
-                self.update_from_block(&block)?;
+                self.update_from_block(&block);
                 Ok(())
             },
             _ => Ok(()),

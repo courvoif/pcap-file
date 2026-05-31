@@ -7,7 +7,7 @@ use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
 use super::{PcapNgState, RawBlock};
 use crate::Endianness;
-use crate::pcapng::errors::{ContentValidationError, PcapNgWriteError};
+use crate::pcapng::errors::PcapNgWriteError;
 
 /// Write a PcapNg to a writer.
 ///
@@ -77,18 +77,18 @@ impl<W: Write> PcapNgWriter<W> {
 
         let block = section.into_owned().into_block();
 
-        state.update_from_block(&block)?;
-
         let _ = match endianness {
             Endianness::Big => block.write_to::<BigEndian, _>(&state, &mut writer),
             Endianness::Little => block.write_to::<LittleEndian, _>(&state, &mut writer),
         }?;
 
+        state.update_from_block(&block);
+
         Ok(Self { state, writer })
     }
 
     /// Write a [`Block`].
-    /// 
+    ///
     /// Errors are not recoverable because they can leave the Writer in a wrong state.
     ///
     /// # Example
@@ -120,36 +120,28 @@ impl<W: Write> PcapNgWriter<W> {
     /// pcap_ng_writer.write_block(&packet.into_block()).unwrap();
     /// ```
     pub fn write_block(&mut self, block: &Block) -> Result<usize, PcapNgWriteError> {
-        match block {
-            Block::InterfaceStatistics(blk) => {
-                if blk.interface_id as usize >= self.state.interfaces.len() {
-                    return Err(PcapNgWriteError::Validation {
-                        field: "InterfaceStatisticsBlock.interface_id",
-                        source: ContentValidationError::InvalidInterfaceId(blk.interface_id),
-                    });
-                }
-            },
-            Block::EnhancedPacket(blk) => {
-                if blk.interface_id as usize >= self.state.interfaces.len() {
-                    return Err(PcapNgWriteError::Validation {
-                        field: "EnhancedPacketBlock.interface_id",
-                        source: ContentValidationError::InvalidInterfaceId(blk.interface_id),
-                    });
-                }
-            },
+        // The order of operation is important to prevent writing invalid files in case of error.
+        // The state is updated only after a successful write.
+        // The endianess is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
 
-            _ => (),
-        }
+        let endianess = if let Block::SectionHeader(sec_hdr) = block {
+            sec_hdr.endianness
+        } else {
+            self.state.section.endianness
+        };
 
-        self.state.update_from_block(block)?;
-        match self.state.section.endianness {
-            Endianness::Big => block.write_to::<BigEndian, _>(&self.state, &mut self.writer),
-            Endianness::Little => block.write_to::<LittleEndian, _>(&self.state, &mut self.writer),
-        }
+        let nb_written = match endianess {
+            Endianness::Big => block.write_to::<BigEndian, _>(&self.state, &mut self.writer)?,
+            Endianness::Little => block.write_to::<LittleEndian, _>(&self.state, &mut self.writer)?,
+        };
+
+        self.state.update_from_block(block);
+
+        Ok(nb_written)
     }
 
     /// Write a [`PcapNgBlock`].
-    /// 
+    ///
     /// Errors are not recoverable because they can leave the Writer in a wrong state.
     ///
     /// # Example
@@ -185,11 +177,14 @@ impl<W: Write> PcapNgWriter<W> {
     }
 
     /// Write a [`RawBlock`].
-    /// 
+    ///
     /// Errors are not recoverable because they can leave the Writer in a wrong state.
     ///
     /// Doesn't check the validity of the written blocks.
     pub fn write_raw_block(&mut self, block: &RawBlock) -> Result<usize, PcapNgWriteError> {
+        // TODO: handle state update failure
+        // Does raw parsing need to update state at all ?
+
         // Update state before write to handle endianess changes when a new SectionHeader is encountered
         match self.state.section.endianness {
             Endianness::Big => {

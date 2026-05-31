@@ -10,8 +10,8 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
-use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
+use crate::pcapng::{ContentValidationError, PcapNgState};
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
 #[derive(Clone, Debug, Default, IntoOwned, Eq, PartialEq)]
@@ -26,6 +26,7 @@ pub struct EnhancedPacketBlock<'a> {
     pub timestamp: i128,
 
     /// Actual length of the packet when it was transmitted on the network.
+    /// Must be >= data.len().
     pub original_len: u32,
 
     /// The data coming from the network, including link-layer headers.
@@ -42,12 +43,20 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         }
 
         let interface_id = slice.read_u32::<B>().expect("slice length checked above");
+        if (interface_id as usize) >= state.interfaces.len() {
+            return Err(ContentValidationError::InvalidInterfaceId(interface_id).into());
+        }
+
         let timestamp_high = slice.read_u32::<B>().expect("slice length checked above");
         let timestamp_low = slice.read_u32::<B>().expect("slice length checked above");
         let timestamp = state.decode_timestamp(interface_id, timestamp_high, timestamp_low)?;
 
         let captured_len = slice.read_u32::<B>().expect("slice length checked above");
         let original_len = slice.read_u32::<B>().expect("slice length checked above");
+
+        if original_len < captured_len {
+            return Err(ContentValidationError::InvalidOriginalLen(original_len, captured_len as usize).into());
+        }
 
         let pad_len = (4 - (captured_len as usize % 4)) % 4;
         let tot_len = captured_len as usize + pad_len;
@@ -66,15 +75,30 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        let pad_len = (4 - (&self.data.len() % 4)) % 4;
+        // Integrity checks are done before any writting to prevent invalid state in the file
+        if (self.interface_id as usize) >= state.interfaces.len() {
+            return Err(PcapNgWriteError::Validation {
+                field: "EnhancedPacketBlock.interface_id",
+                source: crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id),
+            });
+        }
 
-        writer.write_u32::<B>(self.interface_id)?;
+        if (self.original_len as usize) < self.data.len() {
+            return Err(PcapNgWriteError::Validation {
+                field: "EnhancedPacketBlock.original_len",
+                source: crate::pcapng::ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+            });
+        }
+
         let (timestamp_high, timestamp_low) = state
             .encode_timestamp(self.interface_id, self.timestamp)
             .map_err(|source| PcapNgWriteError::Validation { field: "EnhancedPacketBlock.timestamp", source })?;
+
+        let pad_len = (4 - (&self.data.len() % 4)) % 4;
+
+        writer.write_u32::<B>(self.interface_id)?;
         writer.write_u32::<B>(timestamp_high)?;
         writer.write_u32::<B>(timestamp_low)?;
-
         writer.write_u32::<B>(self.data.len() as u32)?;
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;

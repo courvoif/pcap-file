@@ -2,7 +2,7 @@ use std::borrow::Cow;
 
 use pcap_file::DataLink;
 use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
-use pcap_file::pcapng::blocks::interface_description::{InterfaceDescriptionBlock, InterfaceDescriptionOption};
+use pcap_file::pcapng::blocks::interface_description::{InterfaceDescriptionBlock, InterfaceDescriptionOption, TsResolution};
 use pcap_file::pcapng::blocks::{Block, PcapNgBlock};
 use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 
@@ -11,7 +11,7 @@ fn writer_roundtrip_preserves_negative_timestamp_offset() {
     let interface = InterfaceDescriptionBlock {
         linktype: DataLink::ETHERNET,
         snaplen: 0xFFFF,
-        options: vec![InterfaceDescriptionOption::IfTsResol(9), InterfaceDescriptionOption::IfTsOffset(-2)],
+        options: vec![InterfaceDescriptionOption::IfTsResol(TsResolution::NANO), InterfaceDescriptionOption::IfTsOffset(-2)],
     };
 
     let packet = EnhancedPacketBlock {

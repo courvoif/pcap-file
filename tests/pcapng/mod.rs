@@ -422,7 +422,7 @@ fn test_stateful_custom_block() {
     let interface_description = InterfaceDescriptionBlock {
         linktype: DataLink::ETHERNET,
         snaplen: 1500,
-        options: vec![InterfaceDescriptionOption::IfTsResol(9)],
+        options: vec![InterfaceDescriptionOption::IfTsResol(TsResolution::NANO)],
     };
 
     pcapng_writer

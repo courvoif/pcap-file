@@ -46,10 +46,18 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        writer.write_u32::<B>(self.interface_id)?;
+        if self.interface_id >= (state.interfaces.len() as u32) {
+            return Err(PcapNgWriteError::Validation {
+                field: "InterfaceStatisticsBlock.interface_id",
+                source: crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id),
+            });
+        }
+
         let (timestamp_high, timestamp_low) = state
             .encode_timestamp(self.interface_id, self.timestamp)
             .map_err(|source| PcapNgWriteError::Validation { field: "InterfaceStatisticsBlock.timestamp", source })?;
+
+        writer.write_u32::<B>(self.interface_id)?;
         writer.write_u32::<B>(timestamp_high)?;
         writer.write_u32::<B>(timestamp_low)?;
 

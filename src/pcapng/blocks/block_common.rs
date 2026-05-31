@@ -252,6 +252,7 @@ impl<'a> Block<'a> {
             writer: &mut W,
         ) -> Result<usize, PcapNgWriteError> {
             // Fake write to compute the data length
+            // It also do all the write checks, so any malformed block will fail before anything is written on the writer
             let data_len = block.write_to::<B, _>(state, &mut std::io::sink())?;
             let pad_len = (4 - (data_len % 4)) % 4;
 
