@@ -27,6 +27,7 @@ use crate::read_buffer::ReadBuffer;
 ///     //Do something
 /// }
 /// ```
+#[derive(Debug)]
 pub struct PcapNgReader<R: Read> {
     parser: PcapNgParser,
     reader: ReadBuffer<R>,
@@ -147,5 +148,79 @@ impl<R: Read> PcapNgReader<R> {
     /// Returns the number of bytes parsed so far.
     pub fn bytes_parsed(&self) -> u64 {
         self.reader.bytes_used
+    }
+}
+
+impl<R: Read> IntoIterator for PcapNgReader<R> {
+    type Item = Result<Block<'static>, PcapNgReadError>;
+    type IntoIter = PcapNgReaderIterator<R>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        PcapNgReaderIterator {
+            reader: self,
+            err: false,
+        }
+    }
+}
+
+/// Iterator over owned [`Block`] values.
+///
+/// This is slower than [`PcapNgReader::next_block`] because each block payload
+/// is copied out of the internal read buffer.
+///
+/// Stops after the first error.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use std::fs::File;
+///
+/// use pcap_file::pcapng::PcapNgReader;
+///
+/// let file_in = File::open("test.pcapng").expect("Error opening file");
+/// let pcapng_reader = PcapNgReader::new(file_in).unwrap();
+///
+/// for block in pcapng_reader {
+///     let block = block.unwrap();
+///
+///     //Do something
+/// }
+/// ```
+#[derive(Debug)]
+pub struct PcapNgReaderIterator<R: Read> {
+    reader: PcapNgReader<R>,
+    err: bool,
+}
+
+impl<R: Read> PcapNgReaderIterator<R> {
+    /// Gets a reference to the wrapped [`PcapNgReader`].
+    pub fn get_ref(&self) -> &PcapNgReader<R> {
+        &self.reader
+    }
+
+    /// Consumes the iterator, returning the wrapped [`PcapNgReader`].
+    pub fn into_inner(self) -> PcapNgReader<R> {
+        self.reader
+    }
+}
+
+impl<R: Read> Iterator for PcapNgReaderIterator<R> {
+    type Item = Result<Block<'static>, PcapNgReadError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.err {
+            return None;
+        }
+
+        let block = self
+            .reader
+            .next_block()
+            .map(|block| block.map(|(block, _)| block.into_owned()));
+
+        if matches!(block, Some(Err(_))) {
+            self.err = true;
+        }
+
+        block
     }
 }

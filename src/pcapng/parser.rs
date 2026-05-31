@@ -39,6 +39,7 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 ///     }
 /// }
 /// ```
+#[derive(Debug)]
 pub struct PcapNgParser {
     /// Current state of the pcapng format.
     pub(crate) state: PcapNgState,

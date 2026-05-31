@@ -33,16 +33,20 @@ use std::fs::File;
 use pcap_file::pcap::PcapReader;
 
 let file_in = File::open("test.pcap").expect("Error opening file");
-let mut pcap_reader = PcapReader::new(file_in).unwrap();
+let pcap_reader = PcapReader::new(file_in).unwrap();
 
 // Read test.pcap
-while let Some(pkt) = pcap_reader.next_packet() {
+for pkt in pcap_reader {
     // Check if there is no error
     let pkt = pkt.unwrap();
 
     // Do something
 }
 ```
+
+The iterator API returns owned packets and is slower than `next_packet()`,
+which can borrow packet data directly from the internal read buffer. It stops
+after the first error.
 
 ### PcapWriter
 
@@ -51,12 +55,12 @@ use std::fs::File;
 use pcap_file::pcap::{PcapReader, PcapWriter};
 
 let file_in = File::open("test.pcap").expect("Error opening file");
-let mut pcap_reader = PcapReader::new(file_in).unwrap();
+let pcap_reader = PcapReader::new(file_in).unwrap();
 
 let file_out = File::create("out.pcap").expect("Error creating file");
 let mut pcap_writer = PcapWriter::with_header(file_out, pcap_reader.header()).unwrap();
 
-while let Some(pkt) = pcap_reader.next_packet() {
+for pkt in pcap_reader {
     pcap_writer.write_packet(&pkt.unwrap()).unwrap();
 }
 ```
@@ -68,16 +72,20 @@ use std::fs::File;
 use pcap_file::pcapng::PcapNgReader;
 
 let file_in = File::open("test.pcapng").expect("Error opening file");
-let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
+let pcapng_reader = PcapNgReader::new(file_in).unwrap();
 
 // Read test.pcapng
-while let Some(block) = pcapng_reader.next_block() {
+for block in pcapng_reader {
     // Check if there is no error
-    let (block, state) = block.unwrap();
+    let block = block.unwrap();
 
     // Do something
 }
 ```
+
+The iterator API returns owned blocks and is slower than `next_block()`, which
+can borrow block data directly from the internal read buffer and also exposes
+the current `PcapNgState`. It stops after the first error.
 
 ### PcapNgWriter
 
@@ -86,14 +94,14 @@ use std::fs::File;
 use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 
 let file_in = File::open("test.pcapng").expect("Error opening file");
-let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
+let pcapng_reader = PcapNgReader::new(file_in).unwrap();
 
 let file_out = File::create("out.pcapng").expect("Error creating file");
 let mut pcapng_writer =
     PcapNgWriter::with_section_header(file_out, pcapng_reader.section().clone()).unwrap();
 
-while let Some(block) = pcapng_reader.next_block() {
-    let (block, _) = block.unwrap();
+for block in pcapng_reader {
+    let block = block.unwrap();
     pcapng_writer.write_block(&block).unwrap();
 }
 ```

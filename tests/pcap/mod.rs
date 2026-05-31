@@ -27,6 +27,23 @@ fn read() {
 }
 
 #[test]
+fn read_with_iterator() {
+    let pcap_reader = PcapReader::new(&DATA[..]).unwrap();
+
+    //Global header len
+    let mut data_len = 24;
+    for pkt in pcap_reader {
+        let pkt = pkt.unwrap();
+
+        //Packet header len
+        data_len += 16;
+        data_len += pkt.len();
+    }
+
+    assert_eq!(data_len as usize, DATA.len());
+}
+
+#[test]
 fn read_write() {
     let mut pcap_reader = PcapReader::new(&DATA[..]).unwrap();
     let header = pcap_reader.header();
@@ -41,6 +58,43 @@ fn read_write() {
     out = pcap_writer.into_inner();
 
     assert_eq!(&DATA[..], &out[..]);
+}
+
+#[test]
+fn read_write_with_iterator() {
+    let pcap_reader = PcapReader::new(&DATA[..]).unwrap();
+    let header = pcap_reader.header();
+
+    let mut out = Vec::new();
+    let mut pcap_writer = PcapWriter::with_header(out, header).unwrap();
+
+    for pkt in pcap_reader {
+        pcap_writer.write_packet(&pkt.unwrap()).unwrap();
+    }
+
+    out = pcap_writer.into_inner();
+
+    assert_eq!(&DATA[..], &out[..]);
+}
+
+#[test]
+fn iterator_stops_after_error() {
+    let packet = RawPcapPacket {
+        ts_sec: 1,
+        ts_frac: 0,
+        incl_len: 4,
+        orig_len: 2,
+        data: Cow::Borrowed(&[1, 2, 3, 4]),
+    };
+
+    let mut writer = PcapWriter::new(Vec::new()).unwrap();
+    writer.write_raw_packet(&packet).unwrap();
+    let pcap = writer.into_inner();
+
+    let mut packets = PcapReader::new(&pcap[..]).unwrap().into_iter();
+
+    assert!(packets.next().unwrap().is_err());
+    assert!(packets.next().is_none());
 }
 
 #[test]
