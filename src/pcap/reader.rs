@@ -64,8 +64,8 @@ impl<R: Read> PcapReader<R> {
         Ok(PcapReader { parser, reader })
     }
 
-    /// Consumes [`Self`], returning the wrapped reader.
-    pub fn into_reader(self) -> R {
+    /// Consumes the [`PcapReader`], returning the wrapped reader.
+    pub fn into_inner(self) -> R {
         self.reader.into_inner()
     }
 

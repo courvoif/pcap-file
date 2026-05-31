@@ -47,7 +47,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// Writes this global pcapng header to the file:
     /// ```rust, ignore
     /// Self {
-    ///     endianness: Endianness::Native,
+    ///     endianness: Endianness::native(),
     ///     major_version: 1,
     ///     minor_version: 0,
     ///     section_length: -1,
@@ -59,7 +59,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// # Errors
     /// The writer can't be written to.
     pub fn new(writer: W) -> Result<Self, PcapNgWriteError> {
-        Self::with_endianness(writer, Endianness::native())
+        Self::with_endianness(writer, Endianness::default())
     }
 
     /// Create a new [`PcapNgWriter`] from an existing writer with the given endianness.

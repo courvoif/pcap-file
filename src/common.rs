@@ -45,6 +45,13 @@ impl Endianness {
     }
 }
 
+impl Default for Endianness {
+    /// Return the native endianness of the system
+    fn default() -> Self {
+        Self::native()
+    }
+}
+
 /// Data link type
 ///
 /// The link-layer header type specifies the first protocol of the packet.

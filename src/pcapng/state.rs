@@ -172,6 +172,20 @@ mod tests {
     }
 
     #[test]
+    fn encode_timestamp_rejects_binary_resolution_arithmetic_overflow() {
+        let mut state = PcapNgState::default();
+        state.ts_parameters.push((TsResolution::new(true, 29).unwrap(), 0));
+
+        let error = state.encode_timestamp(0, i128::MAX).unwrap_err();
+
+        assert!(matches!(
+            error,
+            ContentValidationError::InvalidTimestamp(timestamp, resolution, offset)
+                if timestamp == i128::MAX && resolution == TsResolution::new(true, 29).unwrap() && offset == 0
+        ));
+    }
+
+    #[test]
     fn encode_timestamp_truncates_sub_resolution_negative_value_to_zero() {
         let mut state = PcapNgState::default();
         state.ts_parameters.push((TsResolution::SEC, 0));

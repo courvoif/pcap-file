@@ -5,7 +5,6 @@
 use std::borrow::Cow;
 use std::fmt::Display;
 use std::io::Write;
-use std::num::TryFromIntError;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -448,14 +447,18 @@ impl TsResolution {
     ///
     /// # Errors
     /// - Timestamp can't be encoded with the current resolution on a u64
-    pub fn encode_timestamp(&self, timestamp_ns: i128) -> Result<u64, TryFromIntError> {
+    pub fn encode_timestamp(&self, timestamp_ns: i128) -> Result<u64, ContentValidationError> {
         let ts = if self.is_bin {
-            (timestamp_ns * (1_i128 << self.resol)) / 1_000_000_000_i128
+            timestamp_ns
+                .checked_mul(1_i128 << self.resol)
+                .ok_or(ContentValidationError::InvalidTimestamp(timestamp_ns, *self, 0))?
+                / 1_000_000_000_i128
         } else {
             timestamp_ns / TS_RESOL_DEC_TO_DURATION[self.resol as usize]
         };
 
         ts.try_into()
+            .map_err(|_| ContentValidationError::InvalidTimestamp(timestamp_ns, *self, 0))
     }
 
     /// Returns whether the resolution is binary or decimal.
@@ -488,7 +491,7 @@ impl Display for TsResolution {
 
 #[cfg(test)]
 mod tests {
-    use super::TsResolution;
+    use super::{ContentValidationError, TsResolution};
 
     /// Test that multiple encode / decode doesn't drift more than by one step.
     #[test]
@@ -516,5 +519,18 @@ mod tests {
         }
 
         assert_eq!(raw, 18446744073709551614);
+    }
+
+    #[test]
+    fn binary_timestamp_encode_overflow_returns_invalid_timestamp() {
+        let resolution = TsResolution::new(true, 29).unwrap();
+
+        let error = resolution.encode_timestamp(i128::MAX).unwrap_err();
+
+        assert!(matches!(
+            error,
+            ContentValidationError::InvalidTimestamp(timestamp, error_resolution, offset)
+                if timestamp == i128::MAX && error_resolution == resolution && offset == 0
+        ));
     }
 }

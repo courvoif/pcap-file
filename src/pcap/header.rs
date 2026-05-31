@@ -135,7 +135,7 @@ impl PcapHeader {
 ///     snaplen: 65535,
 ///     datalink: DataLink::ETHERNET,
 ///     ts_resolution: TsResolution::MicroSecond,
-///     endianness: Endianness::Big
+///     endianness: Endianness::native()
 /// };
 /// ```
 impl Default for PcapHeader {
@@ -148,7 +148,7 @@ impl Default for PcapHeader {
             snaplen: 65535,
             datalink: DataLink::ETHERNET,
             ts_resolution: TsResolution::MicroSecond,
-            endianness: Endianness::Big,
+            endianness: Endianness::default(),
         }
     }
 }

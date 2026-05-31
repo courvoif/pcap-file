@@ -42,7 +42,7 @@ impl<'a> PcapNgBlock<'a> for UnknownBlock<'a> {
     where
         Self: Sized,
     {
-        unimplemented!("UnkknownBlock::<as PcapNgBlock>::From_slice shouldn't be called")
+        unimplemented!("UnknownBlock::<as PcapNgBlock>::from_slice shouldn't be called")
     }
 
     fn write_to<B: ByteOrder, W: Write>(

@@ -38,7 +38,7 @@ fn read_write() {
         pcap_writer.write_packet(&pkt.unwrap()).unwrap();
     }
 
-    out = pcap_writer.into_writer();
+    out = pcap_writer.into_inner();
 
     assert_eq!(&DATA[..], &out[..]);
 }
@@ -55,7 +55,7 @@ fn read_write_raw() {
         pcap_writer.write_raw_packet(&pkt.unwrap()).unwrap();
     }
 
-    out = pcap_writer.into_writer();
+    out = pcap_writer.into_inner();
 
     assert_eq!(&DATA[..], &out[..]);
 }
@@ -160,7 +160,7 @@ fn reader_with_capacity_handles_large_packets() {
 
     let mut writer = PcapWriter::with_header(Vec::new(), header).unwrap();
     writer.write_packet(&packet).unwrap();
-    let pcap = writer.into_writer();
+    let pcap = writer.into_inner();
 
     let mut reader = PcapReader::with_capacity(&pcap[..], pcap.len()).unwrap();
     let packet = reader.next_packet().unwrap().unwrap();
@@ -182,7 +182,7 @@ fn raw_reader_recovers_after_typed_packet_validation_error() {
 
     let mut writer = PcapWriter::new(Vec::new()).unwrap();
     writer.write_raw_packet(&packet).unwrap();
-    let pcap = writer.into_writer();
+    let pcap = writer.into_inner();
 
     let mut reader = PcapReader::new(&pcap[..]).unwrap();
     let typed_error = reader.next_packet().unwrap().unwrap_err();

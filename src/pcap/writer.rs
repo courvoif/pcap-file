@@ -40,8 +40,6 @@ pub struct PcapWriter<W: Write> {
 impl<W: Write> PcapWriter<W> {
     /// Creates a new [`PcapWriter`] from an existing writer.
     ///
-    /// Defaults to the native endianness of the CPU.
-    ///
     /// Writes this default global pcap header to the file:
     /// ```rust, ignore
     /// PcapHeader {
@@ -84,8 +82,8 @@ impl<W: Write> PcapWriter<W> {
         })
     }
 
-    /// Consumes [`Self`], returning the wrapped writer.
-    pub fn into_writer(self) -> W {
+    /// Consumes [`PcapWriter`], returning the wrapped writer.
+    pub fn into_inner(self) -> W {
         self.writer
     }
 
