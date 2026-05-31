@@ -61,9 +61,15 @@ impl<'a> CommonOption<'a> {
         Ok(match code {
             COMMENT => CommonOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             CUSTOM_UTF8_OPTION_COPIABLE => CommonOption::CustomUtf8Copiable(CustomUtf8Option::from_slice::<B>(slice)?),
-            CUSTOM_UTF8_OPTION_NON_COPIABLE => CommonOption::CustomUtf8NonCopiable(CustomUtf8Option::from_slice::<B>(slice)?),
-            CUSTOM_BINARY_OPTION_COPIABLE => CommonOption::CustomBinaryCopiable(CustomBinaryOption::from_slice::<B>(slice)?),
-            CUSTOM_BINARY_OPTION_NON_COPIABLE => CommonOption::CustomBinaryNonCopiable(CustomBinaryOption::from_slice::<B>(slice)?),
+            CUSTOM_UTF8_OPTION_NON_COPIABLE => {
+                CommonOption::CustomUtf8NonCopiable(CustomUtf8Option::from_slice::<B>(slice)?)
+            }
+            CUSTOM_BINARY_OPTION_COPIABLE => {
+                CommonOption::CustomBinaryCopiable(CustomBinaryOption::from_slice::<B>(slice)?)
+            }
+            CUSTOM_BINARY_OPTION_NON_COPIABLE => {
+                CommonOption::CustomBinaryNonCopiable(CustomBinaryOption::from_slice::<B>(slice)?)
+            }
             _ => CommonOption::Unknown(UnknownOption::new(code, slice)),
         })
     }
@@ -113,7 +119,10 @@ pub(crate) trait PcapNgOption<'a> {
 
         while !slice.is_empty() {
             if slice.len() < 4 {
-                return Err(OptionParseError::OptionsContentTooSmall { needed: 4, actual: slice.len() });
+                return Err(OptionParseError::OptionsContentTooSmall {
+                    needed: 4,
+                    actual: slice.len(),
+                });
             }
 
             let code = slice.read_u16::<B>().expect("available length checked before");
@@ -125,14 +134,19 @@ pub(crate) trait PcapNgOption<'a> {
             }
 
             if slice.len() < length + pad_len {
-                return Err(OptionParseError::OptionsContentTooSmall { needed: length + pad_len, actual: slice.len() });
+                return Err(OptionParseError::OptionsContentTooSmall {
+                    needed: length + pad_len,
+                    actual: slice.len(),
+                });
             }
 
             let tmp_slice = &slice[..length];
-            let opt = Self::from_slice::<B>(state, interface_id, code, tmp_slice).map_err(|e| OptionParseError::InvalidEntry {
-                code,
-                name: Self::code_name(code),
-                source: e,
+            let opt = Self::from_slice::<B>(state, interface_id, code, tmp_slice).map_err(|e| {
+                OptionParseError::InvalidEntry {
+                    code,
+                    name: Self::code_name(code),
+                    source: e,
+                }
             })?;
 
             // Jump over the padding
@@ -191,7 +205,10 @@ pub struct UnknownOption<'a> {
 impl<'a> UnknownOption<'a> {
     /// Creates a new [`UnknownOption`]
     pub fn new(code: u16, value: &'a [u8]) -> Self {
-        UnknownOption { code, value: Cow::Borrowed(value) }
+        UnknownOption {
+            code,
+            value: Cow::Borrowed(value),
+        }
     }
 }
 
@@ -208,9 +225,10 @@ fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
 ) -> Result<usize, PcapNgWriteError> {
     let pad_len = (4 - len % 4) % 4;
 
-    let len: u16 = len
-        .try_into()
-        .map_err(|_| PcapNgWriteError::Validation { field: "OptionEntry.length", source: ContentValidationError::OptionTooBig(len) })?;
+    let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
+        field: "OptionEntry.length",
+        source: ContentValidationError::OptionTooBig(len),
+    })?;
 
     writer.write_u16::<B>(code)?;
     writer.write_u16::<B>(len)?;
@@ -265,28 +283,40 @@ impl WriteOpt for i64 {
 impl<'a> WriteOpt for CommonOption<'a> {
     fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         match self {
-            CommonOption::Comment(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.len(), |w| w.write_all(a.as_bytes())),
-            CommonOption::CustomBinaryCopiable(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
-                w.write_u32::<B>(a.pen)?;
-                w.write_all(&a.value)?;
-                Ok(())
-            }),
-            CommonOption::CustomBinaryNonCopiable(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
-                w.write_u32::<B>(a.pen)?;
-                w.write_all(&a.value)?;
-                Ok(())
-            }),
-            CommonOption::CustomUtf8Copiable(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
-                w.write_u32::<B>(a.pen)?;
-                w.write_all(a.value.as_bytes())?;
-                Ok(())
-            }),
-            CommonOption::CustomUtf8NonCopiable(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
-                w.write_u32::<B>(a.pen)?;
-                w.write_all(a.value.as_bytes())?;
-                Ok(())
-            }),
-            CommonOption::Unknown(a) => write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len(), |w| w.write_all(&a.value)),
+            CommonOption::Comment(a) => {
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.len(), |w| w.write_all(a.as_bytes()))
+            }
+            CommonOption::CustomBinaryCopiable(a) => {
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                    w.write_u32::<B>(a.pen)?;
+                    w.write_all(&a.value)?;
+                    Ok(())
+                })
+            }
+            CommonOption::CustomBinaryNonCopiable(a) => {
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                    w.write_u32::<B>(a.pen)?;
+                    w.write_all(&a.value)?;
+                    Ok(())
+                })
+            }
+            CommonOption::CustomUtf8Copiable(a) => {
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                    w.write_u32::<B>(a.pen)?;
+                    w.write_all(a.value.as_bytes())?;
+                    Ok(())
+                })
+            }
+            CommonOption::CustomUtf8NonCopiable(a) => {
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                    w.write_u32::<B>(a.pen)?;
+                    w.write_all(a.value.as_bytes())?;
+                    Ok(())
+                })
+            }
+            CommonOption::Unknown(a) => {
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len(), |w| w.write_all(&a.value))
+            }
         }
     }
 }
@@ -335,7 +365,8 @@ mod tests {
         let data = [0, 1, 0, 4, 0, 0, 0, 0];
         let state = PcapNgState::default();
 
-        let (rem, opts) = PcapNgOptionImpl::opts_from_slice::<BigEndian>(&state, None, &data).expect("Failed to read the options");
+        let (rem, opts) =
+            PcapNgOptionImpl::opts_from_slice::<BigEndian>(&state, None, &data).expect("Failed to read the options");
 
         assert_eq!(&opts, &[PcapNgOptionImpl {}]);
         assert!(rem.is_empty());

@@ -42,9 +42,15 @@ pub struct InterfaceDescriptionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    fn from_slice<B: ByteOrder>(
+        state: &PcapNgState,
+        mut slice: &'a [u8],
+    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
         if slice.len() < 8 {
-            return Err(BlockContentParseError::BlockContentTooSmall { needed: 8, actual: slice.len() });
+            return Err(BlockContentParseError::BlockContentTooSmall {
+                needed: 8,
+                actual: slice.len(),
+            });
         }
 
         let linktype = (slice.read_u16::<B>().unwrap() as u32).into();
@@ -57,16 +63,22 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         let snaplen = slice.read_u32::<B>().unwrap();
         let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(state, None, slice)?;
 
-        let block = InterfaceDescriptionBlock { linktype, snaplen, options };
+        let block = InterfaceDescriptionBlock {
+            linktype,
+            snaplen,
+            options,
+        };
 
         Ok((slice, block))
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        let datalink: u16 = u32::from(self.linktype).try_into().map_err(|_| PcapNgWriteError::Validation {
-            field: "InterfaceDescriptionBlock.linktype",
-            source: ContentValidationError::InvalidLinktype(self.linktype),
-        })?;
+        let datalink: u16 = u32::from(self.linktype)
+            .try_into()
+            .map_err(|_| PcapNgWriteError::Validation {
+                field: "InterfaceDescriptionBlock.linktype",
+                source: ContentValidationError::InvalidLinktype(self.linktype),
+            })?;
 
         writer.write_u16::<B>(datalink)?;
         writer.write_u16::<B>(0)?;
@@ -84,7 +96,11 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
 impl<'a> InterfaceDescriptionBlock<'a> {
     /// Creates a new [`InterfaceDescriptionBlock`]
     pub fn new(linktype: DataLink, snaplen: u32) -> Self {
-        Self { linktype, snaplen, options: vec![] }
+        Self {
+            linktype,
+            snaplen,
+            options: vec![],
+        }
     }
 
     /// Returns the timestamp resolution of the interface.
@@ -194,71 +210,103 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
     ) -> Result<Self, OptionEntryError> {
         let opt = match code {
             Self::IF_NAME => InterfaceDescriptionOption::IfName(Cow::Borrowed(std::str::from_utf8(slice)?)),
-            Self::IF_DESCRIPTION => InterfaceDescriptionOption::IfDescription(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            Self::IF_DESCRIPTION => {
+                InterfaceDescriptionOption::IfDescription(Cow::Borrowed(std::str::from_utf8(slice)?))
+            }
             Self::IF_IPV4_ADDR => {
                 if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize { expected: 8, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 8,
+                        actual: slice.len(),
+                    });
                 }
                 InterfaceDescriptionOption::IfIpv4Addr(Cow::Borrowed(slice))
-            },
+            }
             Self::IF_IPV6_ADDR => {
                 if slice.len() != 17 {
-                    return Err(OptionEntryError::WrongSize { expected: 17, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 17,
+                        actual: slice.len(),
+                    });
                 }
                 InterfaceDescriptionOption::IfIpv6Addr(Cow::Borrowed(slice))
-            },
+            }
             Self::IF_MAC_ADDR => {
                 if slice.len() != 6 {
-                    return Err(OptionEntryError::WrongSize { expected: 6, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 6,
+                        actual: slice.len(),
+                    });
                 }
                 InterfaceDescriptionOption::IfMacAddr(Cow::Borrowed(slice))
-            },
+            }
             Self::IF_EU_ADDR => {
                 if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize { expected: 8, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 8,
+                        actual: slice.len(),
+                    });
                 }
                 InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>().unwrap())
-            },
+            }
             Self::IF_SPEED => {
                 if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize { expected: 8, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 8,
+                        actual: slice.len(),
+                    });
                 }
                 InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>().unwrap())
-            },
+            }
             Self::IF_TS_RESOL => {
                 if slice.len() != 1 {
-                    return Err(OptionEntryError::WrongSize { expected: 1, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 1,
+                        actual: slice.len(),
+                    });
                 }
 
                 let raw_resol = slice.read_u8().unwrap();
                 let resol = TsResolution::from_u8(raw_resol)?;
                 InterfaceDescriptionOption::IfTsResol(resol)
-            },
+            }
             Self::IF_T_ZONE => {
                 if slice.len() != 4 {
-                    return Err(OptionEntryError::WrongSize { expected: 4, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 4,
+                        actual: slice.len(),
+                    });
                 }
                 InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>().unwrap())
-            },
+            }
             Self::IF_FILTER => {
                 if slice.is_empty() {
-                    return Err(OptionEntryError::WrongSize { expected: 0, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 0,
+                        actual: slice.len(),
+                    });
                 }
                 InterfaceDescriptionOption::IfFilter(Cow::Borrowed(slice))
-            },
+            }
             Self::IF_OS => InterfaceDescriptionOption::IfOs(Cow::Borrowed(std::str::from_utf8(slice)?)),
             Self::IF_FCS_LEN => {
                 if slice.len() != 1 {
-                    return Err(OptionEntryError::WrongSize { expected: 1, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 1,
+                        actual: slice.len(),
+                    });
                 }
                 InterfaceDescriptionOption::IfFcsLen(slice.read_u8().unwrap())
-            },
+            }
             Self::IF_TS_OFFSET => {
                 if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize { expected: 8, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 8,
+                        actual: slice.len(),
+                    });
                 }
                 InterfaceDescriptionOption::IfTsOffset(slice.read_i64::<B>().unwrap())
-            },
+            }
             Self::IF_HARDWARE => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
             _ => InterfaceDescriptionOption::Common(CommonOption::new::<B>(code, slice)?),
@@ -330,13 +378,25 @@ pub struct TsResolution {
 
 impl TsResolution {
     /// Second resolution
-    pub const SEC: Self = TsResolution { is_bin: false, resol: 0 };
+    pub const SEC: Self = TsResolution {
+        is_bin: false,
+        resol: 0,
+    };
     /// Milli-second resolution
-    pub const MILLI: Self = TsResolution { is_bin: false, resol: 3 };
+    pub const MILLI: Self = TsResolution {
+        is_bin: false,
+        resol: 3,
+    };
     /// Micro-second resolution
-    pub const MICRO: Self = TsResolution { is_bin: false, resol: 6 };
+    pub const MICRO: Self = TsResolution {
+        is_bin: false,
+        resol: 6,
+    };
     /// Nano-second resolution
-    pub const NANO: Self = TsResolution { is_bin: false, resol: 9 };
+    pub const NANO: Self = TsResolution {
+        is_bin: false,
+        resol: 9,
+    };
 
     /// Creates a new [`TsResolution`].
     ///

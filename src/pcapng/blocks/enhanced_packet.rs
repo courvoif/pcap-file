@@ -37,9 +37,15 @@ pub struct EnhancedPacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    fn from_slice<B: ByteOrder>(
+        state: &PcapNgState,
+        mut slice: &'a [u8],
+    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
         if slice.len() < 20 {
-            return Err(BlockContentParseError::BlockContentTooSmall { needed: 20, actual: slice.len() });
+            return Err(BlockContentParseError::BlockContentTooSmall {
+                needed: 20,
+                actual: slice.len(),
+            });
         }
 
         let interface_id = slice.read_u32::<B>().expect("slice length checked above");
@@ -62,14 +68,23 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         let tot_len = captured_len as usize + pad_len;
 
         if slice.len() < tot_len {
-            return Err(BlockContentParseError::BlockContentTooSmall { needed: tot_len, actual: slice.len() });
+            return Err(BlockContentParseError::BlockContentTooSmall {
+                needed: tot_len,
+                actual: slice.len(),
+            });
         }
 
         let data = &slice[..captured_len as usize];
         slice = &slice[tot_len..];
 
         let (slice, options) = EnhancedPacketOption::opts_from_slice::<B>(state, Some(interface_id), slice)?;
-        let block = EnhancedPacketBlock { interface_id, timestamp, original_len, data: Cow::Borrowed(data), options };
+        let block = EnhancedPacketBlock {
+            interface_id,
+            timestamp,
+            original_len,
+            data: Cow::Borrowed(data),
+            options,
+        };
 
         Ok((slice, block))
     }
@@ -90,9 +105,13 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
             });
         }
 
-        let (timestamp_high, timestamp_low) = state
-            .encode_timestamp(self.interface_id, self.timestamp)
-            .map_err(|source| PcapNgWriteError::Validation { field: "EnhancedPacketBlock.timestamp", source })?;
+        let (timestamp_high, timestamp_low) =
+            state
+                .encode_timestamp(self.interface_id, self.timestamp)
+                .map_err(|source| PcapNgWriteError::Validation {
+                    field: "EnhancedPacketBlock.timestamp",
+                    source,
+                })?;
 
         let pad_len = (4 - (&self.data.len() % 4)) % 4;
 
@@ -104,7 +123,8 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         writer.write_all(&self.data)?;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        let opt_len = EnhancedPacketOption::write_opts_to::<B, W>(&self.options, state, Some(self.interface_id), writer)?;
+        let opt_len =
+            EnhancedPacketOption::write_opts_to::<B, W>(&self.options, state, Some(self.interface_id), writer)?;
 
         Ok(20 + &self.data.len() + pad_len + opt_len)
     }
@@ -151,17 +171,23 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
         let opt = match code {
             Self::FLAGS => {
                 if slice.len() != 4 {
-                    return Err(OptionEntryError::WrongSize { expected: 4, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 4,
+                        actual: slice.len(),
+                    });
                 }
                 EnhancedPacketOption::Flags(slice.read_u32::<B>().expect("slice length checked above"))
-            },
+            }
             Self::HASH => EnhancedPacketOption::Hash(Cow::Borrowed(slice)),
             Self::DROP_COUNT => {
                 if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize { expected: 8, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 8,
+                        actual: slice.len(),
+                    });
                 }
                 EnhancedPacketOption::DropCount(slice.read_u64::<B>().expect("slice length checked above"))
-            },
+            }
             _ => EnhancedPacketOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 

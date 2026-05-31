@@ -16,7 +16,7 @@ pub fn pcap(c: &mut Criterion) {
                 match parser.next_packet(src) {
                     Ok((rem, _)) => {
                         src = rem;
-                    },
+                    }
                     Err(PcapParseError::IncompleteBuffer(_, _)) => break,
                     Err(_) => panic!(),
                 }

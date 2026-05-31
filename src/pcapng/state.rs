@@ -59,7 +59,7 @@ impl PcapNgState {
             SECTION_HEADER_BLOCK | INTERFACE_DESCRIPTION_BLOCK => {
                 let block = raw_block.clone().try_into_block(self)?;
                 Ok(Some(block))
-            },
+            }
             _ => Ok(None),
         }
     }
@@ -71,14 +71,14 @@ impl PcapNgState {
                 self.section = blk.clone().into_owned();
                 self.interfaces.clear();
                 self.ts_parameters.clear();
-            },
+            }
             Block::InterfaceDescription(blk) => {
                 let ts_resolution = blk.ts_resolution();
                 let ts_offset = blk.ts_offset();
                 self.ts_parameters.push((ts_resolution, ts_offset));
                 self.interfaces.push(blk.clone().into_owned());
-            },
-            _ => {},
+            }
+            _ => {}
         }
     }
 
@@ -93,7 +93,12 @@ impl PcapNgState {
     }
 
     /// Decode a timestamp using the correct format for the current state.
-    pub fn decode_timestamp(&self, interface_id: u32, timestamp_high: u32, timestamp_low: u32) -> Result<i128, ContentValidationError> {
+    pub fn decode_timestamp(
+        &self,
+        interface_id: u32,
+        timestamp_high: u32,
+        timestamp_low: u32,
+    ) -> Result<i128, ContentValidationError> {
         let ts_raw = ((timestamp_high as u64) << 32) | timestamp_low as u64;
 
         let (ts_resolution, ts_offset) = self
@@ -115,10 +120,13 @@ impl PcapNgState {
 
         let offset_ns = (*ts_offset as i128) * 1_000_000_000;
 
-        let ts_relative =
-            timestamp
-                .checked_sub(offset_ns)
-                .ok_or(ContentValidationError::InvalidTimestamp(timestamp, *ts_resolution, *ts_offset))?;
+        let ts_relative = timestamp
+            .checked_sub(offset_ns)
+            .ok_or(ContentValidationError::InvalidTimestamp(
+                timestamp,
+                *ts_resolution,
+                *ts_offset,
+            ))?;
 
         let ts_raw = ts_resolution
             .encode_timestamp(ts_relative)

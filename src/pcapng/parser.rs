@@ -78,7 +78,10 @@ impl PcapNgParser {
         // This function doesn't call `self::next_raw_block()` because converting the Block before updating the state is faster and better for error handling.
 
         /// Inner function to parse the next Block.
-        fn next_block_inner<'a, B: ByteOrder>(parser: &mut PcapNgParser, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
+        fn next_block_inner<'a, B: ByteOrder>(
+            parser: &mut PcapNgParser,
+            src: &'a [u8],
+        ) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
             let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
             let state = &parser.state;
             let block = raw_block.try_into_block(state)?;
@@ -113,7 +116,7 @@ impl PcapNgParser {
             if let Some(block) = parser.state.decode_block_if_needed(&raw_block)? {
                 parser.state.update_from_block(&block);
             }
-            
+
             Ok((rem, raw_block))
         }
 

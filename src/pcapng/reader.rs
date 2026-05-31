@@ -70,7 +70,8 @@ impl<R: Read> PcapNgReader<R> {
                     // # SAFETY
                     // Block must NOT contain a mutable reference to the state.
                     // Keep the annotations to be sure that only the lifetime is trnasmuted.
-                    let res: Result<Block<'_>, PcapNgReadError> = self.reader.parse_with(|src| self.parser.next_block(src));
+                    let res: Result<Block<'_>, PcapNgReadError> =
+                        self.reader.parse_with(|src| self.parser.next_block(src));
                     let res: Result<Block<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
 
                     let state = &self.parser.state;
@@ -79,7 +80,7 @@ impl<R: Read> PcapNgReader<R> {
                 } else {
                     None
                 }
-            },
+            }
             Err(e) => Some(Err(PcapNgReadError::Io(e))),
         }
     }
@@ -101,7 +102,8 @@ impl<R: Read> PcapNgReader<R> {
                     // # SAFETY
                     // Block must NOT contain a mutable reference to the state.
                     // Keep the annotations to be sure that only the lifetime is transmuted.
-                    let res: Result<RawBlock<'_>, PcapNgReadError> = self.reader.parse_with(|src| self.parser.next_raw_block(src));
+                    let res: Result<RawBlock<'_>, PcapNgReadError> =
+                        self.reader.parse_with(|src| self.parser.next_raw_block(src));
                     let res: Result<RawBlock<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
 
                     let state = &self.parser.state;
@@ -110,7 +112,7 @@ impl<R: Read> PcapNgReader<R> {
                 } else {
                     None
                 }
-            },
+            }
             Err(e) => Some(Err(PcapNgReadError::Io(e))),
         }
     }

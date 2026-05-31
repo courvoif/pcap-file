@@ -53,7 +53,9 @@ impl PcapHeader {
         match magic_number {
             0xA1B2C3D4 => return init_pcap_header::<BigEndian>(slice, TsResolution::MicroSecond, Endianness::Big),
             0xA1B23C4D => return init_pcap_header::<BigEndian>(slice, TsResolution::NanoSecond, Endianness::Big),
-            0xD4C3B2A1 => return init_pcap_header::<LittleEndian>(slice, TsResolution::MicroSecond, Endianness::Little),
+            0xD4C3B2A1 => {
+                return init_pcap_header::<LittleEndian>(slice, TsResolution::MicroSecond, Endianness::Little);
+            }
             0x4D3CB2A1 => return init_pcap_header::<LittleEndian>(slice, TsResolution::NanoSecond, Endianness::Little),
             _ => return Err(PcapValidationError::InvalidMagicNumber(magic_number).into()),
         };
@@ -110,7 +112,9 @@ impl PcapHeader {
             writer
                 .write_u32::<B>(header.ts_accuracy)
                 .map_err(|e| PcapWriteError::FieldWriteFailed("ts_accuracy", e))?;
-            writer.write_u32::<B>(header.snaplen).map_err(|e| PcapWriteError::FieldWriteFailed("snaplen", e))?;
+            writer
+                .write_u32::<B>(header.snaplen)
+                .map_err(|e| PcapWriteError::FieldWriteFailed("snaplen", e))?;
             writer
                 .write_u32::<B>(header.datalink.into())
                 .map_err(|e| PcapWriteError::FieldWriteFailed("datalink", e))?;

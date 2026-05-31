@@ -57,7 +57,7 @@ impl PcapParser {
     }
 
     /// Returns the remainder and the next [`PcapPacket`].
-    /// 
+    ///
     /// # Errors
     /// - [`PcapParseError::IncompleteBuffer`] is recoverable (by loading more data).
     /// - Other errors will prevent the parser from advancing further.
@@ -78,11 +78,11 @@ impl PcapParser {
     }
 
     /// Returns the remainder and the next [`RawPcapPacket`].
-    /// 
+    ///
     /// More permissive than [`Self::next_packet`], can be used to parse malformed files.
-    /// 
+    ///
     /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
-    /// 
+    ///
     /// # Errors
     /// - Only [`PcapError::IncompleteBuffer`] can happen. It is recoverable by loading more data.
     pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], RawPcapPacket<'a>), PcapParseError> {

@@ -10,8 +10,8 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
-use crate::pcapng::{ContentValidationError, PcapNgState};
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
+use crate::pcapng::{ContentValidationError, PcapNgState};
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
@@ -40,9 +40,15 @@ pub struct PacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    fn from_slice<B: ByteOrder>(
+        state: &PcapNgState,
+        mut slice: &'a [u8],
+    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
         if slice.len() < 20 {
-            return Err(BlockContentParseError::BlockContentTooSmall { needed: 20, actual: slice.len() });
+            return Err(BlockContentParseError::BlockContentTooSmall {
+                needed: 20,
+                actual: slice.len(),
+            });
         }
 
         let interface_id = slice.read_u16::<B>().unwrap();
@@ -61,7 +67,10 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let tot_len = captured_len as usize + pad_len;
 
         if slice.len() < tot_len {
-            return Err(BlockContentParseError::BlockContentTooSmall { needed: tot_len, actual: slice.len() });
+            return Err(BlockContentParseError::BlockContentTooSmall {
+                needed: tot_len,
+                actual: slice.len(),
+            });
         }
 
         let data = &slice[..captured_len as usize];
@@ -98,7 +107,10 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
 
         let (timestamp_high, timestamp_low) = state
             .encode_timestamp(self.interface_id as u32, self.timestamp)
-            .map_err(|source| PcapNgWriteError::Validation { field: "PacketBlock.timestamp", source })?;
+            .map_err(|source| PcapNgWriteError::Validation {
+                field: "PacketBlock.timestamp",
+                source,
+            })?;
 
         writer.write_u16::<B>(self.interface_id)?;
         writer.write_u16::<B>(self.drop_count)?;
@@ -111,7 +123,8 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let pad_len = (4 - (self.data.len() % 4)) % 4;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        let opt_len = PacketOption::write_opts_to::<B, _>(&self.options, state, Some(self.interface_id as u32), writer)?;
+        let opt_len =
+            PacketOption::write_opts_to::<B, _>(&self.options, state, Some(self.interface_id as u32), writer)?;
 
         Ok(20 + self.data.len() + pad_len + opt_len)
     }
@@ -149,10 +162,13 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         let opt = match code {
             Self::FLAGS => {
                 if slice.len() != 4 {
-                    return Err(OptionEntryError::WrongSize { expected: 4, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 4,
+                        actual: slice.len(),
+                    });
                 }
                 PacketOption::Flags(slice.read_u32::<B>().unwrap())
-            },
+            }
             Self::HASH => PacketOption::Hash(Cow::Borrowed(slice)),
             _ => PacketOption::Common(CommonOption::new::<B>(code, slice)?),
         };

@@ -64,7 +64,10 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Create a new [`PcapNgWriter`] from an existing writer with the given endianness.
     pub fn with_endianness(writer: W, endianness: Endianness) -> Result<Self, PcapNgWriteError> {
-        let section = SectionHeaderBlock { endianness, ..Default::default() };
+        let section = SectionHeaderBlock {
+            endianness,
+            ..Default::default()
+        };
 
         Self::with_section_header(writer, section)
     }

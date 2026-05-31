@@ -59,7 +59,10 @@ impl<W: Write> PcapWriter<W> {
     /// # Errors
     /// The writer can't be written to.
     pub fn new(writer: W) -> Result<PcapWriter<W>, PcapWriteError> {
-        let header = PcapHeader { endianness: Endianness::native(), ..Default::default() };
+        let header = PcapHeader {
+            endianness: Endianness::native(),
+            ..Default::default()
+        };
 
         PcapWriter::with_header(writer, header)
     }

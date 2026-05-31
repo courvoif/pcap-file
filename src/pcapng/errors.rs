@@ -83,7 +83,9 @@ pub enum PcapNgReadError {
 impl From<PcapNgParseError> for PcapNgReadError {
     fn from(value: PcapNgParseError) -> Self {
         match value {
-            PcapNgParseError::IncompleteBuffer(_, _) => Self::Io(std::io::Error::from(std::io::ErrorKind::UnexpectedEof)),
+            PcapNgParseError::IncompleteBuffer(_, _) => {
+                Self::Io(std::io::Error::from(std::io::ErrorKind::UnexpectedEof))
+            }
             PcapNgParseError::InvalidFormat(e) => Self::InvalidFormat(e),
             PcapNgParseError::BlockConversion(e) => Self::BlockConversion(e),
             PcapNgParseError::StateUpdate(e) => Self::StateUpdate(e),

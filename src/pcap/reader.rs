@@ -84,7 +84,7 @@ impl<R: Read> PcapReader<R> {
                 } else {
                     None
                 }
-            },
+            }
             Err(e) => Some(Err(PcapReadError::Io(e))),
         }
     }
@@ -106,7 +106,7 @@ impl<R: Read> PcapReader<R> {
                 } else {
                     None
                 }
-            },
+            }
             Err(e) => Some(Err(PcapReadError::Io(e))),
         }
     }

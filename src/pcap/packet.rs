@@ -24,7 +24,11 @@ pub struct PcapPacket<'a> {
 
 impl<'a> PcapPacket<'a> {
     /// Creates a new [`PcapPacket`] with the given parameters.
-    pub fn new(timestamp: Duration, orig_len: u32, data: impl Into<Cow<'a, [u8]>>) -> Result<Self, PcapValidationError> {
+    pub fn new(
+        timestamp: Duration,
+        orig_len: u32,
+        data: impl Into<Cow<'a, [u8]>>,
+    ) -> Result<Self, PcapValidationError> {
         let data = data.into();
 
         // Validate inputs //
@@ -40,7 +44,11 @@ impl<'a> PcapPacket<'a> {
             return Err(PcapValidationError::OriginLenTooSmall(orig_len, incl_len));
         }
 
-        Ok(PcapPacket { timestamp, orig_len, data })
+        Ok(PcapPacket {
+            timestamp,
+            orig_len,
+            data,
+        })
     }
 
     /// Returns the packet timestamp.
@@ -93,7 +101,11 @@ impl<'a> PcapPacket<'a> {
     }
 
     /// Tries to create a [`PcapPacket`] from a [`RawPcapPacket`].
-    pub fn try_from_raw_packet(raw: RawPcapPacket<'a>, ts_resolution: TsResolution, snap_len: u32) -> Result<Self, PcapValidationError> {
+    pub fn try_from_raw_packet(
+        raw: RawPcapPacket<'a>,
+        ts_resolution: TsResolution,
+        snap_len: u32,
+    ) -> Result<Self, PcapValidationError> {
         // Convert and validate timestamps //
         let ts_sec = raw.ts_sec;
 
@@ -104,7 +116,9 @@ impl<'a> PcapPacket<'a> {
                 return Err(PcapValidationError::TsFracMicroTooBig(ts_usec));
             }
 
-            ts_usec.checked_mul(1000).expect("ts_usec * 1000 overflow, should have been validated just before")
+            ts_usec
+                .checked_mul(1000)
+                .expect("ts_usec * 1000 overflow, should have been validated just before")
         } else {
             let ts_nsec = raw.ts_frac;
             if ts_nsec >= 1_000_000_000 {
@@ -127,13 +141,25 @@ impl<'a> PcapPacket<'a> {
     /// Converts a [`PcapPacket`] into a [`RawPcapPacket`].
     pub fn into_raw_packet(self, ts_resolution: TsResolution) -> RawPcapPacket<'a> {
         let (ts_sec, ts_frac, incl_len, orig_len) = self.build_raw_header(ts_resolution);
-        RawPcapPacket { ts_sec, ts_frac, incl_len, orig_len, data: self.data }
+        RawPcapPacket {
+            ts_sec,
+            ts_frac,
+            incl_len,
+            orig_len,
+            data: self.data,
+        }
     }
 
     /// Converts a [`PcapPacket`] into a [`RawPcapPacket`].
     pub fn as_raw_packet<'pkt>(&'pkt self, ts_resolution: TsResolution) -> RawPcapPacket<'pkt> {
         let (ts_sec, ts_frac, incl_len, orig_len) = self.build_raw_header(ts_resolution);
-        RawPcapPacket { ts_sec, ts_frac, incl_len, orig_len, data: Cow::Borrowed(&self.data) }
+        RawPcapPacket {
+            ts_sec,
+            ts_frac,
+            incl_len,
+            orig_len,
+            data: Cow::Borrowed(&self.data),
+        }
     }
 
     /// Builds the raw header fields for a [`RawPcapPacket`].
@@ -198,7 +224,13 @@ impl<'a> RawPcapPacket<'a> {
             return Err(PcapParseError::IncompleteBuffer(pkt_len, slice.len()));
         }
 
-        let packet = RawPcapPacket { ts_sec, ts_frac, incl_len, orig_len, data: Cow::Borrowed(&slice[..pkt_len]) };
+        let packet = RawPcapPacket {
+            ts_sec,
+            ts_frac,
+            incl_len,
+            orig_len,
+            data: Cow::Borrowed(&slice[..pkt_len]),
+        };
         let rem = &slice[pkt_len..];
 
         Ok((rem, packet))
@@ -207,17 +239,31 @@ impl<'a> RawPcapPacket<'a> {
     /// Writes a [`RawPcapPacket`] to a writer.
     /// The fields of the packet are not validated.
     pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
-        writer.write_u32::<B>(self.ts_sec).map_err(|e| PcapWriteError::FieldWriteFailed("ts_sec", e))?;
-        writer.write_u32::<B>(self.ts_frac).map_err(|e| PcapWriteError::FieldWriteFailed("ts_frac", e))?;
-        writer.write_u32::<B>(self.incl_len).map_err(|e| PcapWriteError::FieldWriteFailed("incl_len", e))?;
-        writer.write_u32::<B>(self.orig_len).map_err(|e| PcapWriteError::FieldWriteFailed("orig_len", e))?;
-        writer.write_all(&self.data).map_err(|e| PcapWriteError::FieldWriteFailed("data", e))?;
+        writer
+            .write_u32::<B>(self.ts_sec)
+            .map_err(|e| PcapWriteError::FieldWriteFailed("ts_sec", e))?;
+        writer
+            .write_u32::<B>(self.ts_frac)
+            .map_err(|e| PcapWriteError::FieldWriteFailed("ts_frac", e))?;
+        writer
+            .write_u32::<B>(self.incl_len)
+            .map_err(|e| PcapWriteError::FieldWriteFailed("incl_len", e))?;
+        writer
+            .write_u32::<B>(self.orig_len)
+            .map_err(|e| PcapWriteError::FieldWriteFailed("orig_len", e))?;
+        writer
+            .write_all(&self.data)
+            .map_err(|e| PcapWriteError::FieldWriteFailed("data", e))?;
 
         Ok(16 + self.data.len())
     }
 
     /// Tries to convert a [`RawPcapPacket`] into a [`PcapPacket`].
-    pub fn try_into_pcap_packet(self, ts_resolution: TsResolution, snap_len: u32) -> Result<PcapPacket<'a>, PcapValidationError> {
+    pub fn try_into_pcap_packet(
+        self,
+        ts_resolution: TsResolution,
+        snap_len: u32,
+    ) -> Result<PcapPacket<'a>, PcapValidationError> {
         PcapPacket::try_from_raw_packet(self, ts_resolution, snap_len)
     }
 }
