@@ -182,7 +182,8 @@ impl<W: Write> PcapNgWriter<W> {
     /// I/O errors can leave the output stream partially written. After any error,
     /// callers should assume the pcapng stream is no longer usable.
     ///
-    /// Does not validate non-state block contents before writing.
+    /// Validates the raw block length fields, but does not validate non-state
+    /// block contents before writing.
     ///
     /// Section Header and Interface Description raw blocks are decoded before writing
     /// so the writer can update its state after a successful write. If decoding fails,

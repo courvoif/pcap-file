@@ -111,6 +111,10 @@ pub enum PcapNgWriteError {
         source: ContentValidationError,
     },
 
+    /// The raw block format is invalid.
+    #[error("Invalid raw block format")]
+    InvalidFormat(#[from] PcapNgFormatError),
+
     /// Error while updating the pcapng state.
     #[error("State update error during writing")]
     StateUpdate(#[from] StateUpdateError),
@@ -142,6 +146,14 @@ pub enum PcapNgFormatError {
     /// - 1: trailing length field
     #[error("Block length fields don't match: initial {0}B, trailing {1}B")]
     BlockLengthMismatch(u32, u32),
+    /// The block length field does not match the raw block body length.
+    #[error("Block length doesn't match body length: expected {expected}B, got {actual}B")]
+    InvalidBlockLength {
+        /// Expected total length based on the raw block body.
+        expected: usize,
+        /// Actual total length field.
+        actual: u32,
+    },
 }
 
 /* ----- RawBlockParseError ----- */

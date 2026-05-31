@@ -144,13 +144,43 @@ impl<'a> RawBlock<'a> {
     /// Writes a [`RawBlock`] to a writer.
     ///
     /// Uses the endianness of the header.
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, std::io::Error> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        self.validate()?;
+
         writer.write_u32::<B>(self.type_)?;
         writer.write_u32::<B>(self.initial_len)?;
         writer.write_all(&self.body[..])?;
         writer.write_u32::<B>(self.trailer_len)?;
 
         Ok(self.body.len() + 12)
+    }
+
+    /// Validates that the raw block length fields match its body.
+    pub fn validate(&self) -> Result<(), PcapNgFormatError> {
+        if self.initial_len != self.trailer_len {
+            return Err(PcapNgFormatError::BlockLengthMismatch(
+                self.initial_len,
+                self.trailer_len,
+            ));
+        }
+
+        if !self.initial_len.is_multiple_of(4) {
+            return Err(PcapNgFormatError::BlockNotAligned(self.initial_len as usize));
+        }
+
+        if self.initial_len < 12 {
+            return Err(PcapNgFormatError::BlockTooShort(12, self.initial_len as usize));
+        }
+
+        let expected_len = self.body.len() + 12;
+        if self.initial_len as usize != expected_len {
+            return Err(PcapNgFormatError::InvalidBlockLength {
+                expected: expected_len,
+                actual: self.initial_len,
+            });
+        }
+
+        Ok(())
     }
 
     /// Tries to convert a [`RawBlock`] into a [`Block`], using a [`PcapNgState`].
@@ -523,7 +553,7 @@ mod tests {
 
     use super::{Block, RawBlock, SECTION_HEADER_BLOCK};
     use crate::Endianness;
-    use crate::pcapng::PcapNgState;
+    use crate::pcapng::{PcapNgFormatError, PcapNgState};
 
     #[test]
     fn try_from_raw_block_accepts_owned_bodies() {
@@ -550,5 +580,25 @@ mod tests {
             }
             other => panic!("expected SectionHeader block, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn raw_block_validation_rejects_body_length_mismatch() {
+        let raw_block = RawBlock {
+            type_: SECTION_HEADER_BLOCK,
+            initial_len: 32,
+            body: Cow::Owned(vec![0; 16]),
+            trailer_len: 32,
+        };
+
+        let err = raw_block.validate().unwrap_err();
+
+        assert!(matches!(
+            err,
+            PcapNgFormatError::InvalidBlockLength {
+                expected: 28,
+                actual: 32,
+            }
+        ));
     }
 }

@@ -96,6 +96,40 @@ fn writer() {
 }
 
 #[test]
+fn raw_writer_rejects_invalid_state_block_lengths_without_state_update() {
+    use pcap_file::Endianness;
+    use pcap_file::pcapng::blocks::block_common::{INTERFACE_DESCRIPTION_BLOCK, RawBlock};
+    use pcap_file::pcapng::{PcapNgFormatError, PcapNgWriteError};
+
+    let mut writer = PcapNgWriter::with_endianness(Vec::new(), Endianness::Big).unwrap();
+    let len_before = writer.get_ref().len();
+
+    let raw_interface = RawBlock {
+        type_: INTERFACE_DESCRIPTION_BLOCK,
+        initial_len: 24,
+        body: vec![
+            0x00, 0x01, // linktype: Ethernet
+            0x00, 0x00, // reserved
+            0x00, 0x00, 0xFF, 0xFF, // snaplen
+        ]
+        .into(),
+        trailer_len: 24,
+    };
+
+    let error = writer.write_raw_block(&raw_interface).unwrap_err();
+
+    assert!(matches!(
+        error,
+        PcapNgWriteError::InvalidFormat(PcapNgFormatError::InvalidBlockLength {
+            expected: 20,
+            actual: 24,
+        })
+    ));
+    assert!(writer.interfaces().is_empty());
+    assert_eq!(writer.get_ref().len(), len_before);
+}
+
+#[test]
 fn test_custom_block() {
     use byteorder_slice::{
         BigEndian,
