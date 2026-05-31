@@ -20,7 +20,7 @@ pub struct EnhancedPacketBlock<'a> {
     ///
     /// The correct interface will be the one whose Interface Description Block
     /// (within the current Section of the file) is identified by the same number
-    /// of this field. 
+    /// of this field.
     /// When writing, that interface must already be present in the [`PcapNgState`].
     pub interface_id: u32,
 

@@ -116,3 +116,77 @@ impl<R: Read> PcapReader<R> {
         self.parser.header()
     }
 }
+
+impl<R: Read> IntoIterator for PcapReader<R> {
+    type Item = Result<PcapPacket<'static>, PcapReadError>;
+    type IntoIter = PcapReaderIterator<R>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        PcapReaderIterator {
+            reader: self,
+            err: false,
+        }
+    }
+}
+
+/// Iterator over owned [`PcapPacket`] values.
+///
+/// This is slower than [`PcapReader::next_packet`] because each packet payload
+/// is copied out of the internal read buffer.
+///
+/// Stops after the first error.
+///
+/// # Example
+///
+/// ```rust,no_run
+/// use std::fs::File;
+///
+/// use pcap_file::pcap::PcapReader;
+///
+/// let file_in = File::open("test.pcap").expect("Error opening file");
+/// let pcap_reader = PcapReader::new(file_in).unwrap();
+///
+/// for pkt in pcap_reader {
+///     let pkt = pkt.unwrap();
+///
+///     //Do something
+/// }
+/// ```
+#[derive(Debug)]
+pub struct PcapReaderIterator<R: Read> {
+    reader: PcapReader<R>,
+    err: bool,
+}
+
+impl<R: Read> PcapReaderIterator<R> {
+    /// Gets a reference to the wrapped [`PcapReader`].
+    pub fn get_ref(&self) -> &PcapReader<R> {
+        &self.reader
+    }
+
+    /// Consumes the iterator, returning the wrapped [`PcapReader`].
+    pub fn into_inner(self) -> PcapReader<R> {
+        self.reader
+    }
+}
+
+impl<R: Read> Iterator for PcapReaderIterator<R> {
+    type Item = Result<PcapPacket<'static>, PcapReadError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.err {
+            return None;
+        }
+
+        let packet = self
+            .reader
+            .next_packet()
+            .map(|packet| packet.map(PcapPacket::into_owned));
+
+        if matches!(packet, Some(Err(_))) {
+            self.err = true;
+        }
+
+        packet
+    }
+}

@@ -13,7 +13,7 @@ pub(crate) mod parser;
 pub use parser::PcapNgParser;
 
 pub(crate) mod reader;
-pub use reader::PcapNgReader;
+pub use reader::{PcapNgReader, PcapNgReaderIterator};
 
 pub(crate) mod writer;
 pub use writer::PcapNgWriter;
