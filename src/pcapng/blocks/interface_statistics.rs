@@ -268,8 +268,7 @@ fn write_timestamp<B: ByteOrder, W: Write>(
 ) -> Result<usize, PcapNgWriteError> {
     const TIMESTAMP_LENGTH: u16 = 8;
     const OPTION_LENGTH: usize = 12;
-    writer.write_u16::<B>(code)?;
-    writer.write_u16::<B>(TIMESTAMP_LENGTH)?;
+
     let (timestamp_high, timestamp_low) =
         state
             .encode_timestamp(interface_id.unwrap(), timestamp)
@@ -277,6 +276,9 @@ fn write_timestamp<B: ByteOrder, W: Write>(
                 field: "InterfaceStatisticsOption.timestamp",
                 source,
             })?;
+
+    writer.write_u16::<B>(code)?;
+    writer.write_u16::<B>(TIMESTAMP_LENGTH)?;
     writer.write_u32::<B>(timestamp_high)?;
     writer.write_u32::<B>(timestamp_low)?;
     Ok(OPTION_LENGTH)
