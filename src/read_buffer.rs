@@ -7,7 +7,7 @@ use crate::{
 
 /* ----- ReadBuffer ----- */
 
-/// Internal structure that bufferize its input and allow to parse element from its buffer.
+/// Internal structure that buffers its input and allows parsing elements from its buffer.
 #[derive(Debug)]
 pub(crate) struct ReadBuffer<R: Read> {
     /// Reader from which we read the data from

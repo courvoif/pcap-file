@@ -238,7 +238,7 @@ impl<'a> Ipv4Record<'a> {
         Ok(record)
     }
 
-    /// Write a [`Ipv4Record`] to a writter
+    /// Write an [`Ipv4Record`] to a writer
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 4;
 
@@ -298,7 +298,7 @@ impl<'a> Ipv6Record<'a> {
         Ok(record)
     }
 
-    /// Write a [`Ipv6Record`] to a writter
+    /// Write an [`Ipv6Record`] to a writer
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 16;
 

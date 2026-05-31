@@ -46,7 +46,7 @@ impl PcapNgState {
         &self.interfaces[..]
     }
 
-    /// Returns the endiabness of the current section.
+    /// Returns the endianness of the current section.
     pub fn endianness(&self) -> Endianness {
         self.section.endianness
     }

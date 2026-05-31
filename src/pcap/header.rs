@@ -41,7 +41,7 @@ impl PcapHeader {
     /// Returns an error if the reader doesn't contain a valid pcap
     /// or if there is a reading error.
     ///
-    /// [`PcapError::IncompleteBuffer`] indicates that there is not enough data in the buffer.
+    /// [`PcapParseError::IncompleteBuffer`] indicates that there is not enough data in the buffer.
     pub fn from_slice(mut slice: &[u8]) -> Result<(&[u8], PcapHeader), PcapParseError> {
         // Check that slice.len() > PcapHeader length
         if slice.len() < 24 {

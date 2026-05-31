@@ -86,7 +86,7 @@ impl<'a> CommonOption<'a> {
     }
 }
 
-/// Common fonctions of the PcapNg options
+/// Common functions of the PcapNg options
 pub(crate) trait PcapNgOption<'a> {
     /// Parse an option from a slice
     fn from_slice<B: ByteOrder>(

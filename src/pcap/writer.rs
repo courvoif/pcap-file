@@ -120,7 +120,7 @@ impl<W: Write> PcapWriter<W> {
         self.writer.flush().map_err(PcapWriteError::Io)
     }
 
-    /// Returns the endianess used by the writer.
+    /// Returns the endianness used by the writer.
     pub fn endianness(&self) -> Endianness {
         self.endianness
     }

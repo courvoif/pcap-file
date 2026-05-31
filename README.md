@@ -21,7 +21,7 @@ Add it to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-pcap-file = "3.0.0-rc1"
+pcap-file = "3.0.0-rc.2"
 ```
 
 ## Examples

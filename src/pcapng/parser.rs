@@ -101,9 +101,14 @@ impl PcapNgParser {
     /// More permissive than [`Self::next_block`].
     ///
     /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
+    /// Section Header and Interface Description blocks are still decoded before
+    /// returning so the parser can keep its state consistent. If decoding one of
+    /// those state-changing blocks fails, the error is not recoverable by this
+    /// parser and no raw block is returned.
     ///
     /// # Errors
-    /// - Only [`PcapError::IncompleteBuffer`] is recoverable (by loading more data).
+    /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
+    /// - [`PcapNgParseError::StateUpdate`] can happen when a state-changing raw block cannot be decoded.
     /// - All other errors will prevent the parser from advancing further.
     pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
         /// Inner function to parse the next RawBlock.

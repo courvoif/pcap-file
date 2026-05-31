@@ -84,7 +84,7 @@ impl PcapParser {
     /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
     ///
     /// # Errors
-    /// - Only [`PcapError::IncompleteBuffer`] can happen. It is recoverable by loading more data.
+    /// - Only [`PcapParseError::IncompleteBuffer`] can happen. It is recoverable by loading more data.
     pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], RawPcapPacket<'a>), PcapParseError> {
         match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),

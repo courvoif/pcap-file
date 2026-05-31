@@ -90,7 +90,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        // Integrity checks are done before any writting to prevent invalid state in the file
+        // Integrity checks are done before any writing to prevent invalid state in the file
         if (self.interface_id as usize) >= state.interfaces.len() {
             return Err(PcapNgWriteError::Validation {
                 field: "EnhancedPacketBlock.interface_id",

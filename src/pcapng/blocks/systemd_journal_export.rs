@@ -12,7 +12,7 @@ use crate::pcapng::{
     errors::{BlockContentParseError, PcapNgWriteError},
 };
 
-/// The Systemd Journal Export Block is a lightweight containter for systemd Journal Export Format entry data.
+/// The Systemd Journal Export Block is a lightweight container for systemd Journal Export Format entry data.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SystemdJournalExportBlock<'a> {
     /// A journal entry as described in the Journal Export Format documentation.
