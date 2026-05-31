@@ -2,7 +2,10 @@
 
 use std::fs::File;
 
-use pcap_file::pcapng::{PcapNgReader, blocks::interface_description::{InterfaceDescriptionOption, TsResolution}};
+use pcap_file::pcapng::{
+    PcapNgReader,
+    blocks::interface_description::{InterfaceDescriptionOption, TsResolution},
+};
 
 mod pcap;
 mod pcapng;
@@ -19,22 +22,40 @@ fn timestamp_resolution() {
 
         match i {
             0 => {
-                let if_en0 = block.as_interface_description().expect("Block 0 should be an InterfaceDescriptionBlock");
-                assert!(matches!(if_en0.options[2], InterfaceDescriptionOption::IfTsResol(TsResolution::NANO)), "Invalid TsResolution for block 0");
-            },
+                let if_en0 = block
+                    .as_interface_description()
+                    .expect("Block 0 should be an InterfaceDescriptionBlock");
+                assert!(
+                    matches!(
+                        if_en0.options[2],
+                        InterfaceDescriptionOption::IfTsResol(TsResolution::NANO)
+                    ),
+                    "Invalid TsResolution for block 0"
+                );
+            }
             7 => {
-                let if_utun4 = block.as_interface_description().expect("Block 7 should be an InterfaceDescriptionBlock");
-                assert_eq!(if_utun4.options[1], InterfaceDescriptionOption::IfTsResol(TsResolution::MICRO), "Invalid TsResolution for block 7");
-            },
+                let if_utun4 = block
+                    .as_interface_description()
+                    .expect("Block 7 should be an InterfaceDescriptionBlock");
+                assert_eq!(
+                    if_utun4.options[1],
+                    InterfaceDescriptionOption::IfTsResol(TsResolution::MICRO),
+                    "Invalid TsResolution for block 7"
+                );
+            }
             8 => {
-                let pkt_0 = block.as_enhanced_packet().expect("Block 8 should be an EnhancedPacketBlock");
+                let pkt_0 = block
+                    .as_enhanced_packet()
+                    .expect("Block 8 should be an EnhancedPacketBlock");
                 assert_eq!(pkt_0.timestamp, 1704187433103553000, "Invalid timestamp for pkt0");
-            },
+            }
             10 => {
-                let pkt_2 = block.as_enhanced_packet().expect("Block 10 should be an EnhancedPacketBlock");
+                let pkt_2 = block
+                    .as_enhanced_packet()
+                    .expect("Block 10 should be an EnhancedPacketBlock");
                 assert_eq!(pkt_2.timestamp, 1704187433132051, "Invalid timestamp for pkt2");
-            },
-            _ => {},
+            }
+            _ => {}
         }
 
         i += 1;

@@ -14,14 +14,14 @@ use crate::pcap::PcapParseError;
 /// ```no_run
 /// use pcap_file::pcap::{PcapParseError, PcapParser};
 ///
-/// let pcap = vec![0_u8; 0];
+/// let pcap = std::fs::read("test.pcap").expect("Error reading file");
 /// let mut src = &pcap[..];
 ///
 /// // Creates a new parser and parse the pcap header
 /// let (rem, pcap_parser) = PcapParser::new(&pcap[..]).unwrap();
 /// src = rem;
 ///
-/// loop {
+/// while !src.is_empty() {
 ///     match pcap_parser.next_packet(src) {
 ///         Ok((rem, packet)) => {
 ///             // Do something
@@ -29,12 +29,10 @@ use crate::pcap::PcapParseError;
 ///             // Don't forget to update src
 ///             src = rem;
 ///
-///             // No more data, if no more incoming either then this is the end of the file
-///             if rem.is_empty() {
-///                 break;
-///             }
 ///         },
-///         Err(PcapParseError::IncompleteBuffer(_,_)) => {}, // Load more data into src
+///         Err(PcapParseError::IncompleteBuffer(_,_)) => {
+///             // Load more data into src if parsing a stream.
+///         },
 ///         Err(_) => {
 ///             // Parsing error, unrecoverable
 ///         },
@@ -57,7 +55,7 @@ impl PcapParser {
     }
 
     /// Returns the remainder and the next [`PcapPacket`].
-    /// 
+    ///
     /// # Errors
     /// - [`PcapParseError::IncompleteBuffer`] is recoverable (by loading more data).
     /// - Other errors will prevent the parser from advancing further.
@@ -78,13 +76,13 @@ impl PcapParser {
     }
 
     /// Returns the remainder and the next [`RawPcapPacket`].
-    /// 
+    ///
     /// More permissive than [`Self::next_packet`], can be used to parse malformed files.
-    /// 
+    ///
     /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
-    /// 
+    ///
     /// # Errors
-    /// - Only [`PcapError::IncompleteBuffer`] can happen. It is recoverable by loading more data.
+    /// - Only [`PcapParseError::IncompleteBuffer`] can happen. It is recoverable by loading more data.
     pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], RawPcapPacket<'a>), PcapParseError> {
         match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),

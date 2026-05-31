@@ -25,7 +25,10 @@ pub struct NameResolutionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    fn from_slice<B: ByteOrder>(
+        state: &PcapNgState,
+        mut slice: &'a [u8],
+    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
         let mut records = Vec::new();
 
         loop {
@@ -80,7 +83,10 @@ impl<'a> Record<'a> {
     /// Parse a [`Record`] from a slice
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
         if slice.len() < 4 {
-            return Err(BlockContentParseError::BlockContentTooSmall { needed: 4, actual: slice.len() });
+            return Err(BlockContentParseError::BlockContentTooSmall {
+                needed: 4,
+                actual: slice.len(),
+            });
         }
 
         let type_ = slice.read_u16::<B>().unwrap();
@@ -88,33 +94,40 @@ impl<'a> Record<'a> {
         let pad_len = (4 - length % 4) % 4;
 
         if slice.len() < length + pad_len {
-            return Err(BlockContentParseError::BlockContentTooSmall { needed: length + pad_len, actual: slice.len() });
+            return Err(BlockContentParseError::BlockContentTooSmall {
+                needed: length + pad_len,
+                actual: slice.len(),
+            });
         }
         let value = &slice[..length];
 
         let record = match type_ {
             0 => {
                 if length != 0 {
-                    return Err(ContentValidationError::RecordWrongSize { expected: 0, actual: length }.into());
+                    return Err(ContentValidationError::RecordWrongSize {
+                        expected: 0,
+                        actual: length,
+                    }
+                    .into());
                 }
 
                 Record::End
-            },
+            }
 
             1 => {
                 let record = Ipv4Record::from_slice(value)?;
                 Record::Ipv4(record)
-            },
+            }
 
             2 => {
                 let record = Ipv6Record::from_slice(value)?;
                 Record::Ipv6(record)
-            },
+            }
 
             _ => {
                 let record = UnknownRecord::new(type_, value);
                 Record::Unknown(record)
-            },
+            }
         };
 
         let len = length + pad_len;
@@ -130,7 +143,7 @@ impl<'a> Record<'a> {
                 writer.write_u16::<B>(0)?;
 
                 Ok(4)
-            },
+            }
             Record::Ipv4(a) => {
                 let len = a.write_to::<B, _>(&mut std::io::sink())?;
                 let pad_len = (4 - len % 4) % 4;
@@ -146,7 +159,7 @@ impl<'a> Record<'a> {
                 writer.write_all(&[0_u8; 3][..pad_len])?;
 
                 Ok(4 + len as usize + pad_len)
-            },
+            }
             Record::Ipv6(a) => {
                 let len = a.write_to::<B, _>(&mut std::io::sink())?;
                 let pad_len = (4 - len % 4) % 4;
@@ -162,7 +175,7 @@ impl<'a> Record<'a> {
                 writer.write_all(&[0_u8; 3][..pad_len])?;
 
                 Ok(4 + len as usize + pad_len)
-            },
+            }
             Record::Unknown(a) => {
                 let len = a.value.len();
                 let pad_len = (4 - len % 4) % 4;
@@ -178,7 +191,7 @@ impl<'a> Record<'a> {
                 writer.write_all(&[0_u8; 3][..pad_len])?;
 
                 Ok(4 + len as usize + pad_len)
-            },
+            }
         }
     }
 }
@@ -196,7 +209,11 @@ impl<'a> Ipv4Record<'a> {
     /// Parse a [`Ipv4Record`] from a slice
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
         if slice.len() < 6 {
-            return Err(ContentValidationError::RecordWrongMinSize { min: 6, actual: slice.len() }.into());
+            return Err(ContentValidationError::RecordWrongMinSize {
+                min: 6,
+                actual: slice.len(),
+            }
+            .into());
         }
 
         let ip_addr_oct: [u8; 4] = slice.read_slice(4).unwrap().try_into().unwrap();
@@ -207,7 +224,9 @@ impl<'a> Ipv4Record<'a> {
             if name.is_empty() {
                 break;
             }
-            names.push(Cow::Borrowed(std::str::from_utf8(name).map_err(ContentValidationError::RecordNameNotUtf8)?));
+            names.push(Cow::Borrowed(
+                std::str::from_utf8(name).map_err(ContentValidationError::RecordNameNotUtf8)?,
+            ));
         }
 
         if names.is_empty() {
@@ -219,7 +238,7 @@ impl<'a> Ipv4Record<'a> {
         Ok(record)
     }
 
-    /// Write a [`Ipv4Record`] to a writter
+    /// Write an [`Ipv4Record`] to a writer
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 4;
 
@@ -250,7 +269,11 @@ impl<'a> Ipv6Record<'a> {
     /// Parse a [`Ipv6Record`] from a slice
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
         if slice.len() < 18 {
-            return Err(ContentValidationError::RecordWrongMinSize { min: 18, actual: slice.len() }.into());
+            return Err(ContentValidationError::RecordWrongMinSize {
+                min: 18,
+                actual: slice.len(),
+            }
+            .into());
         }
 
         let ip_addr_oct: [u8; 16] = slice.read_slice(16).unwrap().try_into().unwrap();
@@ -261,7 +284,9 @@ impl<'a> Ipv6Record<'a> {
             if name.is_empty() {
                 break;
             }
-            names.push(Cow::Borrowed(std::str::from_utf8(name).map_err(ContentValidationError::RecordNameNotUtf8)?));
+            names.push(Cow::Borrowed(
+                std::str::from_utf8(name).map_err(ContentValidationError::RecordNameNotUtf8)?,
+            ));
         }
 
         if names.is_empty() {
@@ -273,7 +298,7 @@ impl<'a> Ipv6Record<'a> {
         Ok(record)
     }
 
-    /// Write a [`Ipv6Record`] to a writter
+    /// Write an [`Ipv6Record`] to a writer
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 16;
 
@@ -302,7 +327,10 @@ pub struct UnknownRecord<'a> {
 impl<'a> UnknownRecord<'a> {
     /// Creates a new [`UnknownRecord`]
     fn new(type_: u16, value: &'a [u8]) -> Self {
-        UnknownRecord { type_, value: Cow::Borrowed(value) }
+        UnknownRecord {
+            type_,
+            value: Cow::Borrowed(value),
+        }
     }
 }
 
@@ -339,16 +367,22 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
             Self::NS_DNS_NAME => NameResolutionOption::NsDnsName(Cow::Borrowed(std::str::from_utf8(slice)?)),
             Self::NS_DNS_IPV4_ADDR => {
                 if slice.len() != 4 {
-                    return Err(OptionEntryError::WrongSize { expected: 4, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 4,
+                        actual: slice.len(),
+                    });
                 }
                 NameResolutionOption::NsDnsIpv4Addr(Cow::Borrowed(slice))
-            },
+            }
             Self::NS_DNS_IPV6_ADDR => {
                 if slice.len() != 16 {
-                    return Err(OptionEntryError::WrongSize { expected: 16, actual: slice.len() });
+                    return Err(OptionEntryError::WrongSize {
+                        expected: 16,
+                        actual: slice.len(),
+                    });
                 }
                 NameResolutionOption::NsDnsIpv6Addr(Cow::Borrowed(slice))
-            },
+            }
             _ => NameResolutionOption::Common(CommonOption::new::<B>(code, slice)?),
         };
 
@@ -393,10 +427,14 @@ mod tests {
     fn write_rejects_oversized_name_resolution_option() {
         let block = NameResolutionBlock {
             records: vec![],
-            options: vec![NameResolutionOption::NsDnsName(Cow::Owned("a".repeat(u16::MAX as usize + 1)))],
+            options: vec![NameResolutionOption::NsDnsName(Cow::Owned(
+                "a".repeat(u16::MAX as usize + 1),
+            ))],
         };
 
-        let error = block.write_to::<BigEndian, _>(&PcapNgState::default(), &mut Vec::new()).unwrap_err();
+        let error = block
+            .write_to::<BigEndian, _>(&PcapNgState::default(), &mut Vec::new())
+            .unwrap_err();
 
         assert!(matches!(
             error,

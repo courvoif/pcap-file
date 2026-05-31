@@ -39,7 +39,10 @@ pub struct SectionHeaderBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
-    fn from_slice<B: ByteOrder>(state: &PcapNgState, mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    fn from_slice<B: ByteOrder>(
+        state: &PcapNgState,
+        mut slice: &'a [u8],
+    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
         fn parse_body<'a, B: ByteOrder>(
             state: &PcapNgState,
             endianness: Endianness,
@@ -50,14 +53,23 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
             let section_length = slice.read_i64::<B>().unwrap();
 
             let (rem, options) = SectionHeaderOption::opts_from_slice::<B>(state, None, slice)?;
-            let block = SectionHeaderBlock { endianness, major_version, minor_version, section_length, options };
+            let block = SectionHeaderBlock {
+                endianness,
+                major_version,
+                minor_version,
+                section_length,
+                options,
+            };
 
             Ok((rem, block))
         }
 
         // Start of implementation
         if slice.len() < 16 {
-            return Err(BlockContentParseError::BlockContentTooSmall { needed: 16, actual: slice.len() });
+            return Err(BlockContentParseError::BlockContentTooSmall {
+                needed: 16,
+                actual: slice.len(),
+            });
         }
 
         let magic = slice.read_u32::<BigEndian>().unwrap();

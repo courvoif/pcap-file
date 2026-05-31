@@ -14,8 +14,6 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 ///
 /// # Example
 /// ```rust,no_run
-/// use std::fs::File;
-///
 /// use pcap_file::pcapng::{PcapNgParseError, PcapNgParser};
 ///
 /// let pcap = std::fs::read("test.pcapng").expect("Error reading file");
@@ -24,7 +22,7 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 /// let (rem, mut pcapng_parser) = PcapNgParser::new(src).unwrap();
 /// src = rem;
 ///
-/// loop {
+/// while !src.is_empty() {
 ///     match pcapng_parser.next_block(src) {
 ///         Ok((rem, block)) => {
 ///             // Do something
@@ -33,7 +31,7 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 ///             src = rem;
 ///         },
 ///         Err(PcapNgParseError::IncompleteBuffer(_,_)) => {
-///             // Load more data into src
+///             // Load more data into src if parsing a stream.
 ///         },
 ///         Err(_) => {
 ///             // Handle parsing error
@@ -78,7 +76,10 @@ impl PcapNgParser {
         // This function doesn't call `self::next_raw_block()` because converting the Block before updating the state is faster and better for error handling.
 
         /// Inner function to parse the next Block.
-        fn next_block_inner<'a, B: ByteOrder>(parser: &mut PcapNgParser, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
+        fn next_block_inner<'a, B: ByteOrder>(
+            parser: &mut PcapNgParser,
+            src: &'a [u8],
+        ) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
             let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
             let state = &parser.state;
             let block = raw_block.try_into_block(state)?;
@@ -98,9 +99,14 @@ impl PcapNgParser {
     /// More permissive than [`Self::next_block`].
     ///
     /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
+    /// Section Header and Interface Description blocks are still decoded before
+    /// returning so the parser can keep its state consistent. If decoding one of
+    /// those state-changing blocks fails, the error is not recoverable by this
+    /// parser and no raw block is returned.
     ///
     /// # Errors
-    /// - Only [`PcapError::IncompleteBuffer`] is recoverable (by loading more data).
+    /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
+    /// - [`PcapNgParseError::StateUpdate`] can happen when a state-changing raw block cannot be decoded.
     /// - All other errors will prevent the parser from advancing further.
     pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
         /// Inner function to parse the next RawBlock.
@@ -113,7 +119,7 @@ impl PcapNgParser {
             if let Some(block) = parser.state.decode_block_if_needed(&raw_block)? {
                 parser.state.update_from_block(&block);
             }
-            
+
             Ok((rem, raw_block))
         }
 

@@ -20,7 +20,7 @@ use crate::pcapng::errors::PcapNgWriteError;
 /// let file_in = File::open("test.pcapng").expect("Error opening file");
 /// let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
 ///
-/// let mut out = Vec::new();
+/// let out = Vec::new();
 /// let mut pcapng_writer = PcapNgWriter::new(out).unwrap();
 ///
 /// // Read test.pcapng
@@ -44,27 +44,32 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// Default to the native endianness of the CPU.
     ///
-    /// Writes this global pcapng header to the file:
-    /// ```rust, ignore
-    /// Self {
-    ///     endianness: Endianness::Native,
+    /// Writes this section header to the file:
+    /// ```rust
+    /// use pcap_file::{DataLink, Endianness};
+    /// use pcap_file::pcapng::blocks::section_header::SectionHeaderBlock;
+    ///
+    /// let section = SectionHeaderBlock {
+    ///     endianness: Endianness::native(),
     ///     major_version: 1,
     ///     minor_version: 0,
     ///     section_length: -1,
     ///     options: vec![]
-    /// }
+    /// };
     /// ```
-    ///
     ///
     /// # Errors
     /// The writer can't be written to.
     pub fn new(writer: W) -> Result<Self, PcapNgWriteError> {
-        Self::with_endianness(writer, Endianness::native())
+        Self::with_endianness(writer, Endianness::default())
     }
 
     /// Create a new [`PcapNgWriter`] from an existing writer with the given endianness.
     pub fn with_endianness(writer: W, endianness: Endianness) -> Result<Self, PcapNgWriteError> {
-        let section = SectionHeaderBlock { endianness, ..Default::default() };
+        let section = SectionHeaderBlock {
+            endianness,
+            ..Default::default()
+        };
 
         Self::with_section_header(writer, section)
     }
@@ -89,7 +94,8 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Write a [`Block`].
     ///
-    /// Errors are not recoverable because they can leave the Writer in a wrong state.
+    /// I/O errors can leave the output stream partially written. After any error,
+    /// callers should assume the pcapng stream is no longer usable.
     ///
     /// # Example
     /// ```rust,no_run
@@ -113,7 +119,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// packet.original_len = data.len() as u32;
     /// packet.data = Cow::Borrowed(&data);
     ///
-    /// let file = File::create("out.pcap").expect("Error creating file");
+    /// let file = File::create("out.pcapng").expect("Error creating file");
     /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
     ///
     /// pcap_ng_writer.write_block(&interface.into_block()).unwrap();
@@ -122,7 +128,7 @@ impl<W: Write> PcapNgWriter<W> {
     pub fn write_block(&mut self, block: &Block) -> Result<usize, PcapNgWriteError> {
         // The order of operation is important to prevent writing invalid files in case of error.
         // The state is updated only after a successful write.
-        // The endianess is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
+        // The endianness is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
 
         let endianess = self.state.block_endianness(Some(block));
 
@@ -138,7 +144,8 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Write a [`PcapNgBlock`].
     ///
-    /// Errors are not recoverable because they can leave the Writer in a wrong state.
+    /// I/O errors can leave the output stream partially written. After any error,
+    /// callers should assume the pcapng stream is no longer usable.
     ///
     /// # Example
     /// ```rust,no_run
@@ -162,7 +169,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// packet.original_len = data.len() as u32;
     /// packet.data = Cow::Borrowed(&data);
     ///
-    /// let file = File::create("out.pcap").expect("Error creating file");
+    /// let file = File::create("out.pcapng").expect("Error creating file");
     /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
     ///
     /// pcap_ng_writer.write_pcapng_block(interface).unwrap();
@@ -174,13 +181,19 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Write a [`RawBlock`].
     ///
-    /// Errors are not recoverable because they can leave the Writer in a wrong state.
+    /// I/O errors can leave the output stream partially written. After any error,
+    /// callers should assume the pcapng stream is no longer usable.
     ///
-    /// Doesn't check the validity of the written blocks.
+    /// Validates the raw block length fields, but does not validate non-state
+    /// block contents before writing.
+    ///
+    /// Section Header and Interface Description raw blocks are decoded before writing
+    /// so the writer can update its state after a successful write. If decoding fails,
+    /// nothing is written and the writer state is unchanged.
     pub fn write_raw_block(&mut self, raw_block: &RawBlock) -> Result<usize, PcapNgWriteError> {
         // The order of operation is important to prevent writing invalid files in case of error.
         // The state is updated only after a successful write.
-        // The endianess is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
+        // The endianness is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
         let opt_block = self.state.decode_block_if_needed(raw_block)?;
         let endianess = self.state.block_endianness(opt_block.as_ref());
 
@@ -197,7 +210,7 @@ impl<W: Write> PcapNgWriter<W> {
         Ok(nb_written)
     }
 
-    /// Consume [`self`], returning the wrapped writer.
+    /// Consumes the writer, returning the wrapped writer.
     pub fn into_inner(self) -> W {
         self.writer
     }
@@ -209,7 +222,7 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Get a mutable reference to the underlying writer.
     ///
-    /// You should not be used unless you really know what you're doing
+    /// Should not be used unless you really know what you're doing
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.writer
     }

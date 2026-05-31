@@ -41,7 +41,7 @@ impl PcapHeader {
     /// Returns an error if the reader doesn't contain a valid pcap
     /// or if there is a reading error.
     ///
-    /// [`PcapError::IncompleteBuffer`] indicates that there is not enough data in the buffer.
+    /// [`PcapParseError::IncompleteBuffer`] indicates that there is not enough data in the buffer.
     pub fn from_slice(mut slice: &[u8]) -> Result<(&[u8], PcapHeader), PcapParseError> {
         // Check that slice.len() > PcapHeader length
         if slice.len() < 24 {
@@ -53,7 +53,9 @@ impl PcapHeader {
         match magic_number {
             0xA1B2C3D4 => return init_pcap_header::<BigEndian>(slice, TsResolution::MicroSecond, Endianness::Big),
             0xA1B23C4D => return init_pcap_header::<BigEndian>(slice, TsResolution::NanoSecond, Endianness::Big),
-            0xD4C3B2A1 => return init_pcap_header::<LittleEndian>(slice, TsResolution::MicroSecond, Endianness::Little),
+            0xD4C3B2A1 => {
+                return init_pcap_header::<LittleEndian>(slice, TsResolution::MicroSecond, Endianness::Little);
+            }
             0x4D3CB2A1 => return init_pcap_header::<LittleEndian>(slice, TsResolution::NanoSecond, Endianness::Little),
             _ => return Err(PcapValidationError::InvalidMagicNumber(magic_number).into()),
         };
@@ -110,7 +112,9 @@ impl PcapHeader {
             writer
                 .write_u32::<B>(header.ts_accuracy)
                 .map_err(|e| PcapWriteError::FieldWriteFailed("ts_accuracy", e))?;
-            writer.write_u32::<B>(header.snaplen).map_err(|e| PcapWriteError::FieldWriteFailed("snaplen", e))?;
+            writer
+                .write_u32::<B>(header.snaplen)
+                .map_err(|e| PcapWriteError::FieldWriteFailed("snaplen", e))?;
             writer
                 .write_u32::<B>(header.datalink.into())
                 .map_err(|e| PcapWriteError::FieldWriteFailed("datalink", e))?;
@@ -122,8 +126,11 @@ impl PcapHeader {
 
 /// Creates a new [`PcapHeader`] with these parameters:
 ///
-/// ```rust,ignore
-/// PcapHeader {
+/// ```rust
+/// use pcap_file::{DataLink, Endianness};
+/// use pcap_file::pcap::{PcapHeader, TsResolution};
+///
+/// let header = PcapHeader {
 ///     version_major: 2,
 ///     version_minor: 4,
 ///     ts_correction: 0,
@@ -131,7 +138,7 @@ impl PcapHeader {
 ///     snaplen: 65535,
 ///     datalink: DataLink::ETHERNET,
 ///     ts_resolution: TsResolution::MicroSecond,
-///     endianness: Endianness::Big
+///     endianness: Endianness::native()
 /// };
 /// ```
 impl Default for PcapHeader {
@@ -144,7 +151,7 @@ impl Default for PcapHeader {
             snaplen: 65535,
             datalink: DataLink::ETHERNET,
             ts_resolution: TsResolution::MicroSecond,
-            endianness: Endianness::Big,
+            endianness: Endianness::default(),
         }
     }
 }

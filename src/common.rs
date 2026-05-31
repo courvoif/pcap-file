@@ -10,7 +10,7 @@ pub enum Endianness {
 }
 
 impl Endianness {
-    /// True if LitlleEndian
+    /// True if LittleEndian
     pub fn is_little(self) -> bool {
         match self {
             Endianness::Big => false,
@@ -42,6 +42,13 @@ impl Endianness {
 
         #[cfg(target_endian = "little")]
         return Endianness::Little;
+    }
+}
+
+impl Default for Endianness {
+    /// Return the native endianness of the system
+    fn default() -> Self {
+        Self::native()
     }
 }
 

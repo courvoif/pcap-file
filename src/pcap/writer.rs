@@ -40,11 +40,12 @@ pub struct PcapWriter<W: Write> {
 impl<W: Write> PcapWriter<W> {
     /// Creates a new [`PcapWriter`] from an existing writer.
     ///
-    /// Defaults to the native endianness of the CPU.
-    ///
     /// Writes this default global pcap header to the file:
-    /// ```rust, ignore
-    /// PcapHeader {
+    /// ```rust
+    /// use pcap_file::{DataLink, Endianness};
+    /// use pcap_file::pcap::{PcapHeader, TsResolution};
+    ///
+    /// let header = PcapHeader {
     ///     version_major: 2,
     ///     version_minor: 4,
     ///     ts_correction: 0,
@@ -52,14 +53,17 @@ impl<W: Write> PcapWriter<W> {
     ///     snaplen: 65535,
     ///     datalink: DataLink::ETHERNET,
     ///     ts_resolution: TsResolution::MicroSecond,
-    ///     endianness: Endianness::Native
+    ///     endianness: Endianness::native()
     /// };
     /// ```
     ///
     /// # Errors
     /// The writer can't be written to.
     pub fn new(writer: W) -> Result<PcapWriter<W>, PcapWriteError> {
-        let header = PcapHeader { endianness: Endianness::native(), ..Default::default() };
+        let header = PcapHeader {
+            endianness: Endianness::native(),
+            ..Default::default()
+        };
 
         PcapWriter::with_header(writer, header)
     }
@@ -81,8 +85,8 @@ impl<W: Write> PcapWriter<W> {
         })
     }
 
-    /// Consumes [`Self`], returning the wrapped writer.
-    pub fn into_writer(self) -> W {
+    /// Consumes [`PcapWriter`], returning the wrapped writer.
+    pub fn into_inner(self) -> W {
         self.writer
     }
 
@@ -117,7 +121,7 @@ impl<W: Write> PcapWriter<W> {
         self.writer.flush().map_err(PcapWriteError::Io)
     }
 
-    /// Returns the endianess used by the writer.
+    /// Returns the endianness used by the writer.
     pub fn endianness(&self) -> Endianness {
         self.endianness
     }

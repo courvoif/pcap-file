@@ -7,7 +7,7 @@ use crate::{
 
 /* ----- ReadBuffer ----- */
 
-/// Internal structure that bufferize its input and allow to parse element from its buffer.
+/// Internal structure that buffers its input and allows parsing elements from its buffer.
 #[derive(Debug)]
 pub(crate) struct ReadBuffer<R: Read> {
     /// Reader from which we read the data from
@@ -30,7 +30,13 @@ impl<R: Read> ReadBuffer<R> {
 
     /// Creates a new ReadBuffer with the given capacity
     pub fn with_capacity(reader: R, capacity: usize) -> Self {
-        Self { reader, buffer: vec![0_u8; capacity], pos: 0, len: 0, bytes_used: 0 }
+        Self {
+            reader,
+            buffer: vec![0_u8; capacity],
+            pos: 0,
+            len: 0,
+            bytes_used: 0,
+        }
     }
 
     /// Parse data from the internal buffer
@@ -55,7 +61,7 @@ impl<R: Read> ReadBuffer<R> {
                 Ok((rem, value)) => {
                     self.advance_with_slice(rem);
                     return Ok(value);
-                },
+                }
 
                 Err(e) if e.is_incomplete() => {
                     // The parsed data len should never be more than the buffer capacity
@@ -67,7 +73,7 @@ impl<R: Read> ReadBuffer<R> {
                     if nb_read == 0 {
                         return Err(E::from_io(Error::from(ErrorKind::UnexpectedEof)));
                     }
-                },
+                }
 
                 Err(e) => return Err(e.into_read_error()),
             }

@@ -55,12 +55,13 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the next [`Block`] and the current [`PcapNgState`].
-    /// [`None`] means that the reader have reached the EoF.
+    /// [`None`] means that the reader has reached the EoF.
     /// Won't advance the reader past any malformed packets.
     ///
     /// # Errors
     /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
-    /// - [`PcapNgReadError::BlockConversion`] can be recovered by calling [`Self::next_raw_block`].
+    /// - [`PcapNgReadError::BlockConversion`] for non-state blocks can be recovered by calling [`Self::next_raw_block`].
+    ///   Malformed Section Header or Interface Description blocks may still fail there because the reader must decode them to keep its state consistent.
     /// - Other errors will prevent the reader from advancing further.
     #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
     pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
@@ -69,8 +70,9 @@ impl<R: Read> PcapNgReader<R> {
                 if has_data {
                     // # SAFETY
                     // Block must NOT contain a mutable reference to the state.
-                    // Keep the annotations to be sure that only the lifetime is trnasmuted.
-                    let res: Result<Block<'_>, PcapNgReadError> = self.reader.parse_with(|src| self.parser.next_block(src));
+                    // Keep the annotations to be sure that only the lifetime is transmuted.
+                    let res: Result<Block<'_>, PcapNgReadError> =
+                        self.reader.parse_with(|src| self.parser.next_block(src));
                     let res: Result<Block<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
 
                     let state = &self.parser.state;
@@ -79,19 +81,20 @@ impl<R: Read> PcapNgReader<R> {
                 } else {
                     None
                 }
-            },
+            }
             Err(e) => Some(Err(PcapNgReadError::Io(e))),
         }
     }
 
     /// Returns the next [`RawBlock`] and the current [`PcapNgState`].
-    /// [`None`] means that the reader have reached the EoF.
+    /// [`None`] means that the reader has reached the EoF.
     /// More permissive than [`Self::next_block`].
     ///
     /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
     ///
     /// # Errors
     /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
+    /// - [`PcapNgReadError::StateUpdate`] can happen when a state-changing raw block cannot be decoded.
     /// - All other errors will prevent the reader from advancing further.
     #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
     pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {
@@ -101,7 +104,8 @@ impl<R: Read> PcapNgReader<R> {
                     // # SAFETY
                     // Block must NOT contain a mutable reference to the state.
                     // Keep the annotations to be sure that only the lifetime is transmuted.
-                    let res: Result<RawBlock<'_>, PcapNgReadError> = self.reader.parse_with(|src| self.parser.next_raw_block(src));
+                    let res: Result<RawBlock<'_>, PcapNgReadError> =
+                        self.reader.parse_with(|src| self.parser.next_raw_block(src));
                     let res: Result<RawBlock<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
 
                     let state = &self.parser.state;
@@ -110,7 +114,7 @@ impl<R: Read> PcapNgReader<R> {
                 } else {
                     None
                 }
-            },
+            }
             Err(e) => Some(Err(PcapNgReadError::Io(e))),
         }
     }
