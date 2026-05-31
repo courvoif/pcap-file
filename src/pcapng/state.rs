@@ -93,6 +93,8 @@ impl PcapNgState {
     }
 
     /// Decode a timestamp using the correct format for the current state.
+    ///
+    /// Returns nanoseconds elapsed since 1970-01-01 00:00:00 UTC.
     pub fn decode_timestamp(
         &self,
         interface_id: u32,
@@ -112,6 +114,8 @@ impl PcapNgState {
     }
 
     /// Encode a timestamp using the correct format for the current state.
+    ///
+    /// `timestamp` is nanoseconds elapsed since 1970-01-01 00:00:00 UTC.
     pub fn encode_timestamp(&self, interface_id: u32, timestamp: i128) -> Result<(u32, u32), ContentValidationError> {
         let (ts_resolution, ts_offset) = self
             .ts_parameters

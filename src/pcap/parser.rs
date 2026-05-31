@@ -14,14 +14,14 @@ use crate::pcap::PcapParseError;
 /// ```no_run
 /// use pcap_file::pcap::{PcapParseError, PcapParser};
 ///
-/// let pcap = vec![0_u8; 0];
+/// let pcap = std::fs::read("test.pcap").expect("Error reading file");
 /// let mut src = &pcap[..];
 ///
 /// // Creates a new parser and parse the pcap header
 /// let (rem, pcap_parser) = PcapParser::new(&pcap[..]).unwrap();
 /// src = rem;
 ///
-/// loop {
+/// while !src.is_empty() {
 ///     match pcap_parser.next_packet(src) {
 ///         Ok((rem, packet)) => {
 ///             // Do something
@@ -29,12 +29,10 @@ use crate::pcap::PcapParseError;
 ///             // Don't forget to update src
 ///             src = rem;
 ///
-///             // No more data, if no more incoming either then this is the end of the file
-///             if rem.is_empty() {
-///                 break;
-///             }
 ///         },
-///         Err(PcapParseError::IncompleteBuffer(_,_)) => {}, // Load more data into src
+///         Err(PcapParseError::IncompleteBuffer(_,_)) => {
+///             // Load more data into src if parsing a stream.
+///         },
 ///         Err(_) => {
 ///             // Parsing error, unrecoverable
 ///         },

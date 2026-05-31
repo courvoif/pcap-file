@@ -14,8 +14,6 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 ///
 /// # Example
 /// ```rust,no_run
-/// use std::fs::File;
-///
 /// use pcap_file::pcapng::{PcapNgParseError, PcapNgParser};
 ///
 /// let pcap = std::fs::read("test.pcapng").expect("Error reading file");
@@ -24,7 +22,7 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 /// let (rem, mut pcapng_parser) = PcapNgParser::new(src).unwrap();
 /// src = rem;
 ///
-/// loop {
+/// while !src.is_empty() {
 ///     match pcapng_parser.next_block(src) {
 ///         Ok((rem, block)) => {
 ///             // Do something
@@ -33,7 +31,7 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 ///             src = rem;
 ///         },
 ///         Err(PcapNgParseError::IncompleteBuffer(_,_)) => {
-///             // Load more data into src
+///             // Load more data into src if parsing a stream.
 ///         },
 ///         Err(_) => {
 ///             // Handle parsing error

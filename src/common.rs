@@ -10,7 +10,7 @@ pub enum Endianness {
 }
 
 impl Endianness {
-    /// True if LitlleEndian
+    /// True if LittleEndian
     pub fn is_little(self) -> bool {
         match self {
             Endianness::Big => false,

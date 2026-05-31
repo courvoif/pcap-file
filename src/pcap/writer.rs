@@ -41,8 +41,11 @@ impl<W: Write> PcapWriter<W> {
     /// Creates a new [`PcapWriter`] from an existing writer.
     ///
     /// Writes this default global pcap header to the file:
-    /// ```rust, ignore
-    /// PcapHeader {
+    /// ```rust
+    /// use pcap_file::{DataLink, Endianness};
+    /// use pcap_file::pcap::{PcapHeader, TsResolution};
+    ///
+    /// let header = PcapHeader {
     ///     version_major: 2,
     ///     version_minor: 4,
     ///     ts_correction: 0,
@@ -50,7 +53,7 @@ impl<W: Write> PcapWriter<W> {
     ///     snaplen: 65535,
     ///     datalink: DataLink::ETHERNET,
     ///     ts_resolution: TsResolution::MicroSecond,
-    ///     endianness: Endianness::Native
+    ///     endianness: Endianness::native()
     /// };
     /// ```
     ///

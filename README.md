@@ -2,9 +2,9 @@
 
 Provides parsers, readers and writers for Pcap and PcapNg files.
 
-For Pcap files see the pcap module.
+For Pcap files see the `pcap` module.
 
-For PcapNg files see the pcapng module.
+For PcapNg files see the `pcapng` module.
 
 [![Crates.io](https://img.shields.io/crates/v/pcap-file.svg)](https://crates.io/crates/pcap-file)
 [![rustdoc](https://img.shields.io/badge/Doc-pcap--file-green.svg)](https://docs.rs/pcap-file/)
@@ -37,11 +37,28 @@ let mut pcap_reader = PcapReader::new(file_in).unwrap();
 
 // Read test.pcap
 while let Some(pkt) = pcap_reader.next_packet() {
-    //Check if there is no error
+    // Check if there is no error
     let pkt = pkt.unwrap();
 
-    //Do something
- }
+    // Do something
+}
+```
+
+### PcapWriter
+
+```rust,no_run
+use std::fs::File;
+use pcap_file::pcap::{PcapReader, PcapWriter};
+
+let file_in = File::open("test.pcap").expect("Error opening file");
+let mut pcap_reader = PcapReader::new(file_in).unwrap();
+
+let file_out = File::create("out.pcap").expect("Error creating file");
+let mut pcap_writer = PcapWriter::with_header(file_out, pcap_reader.header()).unwrap();
+
+while let Some(pkt) = pcap_reader.next_packet() {
+    pcap_writer.write_packet(&pkt.unwrap()).unwrap();
+}
 ```
 
 ### PcapNgReader
@@ -58,9 +75,36 @@ while let Some(block) = pcapng_reader.next_block() {
     // Check if there is no error
     let (block, state) = block.unwrap();
 
-    //  Do something
+    // Do something
 }
 ```
+
+### PcapNgWriter
+
+```rust,no_run
+use std::fs::File;
+use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
+
+let file_in = File::open("test.pcapng").expect("Error opening file");
+let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
+
+let file_out = File::create("out.pcapng").expect("Error creating file");
+let mut pcapng_writer =
+    PcapNgWriter::with_section_header(file_out, pcapng_reader.section().clone()).unwrap();
+
+while let Some(block) = pcapng_reader.next_block() {
+    let (block, _) = block.unwrap();
+    pcapng_writer.write_block(&block).unwrap();
+}
+```
+
+Packet blocks in pcapng refer to interface blocks by index. When creating a
+pcapng file from scratch, write an `InterfaceDescriptionBlock` before any packet
+block that uses that interface.
+
+More complete read, write, raw recovery, and custom block examples are available
+in [`tests/pcap/mod.rs`](tests/pcap/mod.rs) and
+[`tests/pcapng/mod.rs`](tests/pcapng/mod.rs).
 
 ## Fuzzing
 

@@ -20,7 +20,7 @@ use crate::pcapng::errors::PcapNgWriteError;
 /// let file_in = File::open("test.pcapng").expect("Error opening file");
 /// let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
 ///
-/// let mut out = Vec::new();
+/// let out = Vec::new();
 /// let mut pcapng_writer = PcapNgWriter::new(out).unwrap();
 ///
 /// // Read test.pcapng
@@ -44,17 +44,19 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// Default to the native endianness of the CPU.
     ///
-    /// Writes this global pcapng header to the file:
-    /// ```rust, ignore
-    /// Self {
+    /// Writes this section header to the file:
+    /// ```rust
+    /// use pcap_file::{DataLink, Endianness};
+    /// use pcap_file::pcapng::blocks::section_header::SectionHeaderBlock;
+    ///
+    /// let section = SectionHeaderBlock {
     ///     endianness: Endianness::native(),
     ///     major_version: 1,
     ///     minor_version: 0,
     ///     section_length: -1,
     ///     options: vec![]
-    /// }
+    /// };
     /// ```
-    ///
     ///
     /// # Errors
     /// The writer can't be written to.
@@ -117,7 +119,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// packet.original_len = data.len() as u32;
     /// packet.data = Cow::Borrowed(&data);
     ///
-    /// let file = File::create("out.pcap").expect("Error creating file");
+    /// let file = File::create("out.pcapng").expect("Error creating file");
     /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
     ///
     /// pcap_ng_writer.write_block(&interface.into_block()).unwrap();
@@ -167,7 +169,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// packet.original_len = data.len() as u32;
     /// packet.data = Cow::Borrowed(&data);
     ///
-    /// let file = File::create("out.pcap").expect("Error creating file");
+    /// let file = File::create("out.pcapng").expect("Error creating file");
     /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
     ///
     /// pcap_ng_writer.write_pcapng_block(interface).unwrap();
@@ -220,7 +222,7 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Get a mutable reference to the underlying writer.
     ///
-    /// You should not be used unless you really know what you're doing
+    /// Should not be used unless you really know what you're doing
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.writer
     }

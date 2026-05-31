@@ -19,7 +19,9 @@ pub struct EnhancedPacketBlock<'a> {
     /// It specifies the interface this packet comes from.
     ///
     /// The correct interface will be the one whose Interface Description Block
-    /// (within the current Section of the file) is identified by the same number of this field.
+    /// (within the current Section of the file) is identified by the same number
+    /// of this field. 
+    /// When writing, that interface must already be present in the [`PcapNgState`].
     pub interface_id: u32,
 
     /// Nanoseconds elapsed since 1970-01-01 00:00:00 UTC.

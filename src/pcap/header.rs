@@ -126,8 +126,11 @@ impl PcapHeader {
 
 /// Creates a new [`PcapHeader`] with these parameters:
 ///
-/// ```rust,ignore
-/// PcapHeader {
+/// ```rust
+/// use pcap_file::{DataLink, Endianness};
+/// use pcap_file::pcap::{PcapHeader, TsResolution};
+///
+/// let header = PcapHeader {
 ///     version_major: 2,
 ///     version_minor: 4,
 ///     ts_correction: 0,
