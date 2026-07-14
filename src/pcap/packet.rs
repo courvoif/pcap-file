@@ -7,7 +7,7 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use crate::pcap::{PcapParseError, PcapValidationError, PcapWriteError, TsResolution};
+use crate::pcap::{PcapParseError, PcapTsResolution, PcapValidationError, PcapWriteError};
 
 /// A valid pcap packet.
 ///
@@ -103,14 +103,14 @@ impl<'a> PcapPacket<'a> {
     /// Tries to create a [`PcapPacket`] from a [`RawPcapPacket`].
     pub fn try_from_raw_packet(
         raw: RawPcapPacket<'a>,
-        ts_resolution: TsResolution,
+        ts_resolution: PcapTsResolution,
         snap_len: u32,
     ) -> Result<Self, PcapValidationError> {
         // Convert and validate timestamps //
         let ts_sec = raw.ts_sec;
 
         // Convert original microsecond TS to nanosecond TS
-        let ts_nsec = if ts_resolution == TsResolution::MicroSecond {
+        let ts_nsec = if ts_resolution == PcapTsResolution::MicroSecond {
             let ts_usec = raw.ts_frac;
             if ts_usec >= 1_000_000 {
                 return Err(PcapValidationError::TsFracMicroTooBig(ts_usec));
@@ -139,7 +139,7 @@ impl<'a> PcapPacket<'a> {
     }
 
     /// Converts a [`PcapPacket`] into a [`RawPcapPacket`].
-    pub fn into_raw_packet(self, ts_resolution: TsResolution) -> RawPcapPacket<'a> {
+    pub fn into_raw_packet(self, ts_resolution: PcapTsResolution) -> RawPcapPacket<'a> {
         let (ts_sec, ts_frac, incl_len, orig_len) = self.build_raw_header(ts_resolution);
         RawPcapPacket {
             ts_sec,
@@ -151,7 +151,7 @@ impl<'a> PcapPacket<'a> {
     }
 
     /// Converts a [`PcapPacket`] into a [`RawPcapPacket`].
-    pub fn as_raw_packet<'pkt>(&'pkt self, ts_resolution: TsResolution) -> RawPcapPacket<'pkt> {
+    pub fn as_raw_packet<'pkt>(&'pkt self, ts_resolution: PcapTsResolution) -> RawPcapPacket<'pkt> {
         let (ts_sec, ts_frac, incl_len, orig_len) = self.build_raw_header(ts_resolution);
         RawPcapPacket {
             ts_sec,
@@ -163,7 +163,7 @@ impl<'a> PcapPacket<'a> {
     }
 
     /// Builds the raw header fields for a [`RawPcapPacket`].
-    fn build_raw_header(&self, ts_resolution: TsResolution) -> (u32, u32, u32, u32) {
+    fn build_raw_header(&self, ts_resolution: PcapTsResolution) -> (u32, u32, u32, u32) {
         // Transforms PcapPacket::ts into ts_sec and ts_frac //
         let ts_sec: u32 = self
             .timestamp
@@ -172,7 +172,7 @@ impl<'a> PcapPacket<'a> {
             .expect("PcapPacket::timestamp_secs > u32::MAX, should have been validated on PcapPacket creation");
 
         let mut ts_frac = self.timestamp.subsec_nanos();
-        if ts_resolution == TsResolution::MicroSecond {
+        if ts_resolution == PcapTsResolution::MicroSecond {
             ts_frac /= 1000;
         }
 
@@ -261,7 +261,7 @@ impl<'a> RawPcapPacket<'a> {
     /// Tries to convert a [`RawPcapPacket`] into a [`PcapPacket`].
     pub fn try_into_pcap_packet(
         self,
-        ts_resolution: TsResolution,
+        ts_resolution: PcapTsResolution,
         snap_len: u32,
     ) -> Result<PcapPacket<'a>, PcapValidationError> {
         PcapPacket::try_from_raw_packet(self, ts_resolution, snap_len)

@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::Read;
+use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use glob::glob;
@@ -235,8 +236,8 @@ fn test_custom_block() {
         }
     }
 
-    impl CustomPayloadBlock<'_> for MyCustomPayload {}
-    impl CustomPayloadOption<'_> for MyCustomPayload {}
+    impl CustomBlockPayload<'_> for MyCustomPayload {}
+    impl CustomOptionPayload<'_> for MyCustomPayload {}
 
     let original_payload = MyCustomPayload {
         magic_number: 0xDEADBEEFCAFED00D,
@@ -402,7 +403,7 @@ fn reader_with_capacity_handles_large_blocks() {
     let interface = InterfaceDescriptionBlock::new(DataLink::ETHERNET, data.len() as u32);
     let packet = EnhancedPacketBlock {
         interface_id: 0,
-        timestamp: 1_000_000_000,
+        timestamp: Duration::from_secs(1),
         original_len: data.len() as u32,
         data: Cow::Borrowed(&data),
         options: vec![],
@@ -489,7 +490,7 @@ fn test_stateful_custom_block() {
     struct MyStatefulPayload {
         magic_number: u64,
         interface_id: u32,
-        timestamp: i128,
+        timestamp: Duration,
     }
 
     // 1.1 Define a new custom error if needed
@@ -558,13 +559,13 @@ fn test_stateful_custom_block() {
         }
     }
 
-    impl CustomPayloadBlock<'_> for MyStatefulPayload {}
-    impl CustomPayloadOption<'_> for MyStatefulPayload {}
+    impl CustomBlockPayload<'_> for MyStatefulPayload {}
+    impl CustomOptionPayload<'_> for MyStatefulPayload {}
 
     let original_payload = MyStatefulPayload {
         magic_number: 0xDEADBEEFCAFED00D,
         interface_id: 0,
-        timestamp: 123456789,
+        timestamp: Duration::from_nanos(123456789),
     };
 
     let mut buffer = Vec::new();
@@ -574,7 +575,7 @@ fn test_stateful_custom_block() {
     let interface_description = InterfaceDescriptionBlock {
         linktype: DataLink::ETHERNET,
         snaplen: 1500,
-        options: vec![InterfaceDescriptionOption::IfTsResol(TsResolution::NANO)],
+        options: vec![InterfaceDescriptionOption::IfTsResol(InterfaceTsResolution::NANO)],
     };
 
     pcapng_writer
@@ -593,7 +594,7 @@ fn test_stateful_custom_block() {
 
     let packet_block = EnhancedPacketBlock {
         interface_id: 0,
-        timestamp: 0,
+        timestamp: Duration::ZERO,
         original_len: 0,
         data: Cow::Owned(vec![]),
         options: vec![EnhancedPacketOption::Common(

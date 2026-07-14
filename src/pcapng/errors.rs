@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::{DataLink, pcapng::blocks::interface_description::TsResolution};
+use crate::{DataLink, pcapng::blocks::interface_description::InterfaceTsResolution};
 
 /* ----- PcapError ----- */
 
@@ -245,9 +245,9 @@ pub enum ContentValidationError {
     #[error("Invalid interface ID: {0}")]
     InvalidInterfaceId(u32),
 
-    /// The timestamp cannot be represented on the raw 64-bit timestamp field.
-    #[error("Timestamp can't be represented on a u64: ts = {}ns, ts_resolution = {}, offset = {}s", .0, .1, .2)]
-    InvalidTimestamp(i128, TsResolution, i64),
+    /// The timestamp is before the Unix epoch or cannot be represented in the raw 64-bit timestamp field.
+    #[error("Invalid timestamp: ts = {}ns, ts_resolution = {}, offset = {}s", .0, .1, .2)]
+    InvalidTimestamp(i128, InterfaceTsResolution, i64),
 
     /// The original length of the packet is lower than its actual length
     #[error("The original length of the packet is lower than its actual length: {0}B on wire, {1}B captured")]

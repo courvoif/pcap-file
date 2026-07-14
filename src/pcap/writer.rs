@@ -4,7 +4,7 @@ use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::RawPcapPacket;
 use crate::Endianness;
-use crate::pcap::{PcapHeader, PcapPacket, PcapValidationError, PcapWriteError, TsResolution};
+use crate::pcap::{PcapHeader, PcapPacket, PcapValidationError, PcapWriteError, PcapTsResolution};
 
 /// Writes a pcap to a writer.
 ///
@@ -33,7 +33,7 @@ use crate::pcap::{PcapHeader, PcapPacket, PcapValidationError, PcapWriteError, T
 pub struct PcapWriter<W: Write> {
     endianness: Endianness,
     snaplen: u32,
-    ts_resolution: TsResolution,
+    ts_resolution: PcapTsResolution,
     writer: W,
 }
 
@@ -43,7 +43,7 @@ impl<W: Write> PcapWriter<W> {
     /// Writes this default global pcap header to the file:
     /// ```rust
     /// use pcap_file::{DataLink, Endianness};
-    /// use pcap_file::pcap::{PcapHeader, TsResolution};
+    /// use pcap_file::pcap::{PcapHeader, PcapTsResolution};
     ///
     /// let header = PcapHeader {
     ///     version_major: 2,
@@ -52,7 +52,7 @@ impl<W: Write> PcapWriter<W> {
     ///     ts_accuracy: 0,
     ///     snaplen: 65535,
     ///     datalink: DataLink::ETHERNET,
-    ///     ts_resolution: TsResolution::MicroSecond,
+    ///     ts_resolution: PcapTsResolution::MicroSecond,
     ///     endianness: Endianness::native()
     /// };
     /// ```
@@ -133,7 +133,7 @@ impl<W: Write> PcapWriter<W> {
     }
 
     /// Returns the timestamp resolution of the writer.
-    pub fn ts_resolution(&self) -> TsResolution {
+    pub fn ts_resolution(&self) -> PcapTsResolution {
         self.ts_resolution
     }
 }

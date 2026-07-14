@@ -5,6 +5,7 @@
 use std::borrow::Cow;
 use std::fmt::Display;
 use std::io::Write;
+use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -104,8 +105,8 @@ impl<'a> InterfaceDescriptionBlock<'a> {
 
     /// Returns the timestamp resolution of the interface.
     /// If no ts_resolution is set, defaults to μs.
-    pub fn ts_resolution(&self) -> TsResolution {
-        let mut ts_resol = TsResolution::default();
+    pub fn ts_resolution(&self) -> InterfaceTsResolution {
+        let mut ts_resol = InterfaceTsResolution::default();
 
         for opt in &self.options {
             if let InterfaceDescriptionOption::IfTsResol(resol) = opt {
@@ -156,7 +157,7 @@ pub enum InterfaceDescriptionOption<'a> {
     IfSpeed(u64),
 
     /// The if_tsresol option identifies the resolution of timestamps.
-    IfTsResol(TsResolution),
+    IfTsResol(InterfaceTsResolution),
 
     /// The if_tzone option identifies the time zone for GMT support.
     IfTzone(u32),
@@ -266,7 +267,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
                 }
 
                 let raw_resol = slice.read_u8().unwrap();
-                let resol = TsResolution::from_u8(raw_resol)?;
+                let resol = InterfaceTsResolution::from_u8(raw_resol)?;
                 InterfaceDescriptionOption::IfTsResol(resol)
             }
             Self::IF_T_ZONE => {
@@ -362,61 +363,61 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
 
 /* ----- TsResolution ----- */
 
-static TS_RESOL_DEC_TO_DURATION: Lazy<Vec<i128>> = Lazy::new(|| (0..10).map(|i| 10_i128.pow(9 - i)).collect());
+static TS_RESOL_DEC_TO_DURATION: Lazy<Vec<u128>> = Lazy::new(|| (0..10).map(|i| 10_u128.pow(9 - i)).collect());
 
 /// Timestamp resolution of an interface.
 ///
 /// Can be either binary (2^-resol)s or decimal (10^-resol)s.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct TsResolution {
+pub struct InterfaceTsResolution {
     /// Whether the resolution is binary or decimal.
     is_bin: bool,
     /// The resolution itself.
     resol: u8,
 }
 
-impl TsResolution {
+impl InterfaceTsResolution {
     /// Second resolution
-    pub const SEC: Self = TsResolution {
+    pub const SEC: Self = InterfaceTsResolution {
         is_bin: false,
         resol: 0,
     };
     /// Milli-second resolution
-    pub const MILLI: Self = TsResolution {
+    pub const MILLI: Self = InterfaceTsResolution {
         is_bin: false,
         resol: 3,
     };
     /// Micro-second resolution
-    pub const MICRO: Self = TsResolution {
+    pub const MICRO: Self = InterfaceTsResolution {
         is_bin: false,
         resol: 6,
     };
     /// Nano-second resolution
-    pub const NANO: Self = TsResolution {
+    pub const NANO: Self = InterfaceTsResolution {
         is_bin: false,
         resol: 9,
     };
 
-    /// Creates a new [`TsResolution`].
+    /// Creates a new [`InterfaceTsResolution`].
     ///
     /// - If binary, the resolution must be in the range [0-29].
     /// - If decimal, the resolution must be in the range [0-9].
     pub fn new(is_bin: bool, resol: u8) -> Result<Self, ContentValidationError> {
         // 2^29 is the last power of 2 inferior to 1_000_000_000 which is the number of nanosec in one second
         if is_bin && resol > 29 {
-            let resol_enc = TsResolution { is_bin, resol }.to_u8();
+            let resol_enc = InterfaceTsResolution { is_bin, resol }.to_u8();
             return Err(ContentValidationError::InvalidTsResolution(resol_enc, is_bin, resol));
         }
 
         if !is_bin && resol > 9 {
-            let resol_enc = TsResolution { is_bin, resol }.to_u8();
+            let resol_enc = InterfaceTsResolution { is_bin, resol }.to_u8();
             return Err(ContentValidationError::InvalidTsResolution(resol_enc, is_bin, resol));
         }
 
-        Ok(TsResolution { is_bin, resol })
+        Ok(InterfaceTsResolution { is_bin, resol })
     }
 
-    /// Creates a new [`TsResolution`] from an [`u8`].
+    /// Creates a new [`InterfaceTsResolution`] from a [`u8`].
     ///
     /// - If binary, the resolution must be in the range [0-29].
     /// - If decimal, the resolution must be in the range [0-9].
@@ -427,38 +428,41 @@ impl TsResolution {
         Self::new(is_bin, resol)
     }
 
-    /// Encodes the [`TsResolution`] into an [`u8`] for storage in the file.
+    /// Encodes the [`InterfaceTsResolution`] into a [`u8`] for storage in the file.
     pub fn to_u8(self) -> u8 {
         (self.is_bin as u8) << 7 | self.resol
     }
 
     /// Decode an encoded timestamp using the current resolution.
-    pub fn decode_timestamp(&self, ts_raw: u64) -> i128 {
-        if self.is_bin {
+    pub fn decode_timestamp(&self, ts_raw: u64) -> Duration {
+        let timestamp_ns = if self.is_bin {
             // We don't use a pre-computed TS_RESOL_BIN here because we would lose too much precision for higher resolutions.
             // Example: 2^29 resol => 10^9 / 2^29 => 1.86ns resolution rounded to 1ns
-            (ts_raw as i128 * 1_000_000_000_i128) / (1_i128 << self.resol)
+            (ts_raw as u128 * 1_000_000_000_u128) >> self.resol
         } else {
-            ts_raw as i128 * TS_RESOL_DEC_TO_DURATION[self.resol as usize]
-        }
+            ts_raw as u128 * TS_RESOL_DEC_TO_DURATION[self.resol as usize]
+        };
+
+        Duration::from_nanos_u128(timestamp_ns)
     }
 
     /// Encode a timestamp with the current resolution.
     ///
     /// # Errors
     /// - Timestamp can't be encoded with the current resolution on a u64
-    pub fn encode_timestamp(&self, timestamp_ns: i128) -> Result<u64, ContentValidationError> {
+    pub fn encode_timestamp(&self, timestamp: Duration) -> Result<u64, ContentValidationError> {
+        let timestamp_ns = timestamp.as_nanos();
         let ts = if self.is_bin {
             timestamp_ns
-                .checked_mul(1_i128 << self.resol)
-                .ok_or(ContentValidationError::InvalidTimestamp(timestamp_ns, *self, 0))?
-                / 1_000_000_000_i128
+                .checked_shl(self.resol.into())
+                .ok_or(ContentValidationError::InvalidTimestamp(timestamp_ns as i128, *self, 0))?
+                / 1_000_000_000_u128
         } else {
             timestamp_ns / TS_RESOL_DEC_TO_DURATION[self.resol as usize]
         };
 
         ts.try_into()
-            .map_err(|_| ContentValidationError::InvalidTimestamp(timestamp_ns, *self, 0))
+            .map_err(|_| ContentValidationError::InvalidTimestamp(timestamp_ns as i128, *self, 0))
     }
 
     /// Returns whether the resolution is binary or decimal.
@@ -472,14 +476,14 @@ impl TsResolution {
     }
 }
 
-impl Default for TsResolution {
+impl Default for InterfaceTsResolution {
     /// Default to micro-seconds resolution
     fn default() -> Self {
         Self::MICRO
     }
 }
 
-impl Display for TsResolution {
+impl Display for InterfaceTsResolution {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_bin {
             write!(f, "2^-{}s", self.resol)
@@ -491,12 +495,14 @@ impl Display for TsResolution {
 
 #[cfg(test)]
 mod tests {
-    use super::{ContentValidationError, TsResolution};
+    use std::time::Duration;
+
+    use super::{ContentValidationError, InterfaceTsResolution};
 
     /// Test that multiple encode / decode doesn't drift more than by one step.
     #[test]
     fn binary_timestamp_roundtrip_loses_at_most_one_tick_min() {
-        let resolution = TsResolution::new(true, 10).unwrap();
+        let resolution = InterfaceTsResolution::new(true, 10).unwrap();
 
         let mut raw = 1;
         for _ in 0..100 {
@@ -510,7 +516,7 @@ mod tests {
     /// Test that multiple encode / decode doesn't drift more than by one step.
     #[test]
     fn binary_timestamp_roundtrip_loses_at_most_one_tick_max() {
-        let resolution = TsResolution::new(true, 10).unwrap();
+        let resolution = InterfaceTsResolution::new(true, 10).unwrap();
 
         let mut raw = u64::MAX;
         for _ in 0..100 {
@@ -523,14 +529,16 @@ mod tests {
 
     #[test]
     fn binary_timestamp_encode_overflow_returns_invalid_timestamp() {
-        let resolution = TsResolution::new(true, 29).unwrap();
+        let resolution = InterfaceTsResolution::new(true, 29).unwrap();
 
-        let error = resolution.encode_timestamp(i128::MAX).unwrap_err();
+        let error = resolution.encode_timestamp(Duration::MAX).unwrap_err();
 
         assert!(matches!(
             error,
             ContentValidationError::InvalidTimestamp(timestamp, error_resolution, offset)
-                if timestamp == i128::MAX && error_resolution == resolution && offset == 0
+                if timestamp == Duration::MAX.as_nanos() as i128
+                    && error_resolution == resolution
+                    && offset == 0
         ));
     }
 }

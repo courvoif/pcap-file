@@ -1,5 +1,7 @@
+use std::time::Duration;
+
 use super::blocks::block_common::{Block, RawBlock};
-use super::blocks::interface_description::{InterfaceDescriptionBlock, TsResolution};
+use super::blocks::interface_description::{InterfaceDescriptionBlock, InterfaceTsResolution};
 use super::blocks::section_header::SectionHeaderBlock;
 use super::blocks::{INTERFACE_DESCRIPTION_BLOCK, SECTION_HEADER_BLOCK};
 use crate::Endianness;
@@ -15,7 +17,7 @@ use {
 ///
 /// This state is necessary because the encoding of blocks depends on
 /// information seen earlier in the stream, such as the [`Endianness`] of the
-/// [`SectionHeaderBlock`] and the [`TsResolution`] of each
+/// [`SectionHeaderBlock`] and the [`InterfaceTsResolution`] of each
 /// [`InterfaceDescriptionBlock`].
 ///
 /// Normally this state is maintained internally by a [`PcapNgReader`] or
@@ -32,7 +34,7 @@ pub struct PcapNgState {
     /// List of the interfaces of the current section of the pcapng
     pub(crate) interfaces: Vec<InterfaceDescriptionBlock<'static>>,
     /// Timestamp resolutions and offsets (in seconds) corresponding to the interfaces
-    pub(crate) ts_parameters: Vec<(TsResolution, i64)>,
+    pub(crate) ts_parameters: Vec<(InterfaceTsResolution, i64)>,
 }
 
 impl PcapNgState {
@@ -94,13 +96,13 @@ impl PcapNgState {
 
     /// Decode a timestamp using the correct format for the current state.
     ///
-    /// Returns nanoseconds elapsed since 1970-01-01 00:00:00 UTC.
+    /// Returns the time elapsed since 1970-01-01 00:00:00 UTC.
     pub fn decode_timestamp(
         &self,
         interface_id: u32,
         timestamp_high: u32,
         timestamp_low: u32,
-    ) -> Result<i128, ContentValidationError> {
+    ) -> Result<Duration, ContentValidationError> {
         let ts_raw = ((timestamp_high as u64) << 32) | timestamp_low as u64;
 
         let (ts_resolution, ts_offset) = self
@@ -108,33 +110,49 @@ impl PcapNgState {
             .get(interface_id as usize)
             .ok_or(ContentValidationError::InvalidInterfaceId(interface_id))?;
 
-        let ts_nanos = ts_resolution.decode_timestamp(ts_raw) + (*ts_offset as i128 * 1_000_000_000);
+        let timestamp = ts_resolution.decode_timestamp(ts_raw);
+        let offset = Duration::from_secs(ts_offset.unsigned_abs());
 
-        Ok(ts_nanos)
+        if *ts_offset >= 0 {
+            timestamp.checked_add(offset)
+        } else {
+            timestamp.checked_sub(offset)
+        }
+        .ok_or_else(|| {
+            let timestamp_ns = timestamp.as_nanos() as i128 + (*ts_offset as i128 * 1_000_000_000);
+            ContentValidationError::InvalidTimestamp(timestamp_ns, *ts_resolution, *ts_offset)
+        })
     }
 
     /// Encode a timestamp using the correct format for the current state.
     ///
-    /// `timestamp` is nanoseconds elapsed since 1970-01-01 00:00:00 UTC.
-    pub fn encode_timestamp(&self, interface_id: u32, timestamp: i128) -> Result<(u32, u32), ContentValidationError> {
+    /// `timestamp` is the time elapsed since 1970-01-01 00:00:00 UTC.
+    pub fn encode_timestamp(
+        &self,
+        interface_id: u32,
+        timestamp: Duration,
+    ) -> Result<(u32, u32), ContentValidationError> {
         let (ts_resolution, ts_offset) = self
             .ts_parameters
             .get(interface_id as usize)
             .ok_or(ContentValidationError::InvalidInterfaceId(interface_id))?;
 
-        let offset_ns = (*ts_offset as i128) * 1_000_000_000;
-
-        let ts_relative = timestamp
-            .checked_sub(offset_ns)
-            .ok_or(ContentValidationError::InvalidTimestamp(
-                timestamp,
-                *ts_resolution,
-                *ts_offset,
-            ))?;
+        let timestamp_ns = timestamp.as_nanos() as i128;
+        let offset = Duration::from_secs(ts_offset.unsigned_abs());
+        let ts_relative = if *ts_offset >= 0 {
+            timestamp.checked_sub(offset)
+        } else {
+            timestamp.checked_add(offset)
+        }
+        .ok_or(ContentValidationError::InvalidTimestamp(
+            timestamp_ns,
+            *ts_resolution,
+            *ts_offset,
+        ))?;
 
         let ts_raw = ts_resolution
             .encode_timestamp(ts_relative)
-            .map_err(|_| ContentValidationError::InvalidTimestamp(timestamp, *ts_resolution, *ts_offset))?;
+            .map_err(|_| ContentValidationError::InvalidTimestamp(timestamp_ns, *ts_resolution, *ts_offset))?;
 
         let timestamp_high = (ts_raw >> 32) as u32;
         let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;
@@ -148,56 +166,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn timestamp_roundtrip_supports_dates_before_unix_epoch() {
+    fn decode_timestamp_rejects_dates_before_unix_epoch() {
         let mut state = PcapNgState::default();
-        state.ts_parameters.push((TsResolution::SEC, -2));
+        state.ts_parameters.push((InterfaceTsResolution::SEC, -2));
 
-        let timestamp = -1_000_000_000_i128;
-
-        let (timestamp_high, timestamp_low) = state.encode_timestamp(0, timestamp).unwrap();
-        let decoded = state.decode_timestamp(0, timestamp_high, timestamp_low).unwrap();
-
-        assert_eq!(decoded, timestamp);
-        assert_eq!((timestamp_high, timestamp_low), (0, 1));
-    }
-
-    #[test]
-    fn encode_timestamp_rejects_offset_arithmetic_overflow() {
-        let mut state = PcapNgState::default();
-        state.ts_parameters.push((TsResolution::NANO, 1));
-
-        let error = state.encode_timestamp(0, i128::MIN).unwrap_err();
+        let error = state.decode_timestamp(0, 0, 1).unwrap_err();
 
         assert!(matches!(
             error,
             ContentValidationError::InvalidTimestamp(timestamp, resolution, offset)
-                if timestamp == i128::MIN && resolution == TsResolution::NANO && offset == 1
+                if timestamp == -1_000_000_000
+                    && resolution == InterfaceTsResolution::SEC
+                    && offset == -2
+        ));
+    }
+
+    #[test]
+    fn encode_timestamp_rejects_timestamp_before_interface_offset() {
+        let mut state = PcapNgState::default();
+        state.ts_parameters.push((InterfaceTsResolution::SEC, 1));
+
+        let timestamp = Duration::from_millis(999);
+        let error = state.encode_timestamp(0, timestamp).unwrap_err();
+
+        assert!(matches!(
+            error,
+            ContentValidationError::InvalidTimestamp(timestamp, resolution, offset)
+                if timestamp == Duration::from_millis(999).as_nanos() as i128
+                    && resolution == InterfaceTsResolution::SEC
+                    && offset == 1
         ));
     }
 
     #[test]
     fn encode_timestamp_rejects_binary_resolution_arithmetic_overflow() {
         let mut state = PcapNgState::default();
-        state.ts_parameters.push((TsResolution::new(true, 29).unwrap(), 0));
+        state
+            .ts_parameters
+            .push((InterfaceTsResolution::new(true, 29).unwrap(), 0));
 
-        let error = state.encode_timestamp(0, i128::MAX).unwrap_err();
+        let error = state.encode_timestamp(0, Duration::MAX).unwrap_err();
 
         assert!(matches!(
             error,
             ContentValidationError::InvalidTimestamp(timestamp, resolution, offset)
-                if timestamp == i128::MAX && resolution == TsResolution::new(true, 29).unwrap() && offset == 0
+                if timestamp == Duration::MAX.as_nanos() as i128
+                    && resolution == InterfaceTsResolution::new(true, 29).unwrap()
+                    && offset == 0
         ));
     }
 
     #[test]
-    fn encode_timestamp_truncates_sub_resolution_negative_value_to_zero() {
+    fn timestamp_roundtrip_uses_duration() {
         let mut state = PcapNgState::default();
-        state.ts_parameters.push((TsResolution::SEC, 0));
+        state.ts_parameters.push((InterfaceTsResolution::SEC, 0));
 
-        let (timestamp_high, timestamp_low) = state.encode_timestamp(0, -1).unwrap();
+        let (timestamp_high, timestamp_low) = state.encode_timestamp(0, Duration::from_nanos(1)).unwrap();
         let decoded = state.decode_timestamp(0, timestamp_high, timestamp_low).unwrap();
 
         assert_eq!((timestamp_high, timestamp_low), (0, 0));
-        assert_eq!(decoded, 0);
+        assert_eq!(decoded, Duration::ZERO);
     }
 }

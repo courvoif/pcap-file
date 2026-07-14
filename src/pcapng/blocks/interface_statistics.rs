@@ -1,6 +1,7 @@
 //! Interface Statistics Block.
 
 use std::io::Write;
+use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -21,8 +22,8 @@ pub struct InterfaceStatisticsBlock<'a> {
     /// is identified by same number of this field.
     pub interface_id: u32,
 
-    /// Time this statistics refers to (Nanoseconds elapsed since 1970-01-01 00:00:00 UTC.)
-    pub timestamp: i128,
+    /// Time elapsed since 1970-01-01 00:00:00 UTC to which these statistics refer.
+    pub timestamp: Duration,
 
     /// Options
     pub options: Vec<InterfaceStatisticsOption<'a>>,
@@ -91,12 +92,12 @@ pub enum InterfaceStatisticsOption<'a> {
     /// The isb_starttime option specifies the time the capture started.
     ///
     /// The time is relative to 1970-01-01 00:00:00 UTC.
-    IsbStartTime(i128),
+    IsbStartTime(Duration),
 
     /// The isb_endtime option specifies the time the capture ended.
     ///
     /// The time is relative to 1970-01-01 00:00:00 UTC.
-    IsbEndTime(i128),
+    IsbEndTime(Duration),
 
     /// The isb_ifrecv option specifies the 64-bit unsigned integer number of packets received from the physical interface
     /// starting from the beginning of the capture.
@@ -261,7 +262,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
 /// Helper for writing options that contain timestamps.
 fn write_timestamp<B: ByteOrder, W: Write>(
     code: u16,
-    timestamp: i128,
+    timestamp: Duration,
     state: &PcapNgState,
     interface_id: Option<u32>,
     writer: &mut W,

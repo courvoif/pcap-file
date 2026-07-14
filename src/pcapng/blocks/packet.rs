@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::io::Write;
+use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -26,8 +27,8 @@ pub struct PacketBlock<'a> {
     /// between this packet and the preceding one.
     pub drop_count: u16,
 
-    /// Nanoseconds elapsed since 1970-01-01 00:00:00 UTC.
-    pub timestamp: i128,
+    /// Time elapsed since 1970-01-01 00:00:00 UTC.
+    pub timestamp: Duration,
 
     /// Actual length of the packet when it was transmitted on the network.
     pub original_len: u32,

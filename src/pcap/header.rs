@@ -4,7 +4,7 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
-use crate::pcap::{PcapParseError, PcapValidationError, PcapWriteError, TsResolution};
+use crate::pcap::{PcapParseError, PcapTsResolution, PcapValidationError, PcapWriteError};
 use crate::{DataLink, Endianness};
 
 /// Pcap Global Header
@@ -29,7 +29,7 @@ pub struct PcapHeader {
     pub datalink: DataLink,
 
     /// Timestamp resolution of the pcap (microsecond or nanosecond)
-    pub ts_resolution: TsResolution,
+    pub ts_resolution: PcapTsResolution,
 
     /// Endianness of the pcap (excluding the packet data)
     pub endianness: Endianness,
@@ -51,12 +51,14 @@ impl PcapHeader {
         let magic_number = slice.read_u32::<BigEndian>().unwrap();
 
         match magic_number {
-            0xA1B2C3D4 => return init_pcap_header::<BigEndian>(slice, TsResolution::MicroSecond, Endianness::Big),
-            0xA1B23C4D => return init_pcap_header::<BigEndian>(slice, TsResolution::NanoSecond, Endianness::Big),
+            0xA1B2C3D4 => return init_pcap_header::<BigEndian>(slice, PcapTsResolution::MicroSecond, Endianness::Big),
+            0xA1B23C4D => return init_pcap_header::<BigEndian>(slice, PcapTsResolution::NanoSecond, Endianness::Big),
             0xD4C3B2A1 => {
-                return init_pcap_header::<LittleEndian>(slice, TsResolution::MicroSecond, Endianness::Little);
+                return init_pcap_header::<LittleEndian>(slice, PcapTsResolution::MicroSecond, Endianness::Little);
             }
-            0x4D3CB2A1 => return init_pcap_header::<LittleEndian>(slice, TsResolution::NanoSecond, Endianness::Little),
+            0x4D3CB2A1 => {
+                return init_pcap_header::<LittleEndian>(slice, PcapTsResolution::NanoSecond, Endianness::Little);
+            }
             _ => return Err(PcapValidationError::InvalidMagicNumber(magic_number).into()),
         };
 
@@ -64,7 +66,7 @@ impl PcapHeader {
         // Must check the src length before calling it.
         fn init_pcap_header<B: ByteOrder>(
             mut src: &[u8],
-            ts_resolution: TsResolution,
+            ts_resolution: PcapTsResolution,
             endianness: Endianness,
         ) -> Result<(&[u8], PcapHeader), PcapParseError> {
             let header = PcapHeader {
@@ -93,8 +95,8 @@ impl PcapHeader {
 
         fn write_header<W: Write, B: ByteOrder>(header: &PcapHeader, writer: &mut W) -> Result<usize, PcapWriteError> {
             let magic_number = match header.ts_resolution {
-                TsResolution::MicroSecond => 0xA1B2C3D4,
-                TsResolution::NanoSecond => 0xA1B23C4D,
+                PcapTsResolution::MicroSecond => 0xA1B2C3D4,
+                PcapTsResolution::NanoSecond => 0xA1B23C4D,
             };
 
             writer
@@ -128,7 +130,7 @@ impl PcapHeader {
 ///
 /// ```rust
 /// use pcap_file::{DataLink, Endianness};
-/// use pcap_file::pcap::{PcapHeader, TsResolution};
+/// use pcap_file::pcap::{PcapHeader, PcapTsResolution};
 ///
 /// let header = PcapHeader {
 ///     version_major: 2,
@@ -137,7 +139,7 @@ impl PcapHeader {
 ///     ts_accuracy: 0,
 ///     snaplen: 65535,
 ///     datalink: DataLink::ETHERNET,
-///     ts_resolution: TsResolution::MicroSecond,
+///     ts_resolution: PcapTsResolution::MicroSecond,
 ///     endianness: Endianness::native()
 /// };
 /// ```
@@ -150,7 +152,7 @@ impl Default for PcapHeader {
             ts_accuracy: 0,
             snaplen: 65535,
             datalink: DataLink::ETHERNET,
-            ts_resolution: TsResolution::MicroSecond,
+            ts_resolution: PcapTsResolution::MicroSecond,
             endianness: Endianness::default(),
         }
     }

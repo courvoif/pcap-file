@@ -2,6 +2,7 @@
 
 use std::borrow::Cow;
 use std::io::Write;
+use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -24,8 +25,8 @@ pub struct EnhancedPacketBlock<'a> {
     /// When writing, that interface must already be present in the [`PcapNgState`].
     pub interface_id: u32,
 
-    /// Nanoseconds elapsed since 1970-01-01 00:00:00 UTC.
-    pub timestamp: i128,
+    /// Time elapsed since 1970-01-01 00:00:00 UTC.
+    pub timestamp: Duration,
 
     /// Actual length of the packet when it was transmitted on the network.
     /// Must be >= data.len().

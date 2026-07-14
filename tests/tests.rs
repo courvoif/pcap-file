@@ -1,10 +1,11 @@
 #![allow(clippy::unreadable_literal)]
 
 use std::fs::File;
+use std::time::Duration;
 
 use pcap_file::pcapng::{
     PcapNgReader,
-    blocks::interface_description::{InterfaceDescriptionOption, TsResolution},
+    blocks::interface_description::{InterfaceDescriptionOption, InterfaceTsResolution},
 };
 
 mod pcap;
@@ -28,7 +29,7 @@ fn timestamp_resolution() {
                 assert!(
                     matches!(
                         if_en0.options[2],
-                        InterfaceDescriptionOption::IfTsResol(TsResolution::NANO)
+                        InterfaceDescriptionOption::IfTsResol(InterfaceTsResolution::NANO)
                     ),
                     "Invalid TsResolution for block 0"
                 );
@@ -39,7 +40,7 @@ fn timestamp_resolution() {
                     .expect("Block 7 should be an InterfaceDescriptionBlock");
                 assert_eq!(
                     if_utun4.options[1],
-                    InterfaceDescriptionOption::IfTsResol(TsResolution::MICRO),
+                    InterfaceDescriptionOption::IfTsResol(InterfaceTsResolution::MICRO),
                     "Invalid TsResolution for block 7"
                 );
             }
@@ -47,13 +48,21 @@ fn timestamp_resolution() {
                 let pkt_0 = block
                     .as_enhanced_packet()
                     .expect("Block 8 should be an EnhancedPacketBlock");
-                assert_eq!(pkt_0.timestamp, 1704187433103553000, "Invalid timestamp for pkt0");
+                assert_eq!(
+                    pkt_0.timestamp,
+                    Duration::from_nanos_u128(1704187433103553000),
+                    "Invalid timestamp for pkt0"
+                );
             }
             10 => {
                 let pkt_2 = block
                     .as_enhanced_packet()
                     .expect("Block 10 should be an EnhancedPacketBlock");
-                assert_eq!(pkt_2.timestamp, 1704187433132051, "Invalid timestamp for pkt2");
+                assert_eq!(
+                    pkt_2.timestamp,
+                    Duration::from_nanos_u128(1704187433132051),
+                    "Invalid timestamp for pkt2"
+                );
             }
             _ => {}
         }

@@ -94,7 +94,7 @@ pub trait CustomPayloadNonCopiable<'a> {
 ///
 /// # Important
 /// Any implementor must also implements [`CustomPayloadCopiable`] and/or [`CustomPayloadNonCopiable`].
-pub trait CustomPayloadBlock<'a> {
+pub trait CustomBlockPayload<'a> {
     /// Convert this payload into a copiable [`CustomBlock`].
     ///
     /// # Important
@@ -132,7 +132,7 @@ pub trait CustomPayloadBlock<'a> {
 ///
 /// # Important
 /// Any implementor must also implements [`CustomPayloadCopiable`] and/or [`CustomPayloadNonCopiable`].
-pub trait CustomPayloadOption<'a> {
+pub trait CustomOptionPayload<'a> {
     /// Convert this payload into a copiable [`CustomBinaryOption`].
     ///
     /// # Important
@@ -210,7 +210,7 @@ impl<'a> CustomBlock<'a, true> {
     /// Converts this block's payload into a copiable custom payload type.
     pub fn interpret<T>(&'a self) -> Result<Option<T>, CustomError>
     where
-        T: CustomPayloadCopiable<'a> + CustomPayloadBlock<'a>,
+        T: CustomPayloadCopiable<'a> + CustomBlockPayload<'a>,
     {
         if self.pen != T::PEN {
             return Ok(None);
@@ -227,7 +227,7 @@ impl<'a> CustomBlock<'a, false> {
     /// Converts this block's payload into a non-copiable custom payload type.
     pub fn interpret<T>(&'a self, state: &T::State) -> Result<Option<T>, CustomError>
     where
-        T: CustomPayloadNonCopiable<'a> + CustomPayloadBlock<'a>,
+        T: CustomPayloadNonCopiable<'a> + CustomBlockPayload<'a>,
     {
         if self.pen != T::PEN {
             return Ok(None);
@@ -328,7 +328,7 @@ impl<'a> CustomBinaryOption<'a, true> {
     /// Converts this option's value into a copiable custom payload type.
     pub fn interpret<T>(&'a self) -> Result<Option<T>, CustomError>
     where
-        T: CustomPayloadCopiable<'a> + CustomPayloadOption<'a>,
+        T: CustomPayloadCopiable<'a> + CustomOptionPayload<'a>,
     {
         if self.pen != T::PEN {
             return Ok(None);
@@ -350,7 +350,7 @@ impl<'a> CustomBinaryOption<'a, false> {
     /// Converts this option's value into a non-copiable custom payload type.
     pub fn interpret<T>(&'a self, state: &T::State) -> Result<Option<T>, CustomError>
     where
-        T: CustomPayloadNonCopiable<'a> + CustomPayloadOption<'a>,
+        T: CustomPayloadNonCopiable<'a> + CustomOptionPayload<'a>,
     {
         if self.pen != T::PEN {
             return Ok(None);

@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use pcap_file::pcap::{
-    PcapHeader, PcapPacket, PcapReader, PcapValidationError, PcapWriter, RawPcapPacket, TsResolution,
+    PcapHeader, PcapPacket, PcapReader, PcapValidationError, PcapWriter, RawPcapPacket, PcapTsResolution,
 };
 
 static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
@@ -126,7 +126,7 @@ fn big_endian() {
         ts_accuracy: 0,
         snaplen: 0xFFFF,
         datalink: pcap_file::DataLink::ETHERNET,
-        ts_resolution: TsResolution::MicroSecond,
+        ts_resolution: PcapTsResolution::MicroSecond,
         endianness: pcap_file::Endianness::Big,
     };
 
@@ -162,7 +162,7 @@ fn little_endian() {
         ts_accuracy: 0,
         snaplen: 4096,
         datalink: pcap_file::DataLink::ETHERNET,
-        ts_resolution: TsResolution::MicroSecond,
+        ts_resolution: PcapTsResolution::MicroSecond,
         endianness: pcap_file::Endianness::Little,
     };
 
