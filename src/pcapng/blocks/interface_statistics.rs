@@ -10,7 +10,7 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
-use crate::pcapng::PcapNgState;
+use crate::pcapng::{ContentValidationError, PcapNgState};
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
@@ -58,19 +58,15 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         if self.interface_id >= (state.interfaces.len() as u32) {
-            return Err(PcapNgWriteError::Validation {
-                field: "InterfaceStatisticsBlock.interface_id",
-                source: crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id),
-            });
+            return Err(PcapNgWriteError::validation_error(
+                "InterfaceStatisticsBlock.interface_id",
+                ContentValidationError::InvalidInterfaceId(self.interface_id),
+            ));
         }
 
-        let (timestamp_high, timestamp_low) =
-            state
-                .encode_timestamp(self.interface_id, self.timestamp)
-                .map_err(|source| PcapNgWriteError::Validation {
-                    field: "InterfaceStatisticsBlock.timestamp",
-                    source,
-                })?;
+        let (timestamp_high, timestamp_low) = state
+            .encode_timestamp(self.interface_id, self.timestamp)
+            .map_err(|source| PcapNgWriteError::validation_error("InterfaceStatisticsBlock.timestamp", source))?;
 
         writer.write_u32::<B>(self.interface_id)?;
         writer.write_u32::<B>(timestamp_high)?;
@@ -270,13 +266,9 @@ fn write_timestamp<B: ByteOrder, W: Write>(
     const TIMESTAMP_LENGTH: u16 = 8;
     const OPTION_LENGTH: usize = 12;
 
-    let (timestamp_high, timestamp_low) =
-        state
-            .encode_timestamp(interface_id.unwrap(), timestamp)
-            .map_err(|source| PcapNgWriteError::Validation {
-                field: "InterfaceStatisticsOption.timestamp",
-                source,
-            })?;
+    let (timestamp_high, timestamp_low) = state
+        .encode_timestamp(interface_id.unwrap(), timestamp)
+        .map_err(|source| PcapNgWriteError::validation_error("InterfaceStatisticsOption.timestamp", source))?;
 
     writer.write_u16::<B>(code)?;
     writer.write_u16::<B>(TIMESTAMP_LENGTH)?;

@@ -95,26 +95,22 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         // Integrity checks are done before any writing to prevent invalid state in the file
         if (self.interface_id as usize) >= state.interfaces.len() {
-            return Err(PcapNgWriteError::Validation {
-                field: "EnhancedPacketBlock.interface_id",
-                source: crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id),
-            });
+            return Err(PcapNgWriteError::validation_error(
+                "EnhancedPacketBlock.interface_id",
+                crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id),
+            ));
         }
 
         if (self.original_len as usize) < self.data.len() {
-            return Err(PcapNgWriteError::Validation {
-                field: "EnhancedPacketBlock.original_len",
-                source: crate::pcapng::ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
-            });
+            return Err(PcapNgWriteError::validation_error(
+                "EnhancedPacketBlock.original_len",
+                crate::pcapng::ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+            ));
         }
 
-        let (timestamp_high, timestamp_low) =
-            state
-                .encode_timestamp(self.interface_id, self.timestamp)
-                .map_err(|source| PcapNgWriteError::Validation {
-                    field: "EnhancedPacketBlock.timestamp",
-                    source,
-                })?;
+        let (timestamp_high, timestamp_low) = state
+            .encode_timestamp(self.interface_id, self.timestamp)
+            .map_err(|source| PcapNgWriteError::validation_error("EnhancedPacketBlock.timestamp", source))?;
 
         let pad_len = (4 - (&self.data.len() % 4)) % 4;
 

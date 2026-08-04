@@ -276,9 +276,8 @@ impl<'a> Block<'a> {
                 _ => Ok(Block::Unknown(UnknownBlock::new(type_, initial_len, body))),
             }
             .map_err(|source| BlockConversionError {
-                name: block_name(type_),
                 type_,
-                source,
+                source: source.into(),
             })
         }
 
@@ -328,16 +327,18 @@ impl<'a> Block<'a> {
 
             // Check that there wasn't an overflow
             if block_len < data_len {
-                return Err(PcapNgWriteError::Validation {
-                    field: "Block.total_length",
-                    source: ContentValidationError::BlockContentTooBig(data_len as u64),
-                });
+                return Err(PcapNgWriteError::validation_error(
+                    "Block.total_length",
+                    ContentValidationError::BlockContentTooBig(data_len as u64),
+                ));
             }
 
             // Check that the block length fits within the u32 limit
-            let block_len: u32 = block_len.try_into().map_err(|_| PcapNgWriteError::Validation {
-                field: "Block.total_length",
-                source: ContentValidationError::BlockContentTooBig(block_len as u64),
+            let block_len: u32 = block_len.try_into().map_err(|_| {
+                PcapNgWriteError::validation_error(
+                    "Block.total_length",
+                    ContentValidationError::BlockContentTooBig(block_len as u64),
+                )
             })?;
 
             writer.write_u32::<B>(block_code)?;

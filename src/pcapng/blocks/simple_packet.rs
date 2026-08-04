@@ -76,18 +76,18 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         // Check that original_len is always >= self.data.len()
         if (self.original_len as usize) < self.data.len() {
-            return Err(PcapNgWriteError::Validation {
-                field: "SimplePacketBlock.original_len",
-                source: ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
-            });
+            return Err(PcapNgWriteError::validation_error(
+                "SimplePacketBlock.original_len",
+                ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+            ));
         }
 
         // Check that original_length and data_len take snaplen into account //
         let Some(interface) = state.interfaces.first() else {
-            return Err(PcapNgWriteError::Validation {
-                field: "SimplePacketBlock.interface",
-                source: ContentValidationError::NoInterface,
-            });
+            return Err(PcapNgWriteError::validation_error(
+                "SimplePacketBlock.interface",
+                ContentValidationError::NoInterface,
+            ));
         };
 
         let expected_len = if interface.snaplen == 0 {
@@ -97,13 +97,13 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         };
 
         if self.data.len() != expected_len {
-            return Err(PcapNgWriteError::Validation {
-                field: "SimplePacketBlock.data",
-                source: ContentValidationError::InvalidCapturedLen {
+            return Err(PcapNgWriteError::validation_error(
+                "SimplePacketBlock.data",
+                ContentValidationError::InvalidCapturedLen {
                     expected: expected_len,
                     actual: self.data.len(),
                 },
-            });
+            ));
         }
 
         writer.write_u32::<B>(self.original_len)?;
@@ -180,8 +180,8 @@ mod tests {
             err,
             PcapNgWriteError::Validation {
                 field: "SimplePacketBlock.interface",
-                source: ContentValidationError::NoInterface,
-            }
+                source,
+            } if matches!(source.as_ref(), ContentValidationError::NoInterface)
         ));
     }
 
@@ -198,8 +198,11 @@ mod tests {
             err,
             PcapNgWriteError::Validation {
                 field: "SimplePacketBlock.data",
-                source: ContentValidationError::InvalidCapturedLen { expected: 4, actual: 2 },
-            }
+                source,
+            } if matches!(
+                source.as_ref(),
+                ContentValidationError::InvalidCapturedLen { expected: 4, actual: 2 }
+            )
         ));
     }
 
@@ -227,8 +230,11 @@ mod tests {
             err,
             PcapNgWriteError::Validation {
                 field: "SimplePacketBlock.data",
-                source: ContentValidationError::InvalidCapturedLen { expected: 2, actual: 3 },
-            }
+                source,
+            } if matches!(
+                source.as_ref(),
+                ContentValidationError::InvalidCapturedLen { expected: 2, actual: 3 }
+            )
         ));
     }
 }

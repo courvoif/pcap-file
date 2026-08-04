@@ -460,7 +460,7 @@ fn raw_reader_recovers_after_typed_block_validation_error() {
     match typed_error {
         PcapNgReadError::BlockConversion(error) => {
             assert!(matches!(
-                error.source,
+                error.source.as_ref(),
                 pcap_file::pcapng::BlockContentParseError::Validation(ContentValidationError::InvalidInterfaceId(7))
             ));
         }

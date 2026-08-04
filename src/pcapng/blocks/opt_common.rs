@@ -119,7 +119,7 @@ pub(crate) trait PcapNgOption<'a> {
 
         while !slice.is_empty() {
             if slice.len() < 4 {
-                return Err(OptionParseError::OptionsContentTooSmall {
+                return Err(OptionParseError::ContentTooSmall {
                     needed: 4,
                     actual: slice.len(),
                 });
@@ -134,7 +134,7 @@ pub(crate) trait PcapNgOption<'a> {
             }
 
             if slice.len() < length + pad_len {
-                return Err(OptionParseError::OptionsContentTooSmall {
+                return Err(OptionParseError::ContentTooSmall {
                     needed: length + pad_len,
                     actual: slice.len(),
                 });
@@ -145,7 +145,7 @@ pub(crate) trait PcapNgOption<'a> {
                 OptionParseError::InvalidEntry {
                     code,
                     name: Self::code_name(code),
-                    source: e,
+                    source: Box::new(e),
                 }
             })?;
 
@@ -225,9 +225,8 @@ fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
 ) -> Result<usize, PcapNgWriteError> {
     let pad_len = (4 - len % 4) % 4;
 
-    let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
-        field: "OptionEntry.length",
-        source: ContentValidationError::OptionTooBig(len),
+    let len: u16 = len.try_into().map_err(|_| {
+        PcapNgWriteError::validation_error("OptionEntry.length", ContentValidationError::OptionTooBig(len))
     })?;
 
     writer.write_u16::<B>(code)?;

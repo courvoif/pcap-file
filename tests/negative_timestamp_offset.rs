@@ -39,8 +39,8 @@ fn writer_rejects_timestamp_before_interface_offset() {
         error,
         PcapNgWriteError::Validation {
             field: "EnhancedPacketBlock.timestamp",
-            source: ContentValidationError::InvalidTimestamp(..),
-        }
+            source,
+        } if matches!(source.as_ref(), ContentValidationError::FailedToEncodeTimestamp { .. })
     ));
 }
 
@@ -111,8 +111,8 @@ fn reader_rejects_timestamp_before_unix_epoch() {
         error,
         PcapNgReadError::BlockConversion(error)
             if matches!(
-                error.source,
-                BlockContentParseError::Validation(ContentValidationError::InvalidTimestamp(..))
+                error.source.as_ref(),
+                BlockContentParseError::Validation(ContentValidationError::FailedToDecodeTimestamp { .. })
             )
     ));
 }

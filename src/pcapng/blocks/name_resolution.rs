@@ -148,9 +148,8 @@ impl<'a> Record<'a> {
                 let len = a.write_to::<B, _>(&mut std::io::sink())?;
                 let pad_len = (4 - len % 4) % 4;
 
-                let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
-                    field: "Ipv4Record.length",
-                    source: ContentValidationError::RecordTooBig(len),
+                let len: u16 = len.try_into().map_err(|_| {
+                    PcapNgWriteError::validation_error("Ipv4Record.length", ContentValidationError::RecordTooBig(len))
                 })?;
 
                 writer.write_u16::<B>(1)?;
@@ -164,9 +163,8 @@ impl<'a> Record<'a> {
                 let len = a.write_to::<B, _>(&mut std::io::sink())?;
                 let pad_len = (4 - len % 4) % 4;
 
-                let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
-                    field: "Ipv6Record.length",
-                    source: ContentValidationError::RecordTooBig(len),
+                let len: u16 = len.try_into().map_err(|_| {
+                    PcapNgWriteError::validation_error("Ipv6Record.length", ContentValidationError::RecordTooBig(len))
                 })?;
 
                 writer.write_u16::<B>(2)?;
@@ -180,9 +178,11 @@ impl<'a> Record<'a> {
                 let len = a.value.len();
                 let pad_len = (4 - len % 4) % 4;
 
-                let len: u16 = len.try_into().map_err(|_| PcapNgWriteError::Validation {
-                    field: "UnknownRecord.length",
-                    source: ContentValidationError::RecordTooBig(len),
+                let len: u16 = len.try_into().map_err(|_| {
+                    PcapNgWriteError::validation_error(
+                        "UnknownRecord.length",
+                        ContentValidationError::RecordTooBig(len),
+                    )
                 })?;
 
                 writer.write_u16::<B>(a.type_)?;
@@ -440,8 +440,11 @@ mod tests {
             error,
             PcapNgWriteError::Validation {
                 field: "OptionEntry.length",
-                source: ContentValidationError::OptionTooBig(len),
-            } if len == u16::MAX as usize + 1
+                source,
+            } if matches!(
+                source.as_ref(),
+                ContentValidationError::OptionTooBig(len) if *len == u16::MAX as usize + 1
+            )
         ));
     }
 }

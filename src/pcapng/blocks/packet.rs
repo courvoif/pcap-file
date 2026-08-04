@@ -93,25 +93,22 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         // Integrity checks are done before any writing to prevent invalid state in the file
         if (self.interface_id as usize) >= state.interfaces.len() {
-            return Err(PcapNgWriteError::Validation {
-                field: "PacketBlock.interface_id",
-                source: crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id as u32),
-            });
+            return Err(PcapNgWriteError::validation_error(
+                "PacketBlock.interface_id",
+                crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id as u32),
+            ));
         }
 
         if (self.original_len as usize) < self.data.len() {
-            return Err(PcapNgWriteError::Validation {
-                field: "PacketBlock.original_len",
-                source: crate::pcapng::ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
-            });
+            return Err(PcapNgWriteError::validation_error(
+                "PacketBlock.original_len",
+                crate::pcapng::ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+            ));
         }
 
         let (timestamp_high, timestamp_low) = state
             .encode_timestamp(self.interface_id as u32, self.timestamp)
-            .map_err(|source| PcapNgWriteError::Validation {
-                field: "PacketBlock.timestamp",
-                source,
-            })?;
+            .map_err(|source| PcapNgWriteError::validation_error("PacketBlock.timestamp", source))?;
 
         writer.write_u16::<B>(self.interface_id)?;
         writer.write_u16::<B>(self.drop_count)?;

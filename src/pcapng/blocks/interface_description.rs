@@ -73,12 +73,12 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        let datalink: u16 = u32::from(self.linktype)
-            .try_into()
-            .map_err(|_| PcapNgWriteError::Validation {
-                field: "InterfaceDescriptionBlock.linktype",
-                source: ContentValidationError::InvalidLinktype(self.linktype),
-            })?;
+        let datalink: u16 = u32::from(self.linktype).try_into().map_err(|_| {
+            PcapNgWriteError::validation_error(
+                "InterfaceDescriptionBlock.linktype",
+                ContentValidationError::InvalidLinktype(self.linktype),
+            )
+        })?;
 
         writer.write_u16::<B>(datalink)?;
         writer.write_u16::<B>(0)?;
@@ -455,14 +455,22 @@ impl InterfaceTsResolution {
         let ts = if self.is_bin {
             timestamp_ns
                 .checked_shl(self.resol.into())
-                .ok_or(ContentValidationError::InvalidTimestamp(timestamp_ns as i128, *self, 0))?
+                .ok_or(ContentValidationError::FailedToEncodeTimestamp {
+                    timestamp,
+                    resolution: *self,
+                    offset: 0,
+                })?
                 / 1_000_000_000_u128
         } else {
             timestamp_ns / TS_RESOL_DEC_TO_DURATION[self.resol as usize]
         };
 
         ts.try_into()
-            .map_err(|_| ContentValidationError::InvalidTimestamp(timestamp_ns as i128, *self, 0))
+            .map_err(|_| ContentValidationError::FailedToEncodeTimestamp {
+                timestamp,
+                resolution: *self,
+                offset: 0,
+            })
     }
 
     /// Returns whether the resolution is binary or decimal.
@@ -535,8 +543,11 @@ mod tests {
 
         assert!(matches!(
             error,
-            ContentValidationError::InvalidTimestamp(timestamp, error_resolution, offset)
-                if timestamp == Duration::MAX.as_nanos() as i128
+            ContentValidationError::FailedToEncodeTimestamp {
+                timestamp,
+                resolution: error_resolution,
+                offset,
+            } if timestamp == Duration::MAX
                     && error_resolution == resolution
                     && offset == 0
         ));

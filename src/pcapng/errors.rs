@@ -1,6 +1,11 @@
+use std::{fmt::Display, time::Duration};
+
 use thiserror::Error;
 
-use crate::{DataLink, pcapng::blocks::interface_description::InterfaceTsResolution};
+use crate::{
+    DataLink,
+    pcapng::blocks::{block_name, interface_description::InterfaceTsResolution},
+};
 
 /* ----- PcapError ----- */
 
@@ -108,7 +113,8 @@ pub enum PcapNgWriteError {
         /// Name of the field that failed validation.
         field: &'static str,
         /// Underlying validation error.
-        source: ContentValidationError,
+        // Boxed to keep the error small
+        source: Box<ContentValidationError>,
     },
 
     /// The raw block format is invalid.
@@ -118,6 +124,16 @@ pub enum PcapNgWriteError {
     /// Error while updating the pcapng state.
     #[error("State update error during writing")]
     StateUpdate(#[from] StateUpdateError),
+}
+
+impl PcapNgWriteError {
+    /// Creates a write error for a field that failed content validation.
+    pub(crate) fn validation_error(field: &'static str, source: ContentValidationError) -> Self {
+        Self::Validation {
+            field,
+            source: Box::new(source),
+        }
+    }
 }
 
 /* ----- PcapNgFormatError ----- */
@@ -177,14 +193,23 @@ pub enum RawBlockParseError {
 
 /// Errors that can occur while converting a raw block into a typed block.
 #[derive(Debug, Error)]
-#[error("Invalid content for block '{name}' ({type_:#X})")]
 pub struct BlockConversionError {
-    /// Human-readable block name
-    pub name: &'static str,
     /// Numeric block type
     pub type_: u32,
     /// Underlying block content parse error
-    pub source: BlockContentParseError,
+    // Boxed to keep the error small
+    pub source: Box<BlockContentParseError>,
+}
+
+impl Display for BlockConversionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Invalid content for block '{}' ({:#X})",
+            block_name(self.type_),
+            self.type_
+        )
+    }
 }
 
 /* ----- BlockContentParseError ----- */
@@ -245,9 +270,32 @@ pub enum ContentValidationError {
     #[error("Invalid interface ID: {0}")]
     InvalidInterfaceId(u32),
 
-    /// The timestamp is before the Unix epoch or cannot be represented in the raw 64-bit timestamp field.
-    #[error("Invalid timestamp: ts = {}ns, ts_resolution = {}, offset = {}s", .0, .1, .2)]
-    InvalidTimestamp(i128, InterfaceTsResolution, i64),
+    /// A raw timestamp and its interface offset could not be represented as a duration since the Unix epoch.
+    #[error(
+        "Failed to decode timestamp (high: {timestamp_high:#X}, low: {timestamp_low:#X}, combined: {}) with resolution {resolution} and offset {offset}s",
+        ((*timestamp_high as u64) << 32) | *timestamp_low as u64
+    )]
+    FailedToDecodeTimestamp {
+        /// Most significant 32 bits of the raw timestamp.
+        timestamp_high: u32,
+        /// Least significant 32 bits of the raw timestamp.
+        timestamp_low: u32,
+        /// Interface timestamp resolution.
+        resolution: InterfaceTsResolution,
+        /// Interface timestamp offset in seconds.
+        offset: i64,
+    },
+
+    /// A timestamp could not be encoded in the raw 64-bit timestamp field.
+    #[error("Failed to encode timestamp {timestamp:?} with resolution {resolution} and offset {offset}s")]
+    FailedToEncodeTimestamp {
+        /// Timestamp supplied for encoding.
+        timestamp: Duration,
+        /// Interface timestamp resolution.
+        resolution: InterfaceTsResolution,
+        /// Interface timestamp offset in seconds.
+        offset: i64,
+    },
 
     /// The original length of the packet is lower than its actual length
     #[error("The original length of the packet is lower than its actual length: {0}B on wire, {1}B captured")]
@@ -308,7 +356,7 @@ pub enum ContentValidationError {
 pub enum OptionParseError {
     /// The buffer is too short to parse the options.
     #[error("The option field is too small to parse the options: need {needed}B, got {actual}B")]
-    OptionsContentTooSmall {
+    ContentTooSmall {
         /// Needed size to parse the option list.
         needed: usize,
         /// Actual size of the option buffer.
@@ -322,7 +370,8 @@ pub enum OptionParseError {
         /// Human-readable option name.
         name: &'static str,
         /// Underlying option entry error.
-        source: OptionEntryError,
+        // Boxed to keep the error size small
+        source: Box<OptionEntryError>,
     },
 }
 
@@ -339,7 +388,6 @@ pub enum OptionEntryError {
         /// Actual size
         actual: usize,
     },
-
     /// The option payload is not valid UTF-8.
     #[error("Invalid UTF-8 format")]
     InvalidUtf8(#[from] std::str::Utf8Error),

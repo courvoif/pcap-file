@@ -118,9 +118,11 @@ impl PcapNgState {
         } else {
             timestamp.checked_sub(offset)
         }
-        .ok_or_else(|| {
-            let timestamp_ns = timestamp.as_nanos() as i128 + (*ts_offset as i128 * 1_000_000_000);
-            ContentValidationError::InvalidTimestamp(timestamp_ns, *ts_resolution, *ts_offset)
+        .ok_or_else(|| ContentValidationError::FailedToDecodeTimestamp {
+            timestamp_high,
+            timestamp_low,
+            resolution: *ts_resolution,
+            offset: *ts_offset,
         })
     }
 
@@ -137,22 +139,25 @@ impl PcapNgState {
             .get(interface_id as usize)
             .ok_or(ContentValidationError::InvalidInterfaceId(interface_id))?;
 
-        let timestamp_ns = timestamp.as_nanos() as i128;
         let offset = Duration::from_secs(ts_offset.unsigned_abs());
         let ts_relative = if *ts_offset >= 0 {
             timestamp.checked_sub(offset)
         } else {
             timestamp.checked_add(offset)
         }
-        .ok_or(ContentValidationError::InvalidTimestamp(
-            timestamp_ns,
-            *ts_resolution,
-            *ts_offset,
-        ))?;
+        .ok_or(ContentValidationError::FailedToEncodeTimestamp {
+            timestamp,
+            resolution: *ts_resolution,
+            offset: *ts_offset,
+        })?;
 
-        let ts_raw = ts_resolution
-            .encode_timestamp(ts_relative)
-            .map_err(|_| ContentValidationError::InvalidTimestamp(timestamp_ns, *ts_resolution, *ts_offset))?;
+        let ts_raw = ts_resolution.encode_timestamp(ts_relative).map_err(|_| {
+            ContentValidationError::FailedToEncodeTimestamp {
+                timestamp,
+                resolution: *ts_resolution,
+                offset: *ts_offset,
+            }
+        })?;
 
         let timestamp_high = (ts_raw >> 32) as u32;
         let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;
@@ -172,10 +177,20 @@ mod tests {
 
         let error = state.decode_timestamp(0, 0, 1).unwrap_err();
 
+        let message = error.to_string();
+        assert!(message.contains("high: 0x0"));
+        assert!(message.contains("low: 0x1"));
+        assert!(message.contains("combined: 1"));
+
         assert!(matches!(
             error,
-            ContentValidationError::InvalidTimestamp(timestamp, resolution, offset)
-                if timestamp == -1_000_000_000
+            ContentValidationError::FailedToDecodeTimestamp {
+                timestamp_high,
+                timestamp_low,
+                resolution,
+                offset,
+            } if timestamp_high == 0
+                    && timestamp_low == 1
                     && resolution == InterfaceTsResolution::SEC
                     && offset == -2
         ));
@@ -191,8 +206,11 @@ mod tests {
 
         assert!(matches!(
             error,
-            ContentValidationError::InvalidTimestamp(timestamp, resolution, offset)
-                if timestamp == Duration::from_millis(999).as_nanos() as i128
+            ContentValidationError::FailedToEncodeTimestamp {
+                timestamp,
+                resolution,
+                offset,
+            } if timestamp == Duration::from_millis(999)
                     && resolution == InterfaceTsResolution::SEC
                     && offset == 1
         ));
@@ -209,8 +227,11 @@ mod tests {
 
         assert!(matches!(
             error,
-            ContentValidationError::InvalidTimestamp(timestamp, resolution, offset)
-                if timestamp == Duration::MAX.as_nanos() as i128
+            ContentValidationError::FailedToEncodeTimestamp {
+                timestamp,
+                resolution,
+                offset,
+            } if timestamp == Duration::MAX
                     && resolution == InterfaceTsResolution::new(true, 29).unwrap()
                     && offset == 0
         ));
