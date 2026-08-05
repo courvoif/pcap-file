@@ -110,9 +110,14 @@ Packet blocks in pcapng refer to interface blocks by index. When creating a
 pcapng file from scratch, write an `InterfaceDescriptionBlock` before any packet
 block that uses that interface.
 
-More complete read, write, raw recovery, and custom block examples are available
-in [`tests/pcap/mod.rs`](tests/pcap/mod.rs) and
-[`tests/pcapng/mod.rs`](tests/pcapng/mod.rs).
+Runnable examples are available in the [`examples`](examples) directory:
+
+- Pcap: [parse](examples/pcap_parse.rs), [read](examples/pcap_read.rs), and
+  [create and write a packet](examples/pcap_write.rs).
+- PcapNg: [parse](examples/pcapng_parse.rs), [read](examples/pcapng_read.rs), and
+  [create and write a packet](examples/pcapng_write.rs).
+- PcapNg extensions: read and write a [custom block](examples/pcapng_custom_block.rs)
+  or a [custom option](examples/pcapng_custom_option.rs), including error handling.
 
 ## Fuzzing
 
