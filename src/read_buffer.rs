@@ -1,9 +1,13 @@
 use std::io::{Error, ErrorKind, Read};
 
-use crate::PcapError;
+use crate::{
+    pcap::{PcapParseError, PcapReadError},
+    pcapng::errors::{PcapNgParseError, PcapNgReadError},
+};
 
+/* ----- ReadBuffer ----- */
 
-/// Internal structure that bufferize its input and allow to parse element from its buffer.
+/// Internal structure that buffers its input and allows parsing elements from its buffer.
 #[derive(Debug)]
 pub(crate) struct ReadBuffer<R: Read> {
     /// Reader from which we read the data from
@@ -26,7 +30,13 @@ impl<R: Read> ReadBuffer<R> {
 
     /// Creates a new ReadBuffer with the given capacity
     pub fn with_capacity(reader: R, capacity: usize) -> Self {
-        Self { reader, buffer: vec![0_u8; capacity], pos: 0, len: 0, bytes_used: 0 }
+        Self {
+            reader,
+            buffer: vec![0_u8; capacity],
+            pos: 0,
+            len: 0,
+            bytes_used: 0,
+        }
     }
 
     /// Parse data from the internal buffer
@@ -34,11 +44,12 @@ impl<R: Read> ReadBuffer<R> {
     /// Safety
     ///
     /// The parser must NOT keep a reference to the buffer in input.
-    pub fn parse_with<'a, 'b: 'a, 'c: 'a, F, O>(&'c mut self, mut parser: F) -> Result<O, PcapError>
+    pub fn parse_with<'a, 'b: 'a, 'c: 'a, F, O, E>(&'c mut self, mut parser: F) -> Result<O, E::ReadError>
     where
-        F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), PcapError>,
+        F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), E>,
         F: 'b,
         O: 'a,
+        E: ReadBufferParseError,
     {
         loop {
             let buf = &self.buffer[self.pos..self.len];
@@ -50,21 +61,21 @@ impl<R: Read> ReadBuffer<R> {
                 Ok((rem, value)) => {
                     self.advance_with_slice(rem);
                     return Ok(value);
-                },
+                }
 
-                Err(PcapError::IncompleteBuffer(_, _)) => {
+                Err(e) if e.is_incomplete() => {
                     // The parsed data len should never be more than the buffer capacity
                     if buf.len() == self.buffer.len() {
-                        return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
+                        return Err(E::from_io(Error::from(ErrorKind::UnexpectedEof)));
                     }
 
-                    let nb_read = self.fill_buf().map_err(PcapError::IoError)?;
+                    let nb_read = self.fill_buf().map_err(E::from_io)?;
                     if nb_read == 0 {
-                        return Err(PcapError::IoError(Error::from(ErrorKind::UnexpectedEof)));
+                        return Err(E::from_io(Error::from(ErrorKind::UnexpectedEof)));
                     }
-                },
+                }
 
-                Err(e) => return Err(e),
+                Err(e) => return Err(e.into_read_error()),
             }
         }
     }
@@ -131,6 +142,63 @@ impl<R: Read> ReadBuffer<R> {
     /// Return a reference over the inner reader
     pub fn get_ref(&self) -> &R {
         &self.reader
+    }
+}
+
+/* ----- ReadBufferParseError ----- */
+
+/// Adapter used by [`ReadBuffer::parse_with`] to share the buffered parsing loop
+/// between pcap and pcapng parsers while preserving their read error types.
+pub(crate) trait ReadBufferParseError {
+    /// Read-level error returned by the reader using this parse error.
+    type ReadError;
+
+    /// Returns true when parsing failed only because more input bytes are needed.
+    fn is_incomplete(&self) -> bool;
+    /// Converts an I/O error raised while filling the buffer into the read error.
+    fn from_io(error: Error) -> Self::ReadError;
+    /// Converts a terminal parse error into the read error returned to callers.
+    fn into_read_error(self) -> Self::ReadError;
+}
+
+impl ReadBufferParseError for PcapParseError {
+    type ReadError = PcapReadError;
+
+    #[inline]
+    fn is_incomplete(&self) -> bool {
+        matches!(self, Self::IncompleteBuffer(_, _))
+    }
+
+    #[inline]
+    fn from_io(error: Error) -> Self::ReadError {
+        PcapReadError::Io(error)
+    }
+
+    #[inline]
+    fn into_read_error(self) -> Self::ReadError {
+        match self {
+            Self::IncompleteBuffer(_, _) => PcapReadError::Io(Error::from(ErrorKind::UnexpectedEof)),
+            Self::Validation(val) => PcapReadError::Validation(val),
+        }
+    }
+}
+
+impl ReadBufferParseError for PcapNgParseError {
+    type ReadError = PcapNgReadError;
+
+    #[inline]
+    fn is_incomplete(&self) -> bool {
+        matches!(self, Self::IncompleteBuffer(_, _))
+    }
+
+    #[inline]
+    fn from_io(error: Error) -> Self::ReadError {
+        PcapNgReadError::Io(error)
+    }
+
+    #[inline]
+    fn into_read_error(self) -> Self::ReadError {
+        self.into()
     }
 }
 

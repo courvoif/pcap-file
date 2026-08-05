@@ -1,16 +1,16 @@
 //! Generic block option types.
 
 use std::borrow::Cow;
-use std::io::{Result as IoResult, Write};
+use std::io::Write;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use crate::errors::PcapError;
-use crate::pcapng::PcapNgState;
-use crate::pcapng::blocks::custom::{CustomCopiable, CustomNonCopiable};
+use crate::pcapng::blocks::custom::{CustomBinaryOption, CustomUtf8Option};
+use crate::pcapng::errors::{OptionEntryError, OptionParseError, PcapNgWriteError};
+use crate::pcapng::{ContentValidationError, PcapNgState};
 
 /// Comment
 pub const COMMENT: u16 = 0x0001;
@@ -57,68 +57,36 @@ impl<'a> CommonOption<'a> {
         }
     }
 
-    pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, PcapError> {
+    pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, OptionEntryError> {
         Ok(match code {
-            COMMENT =>
-                CommonOption::Comment(
-                    Cow::Borrowed(std::str::from_utf8(slice)?)),
-            CUSTOM_UTF8_OPTION_COPIABLE =>
-                CommonOption::CustomUtf8Copiable(
-                    CustomUtf8Option::from_slice::<B>(slice)?),
-            CUSTOM_UTF8_OPTION_NON_COPIABLE =>
-                CommonOption::CustomUtf8NonCopiable(
-                    CustomUtf8Option::from_slice::<B>(slice)?),
-            CUSTOM_BINARY_OPTION_COPIABLE =>
-                CommonOption::CustomBinaryCopiable(
-                    CustomBinaryOption::from_slice::<B>(slice)?),
-            CUSTOM_BINARY_OPTION_NON_COPIABLE =>
-                CommonOption::CustomBinaryNonCopiable(
-                    CustomBinaryOption::from_slice::<B>(slice)?),
-            _ => CommonOption::Unknown(
-                    UnknownOption::new(code, slice)),
+            COMMENT => CommonOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            CUSTOM_UTF8_OPTION_COPIABLE => CommonOption::CustomUtf8Copiable(CustomUtf8Option::from_slice::<B>(slice)?),
+            CUSTOM_UTF8_OPTION_NON_COPIABLE => {
+                CommonOption::CustomUtf8NonCopiable(CustomUtf8Option::from_slice::<B>(slice)?)
+            }
+            CUSTOM_BINARY_OPTION_COPIABLE => {
+                CommonOption::CustomBinaryCopiable(CustomBinaryOption::from_slice::<B>(slice)?)
+            }
+            CUSTOM_BINARY_OPTION_NON_COPIABLE => {
+                CommonOption::CustomBinaryNonCopiable(CustomBinaryOption::from_slice::<B>(slice)?)
+            }
+            _ => CommonOption::Unknown(UnknownOption::new(code, slice)),
         })
     }
-}
 
-impl<'a> CustomBinaryOption<'a, true> {
-    /// Converts this option's value into a type that implements [`CustomCopiable`].
-    pub fn interpret<T: CustomCopiable<'a>>(&'a self)
-        -> Result<Option<T>, PcapError>
-    {
-        if self.pen != T::PEN {
-            return Ok(None)
+    pub(crate) fn code_name(code: u16) -> &'static str {
+        match code {
+            COMMENT => "Comment",
+            CUSTOM_UTF8_OPTION_COPIABLE => "CustomUtf8Copiable",
+            CUSTOM_UTF8_OPTION_NON_COPIABLE => "CustomUtf8NonCopiable",
+            CUSTOM_BINARY_OPTION_COPIABLE => "CustomBinaryCopiable",
+            CUSTOM_BINARY_OPTION_NON_COPIABLE => "CustomBinaryNonCopiable",
+            _ => "Unknown",
         }
-
-        T::from_slice(&self.value)
-            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
-    }
-
-    /// Converts this option into a [`CommonOption`].
-    pub fn into_common_option(self) -> CommonOption<'a> {
-        CommonOption::CustomBinaryCopiable(self)
     }
 }
 
-impl<'a> CustomBinaryOption<'a, false> {
-    /// Converts this option's value into a type that implements [`CustomNonCopiable`].
-    pub fn interpret<T: CustomNonCopiable<'a>>(&'a self, state: &T::State)
-        -> Result<Option<T>, PcapError>
-    {
-        if self.pen != T::PEN {
-            return Ok(None)
-        }
-
-        T::from_slice(state, &self.value)
-            .map_err(|e| PcapError::CustomConversionError(T::PEN, e.into()))
-    }
-
-    /// Converts this option into a [`CommonOption`].
-    pub fn into_common_option(self) -> CommonOption<'a> {
-        CommonOption::CustomBinaryNonCopiable(self)
-    }
-}
-
-/// Common fonctions of the PcapNg options
+/// Common functions of the PcapNg options
 pub(crate) trait PcapNgOption<'a> {
     /// Parse an option from a slice
     fn from_slice<B: ByteOrder>(
@@ -126,16 +94,19 @@ pub(crate) trait PcapNgOption<'a> {
         interface_id: Option<u32>,
         code: u16,
         slice: &'a [u8],
-    ) -> Result<Self, PcapError>
+    ) -> Result<Self, OptionEntryError>
     where
         Self: std::marker::Sized;
+
+    /// Return the name of the Option entry from its code
+    fn code_name(code: u16) -> &'static str;
 
     /// Parse all options in a block
     fn opts_from_slice<B: ByteOrder>(
         state: &PcapNgState,
         interface_id: Option<u32>,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Vec<Self>), PcapError>
+    ) -> Result<(&'a [u8], Vec<Self>), OptionParseError>
     where
         Self: std::marker::Sized,
     {
@@ -148,11 +119,14 @@ pub(crate) trait PcapNgOption<'a> {
 
         while !slice.is_empty() {
             if slice.len() < 4 {
-                return Err(PcapError::InvalidField("Option: slice.len() < 4"));
+                return Err(OptionParseError::ContentTooSmall {
+                    needed: 4,
+                    actual: slice.len(),
+                });
             }
 
-            let code = slice.read_u16::<B>().unwrap();
-            let length = slice.read_u16::<B>().unwrap() as usize;
+            let code = slice.read_u16::<B>().expect("available length checked before");
+            let length = slice.read_u16::<B>().expect("available length checked before") as usize;
             let pad_len = (4 - (length % 4)) % 4;
 
             if code == 0 {
@@ -160,11 +134,20 @@ pub(crate) trait PcapNgOption<'a> {
             }
 
             if slice.len() < length + pad_len {
-                return Err(PcapError::InvalidField("Option: length + pad.len() > slice.len()"));
+                return Err(OptionParseError::ContentTooSmall {
+                    needed: length + pad_len,
+                    actual: slice.len(),
+                });
             }
 
             let tmp_slice = &slice[..length];
-            let opt = Self::from_slice::<B>(state, interface_id, code, tmp_slice)?;
+            let opt = Self::from_slice::<B>(state, interface_id, code, tmp_slice).map_err(|e| {
+                OptionParseError::InvalidEntry {
+                    code,
+                    name: Self::code_name(code),
+                    source: Box::new(e),
+                }
+            })?;
 
             // Jump over the padding
             slice = &slice[length + pad_len..];
@@ -176,7 +159,12 @@ pub(crate) trait PcapNgOption<'a> {
     }
 
     /// Write the option to a writer
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, interface_id: Option<u32>, writer: &mut W) -> Result<usize, PcapError>;
+    fn write_to<B: ByteOrder, W: Write>(
+        &self,
+        state: &PcapNgState,
+        interface_id: Option<u32>,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError>;
 
     /// Write all options in a block
     fn write_opts_to<B: ByteOrder, W: Write>(
@@ -184,7 +172,7 @@ pub(crate) trait PcapNgOption<'a> {
         state: &PcapNgState,
         interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, PcapError>
+    ) -> Result<usize, PcapNgWriteError>
     where
         Self: std::marker::Sized,
     {
@@ -217,180 +205,118 @@ pub struct UnknownOption<'a> {
 impl<'a> UnknownOption<'a> {
     /// Creates a new [`UnknownOption`]
     pub fn new(code: u16, value: &'a [u8]) -> Self {
-        UnknownOption { code, value: Cow::Borrowed(value) }
-    }
-}
-
-/// Custom binary option
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
-    /// Option PEN identifier
-    pub pen: u32,
-    /// Option value
-    pub value: Cow<'a, [u8]>,
-}
-
-impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
-    /// Parse an [`CustomBinaryOption`] from a slice
-    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, PcapError> {
-        let pen = src.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, src.len()))?;
-        let opt = CustomBinaryOption { pen, value: Cow::Borrowed(src) };
-        Ok(opt)
-    }
-
-    /// Returns a version of self with all fields converted to owning versions.
-    pub fn into_owned(self) -> CustomBinaryOption<'static, COPIABLE> {
-        CustomBinaryOption {
-            pen: self.pen,
-            value: Cow::Owned(self.value.into_owned())
+        UnknownOption {
+            code,
+            value: Cow::Borrowed(value),
         }
     }
 }
 
-/// Custom string (UTF-8) option
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
-    /// Option PEN identifier
-    pub pen: u32,
-    /// Option value
-    pub value: Cow<'a, str>,
+pub(crate) trait WriteOpt {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError>;
 }
 
-impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
-    /// Parse a [`CustomUtf8Option`] from a slice
-    pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, PcapError> {
-        let pen = src.read_u32::<B>().map_err(|_| PcapError::IncompleteBuffer(4, src.len()))?;
-        let opt = CustomUtf8Option { pen, value: Cow::Borrowed(std::str::from_utf8(src)?) };
-        Ok(opt)
-    }
+/// Write an option with its header and padding.
+fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
+    writer: &mut W,
+    code: u16,
+    len: usize,
+    content: impl FnOnce(&mut W) -> Result<(), std::io::Error>,
+) -> Result<usize, PcapNgWriteError> {
+    let pad_len = (4 - len % 4) % 4;
 
-    /// Returns a version of self with all fields converted to owning versions.
-    pub fn into_owned(self) -> CustomUtf8Option<'static, COPIABLE> {
-        CustomUtf8Option {
-            pen: self.pen,
-            value: Cow::Owned(self.value.into_owned())
-        }
-    }
+    let len: u16 = len.try_into().map_err(|_| {
+        PcapNgWriteError::validation_error("OptionEntry.length", ContentValidationError::OptionTooBig(len))
+    })?;
+
+    writer.write_u16::<B>(code)?;
+    writer.write_u16::<B>(len)?;
+    content(writer)?;
+    writer.write_all(&[0_u8; 3][..pad_len])?;
+
+    Ok(len as usize + pad_len + 4)
 }
 
-pub(crate) trait WriteOptTo {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize>;
-}
-
-impl<'a> WriteOptTo for Cow<'a, [u8]> {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        let len = self.len();
-        let pad_len = (4 - len % 4) % 4;
-
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(len as u16)?;
-        writer.write_all(self)?;
-        writer.write_all(&[0_u8; 3][..pad_len])?;
-
-        Ok(len + pad_len + 4)
+impl<'a> WriteOpt for Cow<'a, [u8]> {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, self.len(), |w| w.write_all(self))
     }
 }
 
-impl<'a> WriteOptTo for Cow<'a, str> {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        let len = self.len();
-        let pad_len = (4 - len % 4) % 4;
-
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(len as u16)?;
-        writer.write_all(self.as_bytes())?;
-        writer.write_all(&[0_u8; 3][..pad_len])?;
-
-        Ok(len + pad_len + 4)
+impl<'a> WriteOpt for Cow<'a, str> {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, self.len(), |w| w.write_all(self.as_bytes()))
     }
 }
 
-impl WriteOptTo for u8 {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(1)?;
-        writer.write_u8(*self)?;
-        writer.write_all(&[0_u8; 3])?;
-
-        Ok(8)
+impl WriteOpt for u8 {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, 1, |w| w.write_u8(*self))
     }
 }
 
-impl WriteOptTo for u16 {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(2)?;
-        writer.write_u16::<B>(*self)?;
-        writer.write_all(&[0_u8; 2])?;
-
-        Ok(8)
+impl WriteOpt for u16 {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, 2, |w| w.write_u16::<B>(*self))
     }
 }
 
-impl WriteOptTo for u32 {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(4)?;
-        writer.write_u32::<B>(*self)?;
-
-        Ok(8)
+impl WriteOpt for u32 {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, 4, |w| w.write_u32::<B>(*self))
     }
 }
 
-impl WriteOptTo for u64 {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(8)?;
-        writer.write_u64::<B>(*self)?;
-
-        Ok(12)
+impl WriteOpt for u64 {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, 8, |w| w.write_u64::<B>(*self))
     }
 }
 
-impl<'a> WriteOptTo for CommonOption<'a> {
-    fn write_opt_to<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> IoResult<usize> {
-        let len = match self {
-            CommonOption::Comment(a) => a.len(),
-            CommonOption::CustomBinaryCopiable(a) => a.value.len() + 4,
-            CommonOption::CustomBinaryNonCopiable(a) => a.value.len() + 4,
-            CommonOption::CustomUtf8Copiable(a) => a.value.len() + 4,
-            CommonOption::CustomUtf8NonCopiable(a) => a.value.len() + 4,
-            CommonOption::Unknown(a) => a.value.len(),
-        };
+impl WriteOpt for i64 {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, 8, |w| w.write_i64::<B>(*self))
+    }
+}
 
-        let pad_len = (4 - len % 4) % 4;
-
-        writer.write_u16::<B>(code)?;
-        writer.write_u16::<B>(len as u16)?;
-
+impl<'a> WriteOpt for CommonOption<'a> {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         match self {
             CommonOption::Comment(a) => {
-                writer.write_all(a.as_bytes())?;
-            },
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.len(), |w| w.write_all(a.as_bytes()))
+            }
             CommonOption::CustomBinaryCopiable(a) => {
-                writer.write_u32::<B>(a.pen)?;
-                writer.write_all(&a.value)?;
-            },
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                    w.write_u32::<B>(a.pen)?;
+                    w.write_all(&a.value)?;
+                    Ok(())
+                })
+            }
             CommonOption::CustomBinaryNonCopiable(a) => {
-                writer.write_u32::<B>(a.pen)?;
-                writer.write_all(&a.value)?;
-            },
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                    w.write_u32::<B>(a.pen)?;
+                    w.write_all(&a.value)?;
+                    Ok(())
+                })
+            }
             CommonOption::CustomUtf8Copiable(a) => {
-                writer.write_u32::<B>(a.pen)?;
-                writer.write_all(a.value.as_bytes())?;
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                    w.write_u32::<B>(a.pen)?;
+                    w.write_all(a.value.as_bytes())?;
+                    Ok(())
+                })
             }
             CommonOption::CustomUtf8NonCopiable(a) => {
-                writer.write_u32::<B>(a.pen)?;
-                writer.write_all(a.value.as_bytes())?;
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
+                    w.write_u32::<B>(a.pen)?;
+                    w.write_all(a.value.as_bytes())?;
+                    Ok(())
+                })
             }
             CommonOption::Unknown(a) => {
-                writer.write_all(&a.value)?;
+                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len(), |w| w.write_all(&a.value))
             }
-        };
-
-        writer.write_all(&[0_u8; 3][..pad_len])?;
-
-        Ok(len + pad_len + 4)
+        }
     }
 }
 
@@ -398,9 +324,9 @@ impl<'a> WriteOptTo for CommonOption<'a> {
 mod tests {
     use byteorder_slice::BigEndian;
 
-    use crate::PcapError;
     use crate::pcapng::PcapNgState;
     use crate::pcapng::blocks::opt_common::PcapNgOption;
+    use crate::pcapng::errors::{OptionEntryError, PcapNgWriteError};
 
     #[derive(Debug, PartialEq)]
     struct PcapNgOptionImpl {}
@@ -411,7 +337,7 @@ mod tests {
             _interface_id: Option<u32>,
             _code: u16,
             _slice: &'a [u8],
-        ) -> Result<Self, PcapError>
+        ) -> Result<Self, OptionEntryError>
         where
             Self: std::marker::Sized,
         {
@@ -423,11 +349,14 @@ mod tests {
             _state: &PcapNgState,
             _interface_id: Option<u32>,
             _writer: &mut W,
-        ) -> Result<usize, PcapError> {
+        ) -> Result<usize, PcapNgWriteError> {
             Ok(0)
         }
-    }
 
+        fn code_name(_code: u16) -> &'static str {
+            "Option"
+        }
+    }
 
     /// Test that a list of option without an endofopt can be parsed
     #[test]
@@ -435,7 +364,8 @@ mod tests {
         let data = [0, 1, 0, 4, 0, 0, 0, 0];
         let state = PcapNgState::default();
 
-        let (rem, opts) = PcapNgOptionImpl::opts_from_slice::<BigEndian>(&state, None, &data).expect("Failed to read the options");
+        let (rem, opts) =
+            PcapNgOptionImpl::opts_from_slice::<BigEndian>(&state, None, &data).expect("Failed to read the options");
 
         assert_eq!(&opts, &[PcapNgOptionImpl {}]);
         assert!(rem.is_empty());

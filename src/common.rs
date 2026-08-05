@@ -1,14 +1,5 @@
 use byteorder_slice::ByteOrder;
 
-/// Timestamp resolution of the pcap
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum TsResolution {
-    /// Microsecond resolution
-    MicroSecond,
-    /// Nanosecond resolution
-    NanoSecond,
-}
-
 /// Endianness of the pcap
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Endianness {
@@ -19,7 +10,7 @@ pub enum Endianness {
 }
 
 impl Endianness {
-    /// True if LitlleEndian
+    /// True if LittleEndian
     pub fn is_little(self) -> bool {
         match self {
             Endianness::Big => false,
@@ -39,8 +30,7 @@ impl Endianness {
     pub fn from_byteorder<B: ByteOrder>() -> Self {
         if B::read_u32(&[0, 0, 0, 1]) == 1 {
             Endianness::Big
-        }
-        else {
+        } else {
             Endianness::Little
         }
     }
@@ -52,6 +42,13 @@ impl Endianness {
 
         #[cfg(target_endian = "little")]
         return Endianness::Little;
+    }
+}
+
+impl Default for Endianness {
+    /// Return the native endianness of the system
+    fn default() -> Self {
+        Self::native()
     }
 }
 

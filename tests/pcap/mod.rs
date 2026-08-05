@@ -3,8 +3,9 @@ extern crate pcap_file;
 use std::borrow::Cow;
 use std::time::Duration;
 
-use pcap_file::TsResolution;
-use pcap_file::pcap::{PcapHeader, PcapPacket, PcapReader, PcapWriter};
+use pcap_file::pcap::{
+    PcapHeader, PcapPacket, PcapReader, PcapValidationError, PcapWriter, RawPcapPacket, PcapTsResolution,
+};
 
 static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
 
@@ -15,6 +16,23 @@ fn read() {
     //Global header len
     let mut data_len = 24;
     while let Some(pkt) = pcap_reader.next_packet() {
+        let pkt = pkt.unwrap();
+
+        //Packet header len
+        data_len += 16;
+        data_len += pkt.len();
+    }
+
+    assert_eq!(data_len as usize, DATA.len());
+}
+
+#[test]
+fn read_with_iterator() {
+    let pcap_reader = PcapReader::new(&DATA[..]).unwrap();
+
+    //Global header len
+    let mut data_len = 24;
+    for pkt in pcap_reader {
         let pkt = pkt.unwrap();
 
         //Packet header len
@@ -37,9 +55,46 @@ fn read_write() {
         pcap_writer.write_packet(&pkt.unwrap()).unwrap();
     }
 
-    out = pcap_writer.into_writer();
+    out = pcap_writer.into_inner();
 
     assert_eq!(&DATA[..], &out[..]);
+}
+
+#[test]
+fn read_write_with_iterator() {
+    let pcap_reader = PcapReader::new(&DATA[..]).unwrap();
+    let header = pcap_reader.header();
+
+    let mut out = Vec::new();
+    let mut pcap_writer = PcapWriter::with_header(out, header).unwrap();
+
+    for pkt in pcap_reader {
+        pcap_writer.write_packet(&pkt.unwrap()).unwrap();
+    }
+
+    out = pcap_writer.into_inner();
+
+    assert_eq!(&DATA[..], &out[..]);
+}
+
+#[test]
+fn iterator_stops_after_error() {
+    let packet = RawPcapPacket {
+        ts_sec: 1,
+        ts_frac: 0,
+        incl_len: 4,
+        orig_len: 2,
+        data: Cow::Borrowed(&[1, 2, 3, 4]),
+    };
+
+    let mut writer = PcapWriter::new(Vec::new()).unwrap();
+    writer.write_raw_packet(&packet).unwrap();
+    let pcap = writer.into_inner();
+
+    let mut packets = PcapReader::new(&pcap[..]).unwrap().into_iter();
+
+    assert!(packets.next().unwrap().is_err());
+    assert!(packets.next().is_none());
 }
 
 #[test]
@@ -54,7 +109,7 @@ fn read_write_raw() {
         pcap_writer.write_raw_packet(&pkt.unwrap()).unwrap();
     }
 
-    out = pcap_writer.into_writer();
+    out = pcap_writer.into_inner();
 
     assert_eq!(&DATA[..], &out[..]);
 }
@@ -71,7 +126,7 @@ fn big_endian() {
         ts_accuracy: 0,
         snaplen: 0xFFFF,
         datalink: pcap_file::DataLink::ETHERNET,
-        ts_resolution: TsResolution::MicroSecond,
+        ts_resolution: PcapTsResolution::MicroSecond,
         endianness: pcap_file::Endianness::Big,
     };
 
@@ -107,7 +162,7 @@ fn little_endian() {
         ts_accuracy: 0,
         snaplen: 4096,
         datalink: pcap_file::DataLink::ETHERNET,
-        ts_resolution: TsResolution::MicroSecond,
+        ts_resolution: PcapTsResolution::MicroSecond,
         endianness: pcap_file::Endianness::Little,
     };
 
@@ -135,11 +190,64 @@ fn infinite_loop() {
     let mut pcap_reader = PcapReader::new(&data[..]).unwrap();
 
     let mut i = 0;
-    while pcap_reader.next_packet().is_some() {
+    while let Some(pkt) = pcap_reader.next_packet() {
+        let Ok(_) = pkt else {
+            break;
+        };
+
         if i > 18 {
             panic!("infinite loop detected");
         }
 
         i += 1;
     }
+}
+
+#[test]
+fn reader_with_capacity_handles_large_packets() {
+    let data = vec![0xA5; 8_000_001];
+    let packet = PcapPacket::new(Duration::new(1, 0), data.len() as u32, Cow::Borrowed(data.as_slice())).unwrap();
+    let header = PcapHeader {
+        snaplen: data.len() as u32,
+        ..Default::default()
+    };
+
+    let mut writer = PcapWriter::with_header(Vec::new(), header).unwrap();
+    writer.write_packet(&packet).unwrap();
+    let pcap = writer.into_inner();
+
+    let mut reader = PcapReader::with_capacity(&pcap[..], pcap.len()).unwrap();
+    let packet = reader.next_packet().unwrap().unwrap();
+
+    assert_eq!(packet.len(), data.len() as u32);
+    assert_eq!(packet.data(), &data);
+    assert!(reader.next_packet().is_none());
+}
+
+#[test]
+fn raw_reader_recovers_after_typed_packet_validation_error() {
+    let packet = RawPcapPacket {
+        ts_sec: 1,
+        ts_frac: 0,
+        incl_len: 4,
+        orig_len: 2,
+        data: Cow::Borrowed(&[1, 2, 3, 4]),
+    };
+
+    let mut writer = PcapWriter::new(Vec::new()).unwrap();
+    writer.write_raw_packet(&packet).unwrap();
+    let pcap = writer.into_inner();
+
+    let mut reader = PcapReader::new(&pcap[..]).unwrap();
+    let typed_error = reader.next_packet().unwrap().unwrap_err();
+    assert!(matches!(
+        typed_error,
+        pcap_file::pcap::PcapReadError::Validation(PcapValidationError::OriginLenTooSmall(2, 4))
+    ));
+
+    let raw_packet = reader.next_raw_packet().unwrap().unwrap();
+    assert_eq!(raw_packet.incl_len, 4);
+    assert_eq!(raw_packet.orig_len, 2);
+    assert_eq!(&*raw_packet.data, &[1, 2, 3, 4]);
+    assert!(reader.next_raw_packet().is_none());
 }

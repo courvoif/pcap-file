@@ -4,9 +4,8 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
-use crate::errors::*;
-use crate::{DataLink, Endianness, TsResolution};
-
+use crate::pcap::{PcapParseError, PcapTsResolution, PcapValidationError, PcapWriteError};
+use crate::{DataLink, Endianness};
 
 /// Pcap Global Header
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -30,7 +29,7 @@ pub struct PcapHeader {
     pub datalink: DataLink,
 
     /// Timestamp resolution of the pcap (microsecond or nanosecond)
-    pub ts_resolution: TsResolution,
+    pub ts_resolution: PcapTsResolution,
 
     /// Endianness of the pcap (excluding the packet data)
     pub endianness: Endianness,
@@ -42,30 +41,34 @@ impl PcapHeader {
     /// Returns an error if the reader doesn't contain a valid pcap
     /// or if there is a reading error.
     ///
-    /// [`PcapError::IncompleteBuffer`] indicates that there is not enough data in the buffer.
-    pub fn from_slice(mut slice: &[u8]) -> PcapResult<(&[u8], PcapHeader)> {
+    /// [`PcapParseError::IncompleteBuffer`] indicates that there is not enough data in the buffer.
+    pub fn from_slice(mut slice: &[u8]) -> Result<(&[u8], PcapHeader), PcapParseError> {
         // Check that slice.len() > PcapHeader length
         if slice.len() < 24 {
-            return Err(PcapError::IncompleteBuffer(24, slice.len()));
+            return Err(PcapParseError::IncompleteBuffer(24, slice.len()));
         }
 
         let magic_number = slice.read_u32::<BigEndian>().unwrap();
 
         match magic_number {
-            0xA1B2C3D4 => return init_pcap_header::<BigEndian>(slice, TsResolution::MicroSecond, Endianness::Big),
-            0xA1B23C4D => return init_pcap_header::<BigEndian>(slice, TsResolution::NanoSecond, Endianness::Big),
-            0xD4C3B2A1 => return init_pcap_header::<LittleEndian>(slice, TsResolution::MicroSecond, Endianness::Little),
-            0x4D3CB2A1 => return init_pcap_header::<LittleEndian>(slice, TsResolution::NanoSecond, Endianness::Little),
-            _ => return Err(PcapError::InvalidField("PcapHeader: wrong magic number")),
+            0xA1B2C3D4 => return init_pcap_header::<BigEndian>(slice, PcapTsResolution::MicroSecond, Endianness::Big),
+            0xA1B23C4D => return init_pcap_header::<BigEndian>(slice, PcapTsResolution::NanoSecond, Endianness::Big),
+            0xD4C3B2A1 => {
+                return init_pcap_header::<LittleEndian>(slice, PcapTsResolution::MicroSecond, Endianness::Little);
+            }
+            0x4D3CB2A1 => {
+                return init_pcap_header::<LittleEndian>(slice, PcapTsResolution::NanoSecond, Endianness::Little);
+            }
+            _ => return Err(PcapValidationError::InvalidMagicNumber(magic_number).into()),
         };
 
         // Inner function used for the initialisation of the PcapHeader.
-        // Must check the srcclength before calling it.
+        // Must check the src length before calling it.
         fn init_pcap_header<B: ByteOrder>(
             mut src: &[u8],
-            ts_resolution: TsResolution,
+            ts_resolution: PcapTsResolution,
             endianness: Endianness,
-        ) -> PcapResult<(&[u8], PcapHeader)> {
+        ) -> Result<(&[u8], PcapHeader), PcapParseError> {
             let header = PcapHeader {
                 version_major: src.read_u16::<B>().unwrap(),
                 version_minor: src.read_u16::<B>().unwrap(),
@@ -84,25 +87,39 @@ impl PcapHeader {
     /// Writes a [`PcapHeader`] to a writer.
     ///
     /// Uses the endianness of the header.
-    pub fn write_to<W: Write>(&self, writer: &mut W) -> PcapResult<usize> {
+    pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
         return match self.endianness {
             Endianness::Big => write_header::<_, BigEndian>(self, writer),
             Endianness::Little => write_header::<_, LittleEndian>(self, writer),
         };
 
-        fn write_header<W: Write, B: ByteOrder>(header: &PcapHeader, writer: &mut W) -> PcapResult<usize> {
+        fn write_header<W: Write, B: ByteOrder>(header: &PcapHeader, writer: &mut W) -> Result<usize, PcapWriteError> {
             let magic_number = match header.ts_resolution {
-                TsResolution::MicroSecond => 0xA1B2C3D4,
-                TsResolution::NanoSecond => 0xA1B23C4D,
+                PcapTsResolution::MicroSecond => 0xA1B2C3D4,
+                PcapTsResolution::NanoSecond => 0xA1B23C4D,
             };
 
-            writer.write_u32::<B>(magic_number).map_err(PcapError::IoError)?;
-            writer.write_u16::<B>(header.version_major).map_err(PcapError::IoError)?;
-            writer.write_u16::<B>(header.version_minor).map_err(PcapError::IoError)?;
-            writer.write_i32::<B>(header.ts_correction).map_err(PcapError::IoError)?;
-            writer.write_u32::<B>(header.ts_accuracy).map_err(PcapError::IoError)?;
-            writer.write_u32::<B>(header.snaplen).map_err(PcapError::IoError)?;
-            writer.write_u32::<B>(header.datalink.into()).map_err(PcapError::IoError)?;
+            writer
+                .write_u32::<B>(magic_number)
+                .map_err(|e| PcapWriteError::FieldWriteFailed("magic_number", e))?;
+            writer
+                .write_u16::<B>(header.version_major)
+                .map_err(|e| PcapWriteError::FieldWriteFailed("version_major", e))?;
+            writer
+                .write_u16::<B>(header.version_minor)
+                .map_err(|e| PcapWriteError::FieldWriteFailed("version_minor", e))?;
+            writer
+                .write_i32::<B>(header.ts_correction)
+                .map_err(|e| PcapWriteError::FieldWriteFailed("ts_correction", e))?;
+            writer
+                .write_u32::<B>(header.ts_accuracy)
+                .map_err(|e| PcapWriteError::FieldWriteFailed("ts_accuracy", e))?;
+            writer
+                .write_u32::<B>(header.snaplen)
+                .map_err(|e| PcapWriteError::FieldWriteFailed("snaplen", e))?;
+            writer
+                .write_u32::<B>(header.datalink.into())
+                .map_err(|e| PcapWriteError::FieldWriteFailed("datalink", e))?;
 
             Ok(24)
         }
@@ -111,16 +128,19 @@ impl PcapHeader {
 
 /// Creates a new [`PcapHeader`] with these parameters:
 ///
-/// ```rust,ignore
-/// PcapHeader {
+/// ```rust
+/// use pcap_file::{DataLink, Endianness};
+/// use pcap_file::pcap::{PcapHeader, PcapTsResolution};
+///
+/// let header = PcapHeader {
 ///     version_major: 2,
 ///     version_minor: 4,
 ///     ts_correction: 0,
 ///     ts_accuracy: 0,
 ///     snaplen: 65535,
 ///     datalink: DataLink::ETHERNET,
-///     ts_resolution: TsResolution::MicroSecond,
-///     endianness: Endianness::Big
+///     ts_resolution: PcapTsResolution::MicroSecond,
+///     endianness: Endianness::native()
 /// };
 /// ```
 impl Default for PcapHeader {
@@ -132,8 +152,8 @@ impl Default for PcapHeader {
             ts_accuracy: 0,
             snaplen: 65535,
             datalink: DataLink::ETHERNET,
-            ts_resolution: TsResolution::MicroSecond,
-            endianness: Endianness::Big,
+            ts_resolution: PcapTsResolution::MicroSecond,
+            endianness: Endianness::default(),
         }
     }
 }
