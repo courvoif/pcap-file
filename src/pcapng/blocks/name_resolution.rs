@@ -80,7 +80,7 @@ pub enum Record<'a> {
 }
 
 impl<'a> Record<'a> {
-    /// Parse a [`Record`] from a slice
+    /// Parses a [`Record`] from a byte slice.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
         if slice.len() < 4 {
             return Err(BlockContentParseError::BlockContentTooSmall {
@@ -135,7 +135,7 @@ impl<'a> Record<'a> {
         Ok((&slice[len..], record))
     }
 
-    /// Write a [`Record`] to a writer
+    /// Writes a [`Record`] to a writer.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         match self {
             Record::End => {
@@ -206,7 +206,7 @@ pub struct Ipv4Record<'a> {
 }
 
 impl<'a> Ipv4Record<'a> {
-    /// Parse a [`Ipv4Record`] from a slice
+    /// Parses an [`Ipv4Record`] from a byte slice.
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
         if slice.len() < 6 {
             return Err(ContentValidationError::RecordWrongMinSize {
@@ -238,7 +238,7 @@ impl<'a> Ipv4Record<'a> {
         Ok(record)
     }
 
-    /// Write an [`Ipv4Record`] to a writer
+    /// Writes an [`Ipv4Record`] to a writer.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 4;
 
@@ -266,7 +266,7 @@ pub struct Ipv6Record<'a> {
 }
 
 impl<'a> Ipv6Record<'a> {
-    /// Parse a [`Ipv6Record`] from a slice
+    /// Parses an [`Ipv6Record`] from a byte slice.
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
         if slice.len() < 18 {
             return Err(ContentValidationError::RecordWrongMinSize {
@@ -298,7 +298,7 @@ impl<'a> Ipv6Record<'a> {
         Ok(record)
     }
 
-    /// Write an [`Ipv6Record`] to a writer
+    /// Writes an [`Ipv6Record`] to a writer.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 16;
 
@@ -325,7 +325,7 @@ pub struct UnknownRecord<'a> {
 }
 
 impl<'a> UnknownRecord<'a> {
-    /// Creates a new [`UnknownRecord`]
+    /// Creates a new [`UnknownRecord`].
     fn new(type_: u16, value: &'a [u8]) -> Self {
         UnknownRecord {
             type_,

@@ -24,7 +24,7 @@ pub struct UnknownBlock<'a> {
 }
 
 impl<'a> UnknownBlock<'a> {
-    /// Creates a new [`UnknownBlock`]
+    /// Creates a new [`UnknownBlock`].
     pub fn new(type_: u32, length: u32, value: &'a [u8]) -> Self {
         UnknownBlock {
             type_,

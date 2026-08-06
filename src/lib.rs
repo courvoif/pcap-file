@@ -1,13 +1,13 @@
 #![allow(clippy::unreadable_literal)]
 #![warn(missing_docs)]
 
-//! Provides parsers, readers and writers for Pcap and PcapNg files.
+//! Provides parsers, readers, and writers for pcap and pcapng files.
 //!
-//! For Pcap files see the [`pcap`] module, especially [`PcapParser`](pcap::PcapParser),
+//! For pcap files, see the [`pcap`] module, especially [`PcapParser`](pcap::PcapParser),
 //! [`PcapReader<R>`](pcap::PcapReader) and [`PcapWriter<W>`](pcap::PcapWriter).
 //!
-//! For PcapNg files see the [`pcapng`] module, especially [`PcapNgParser`](pcapng::PcapNgParser),
-//! [`PcapNgReader<R>`](pcapng::PcapNgReader) and [`PcapNgWriter<W>`](pcapng::PcapNgWriter)
+//! For pcapng files, see the [`pcapng`] module, especially [`PcapNgParser`](pcapng::PcapNgParser),
+//! [`PcapNgReader<R>`](pcapng::PcapNgReader), and [`PcapNgWriter<W>`](pcapng::PcapNgWriter).
 
 pub use common::*;
 

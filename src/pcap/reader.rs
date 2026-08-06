@@ -6,7 +6,7 @@ use crate::read_buffer::ReadBuffer;
 
 /// Reads a pcap from a reader.
 ///
-/// Automatically bufferizes the data coming from the input reader.
+/// Buffers data from the underlying reader internally.
 ///
 /// # Example
 ///
@@ -20,10 +20,9 @@ use crate::read_buffer::ReadBuffer;
 ///
 /// // Read test.pcap
 /// while let Some(pkt) = pcap_reader.next_packet() {
-///     //Check if there is no error
 ///     let pkt = pkt.unwrap();
 ///
-///     //Do something
+///     // Process the packet.
 /// }
 /// ```
 #[derive(Debug)]
@@ -37,8 +36,8 @@ impl<R: Read> PcapReader<R> {
     ///
     /// This function reads the global pcap header of the file to verify its integrity.
     ///
-    /// Prefer a non-bufferized input reader as this reader bufferizes data internally,
-    /// with a default internal buffer capacity of 8 MB.
+    /// Prefer an unbuffered input because this type already uses an internal
+    /// buffer with a default capacity of 8 MB.
     ///
     /// # Errors
     /// The data stream is not in a valid pcap file format.
@@ -57,9 +56,8 @@ impl<R: Read> PcapReader<R> {
     /// internal buffer capacity of 8 MB.
     ///
     /// # Errors
-    /// The data stream is not in a valid pcap file format.
-    ///
-    /// The underlying data are not readable.
+    /// - The data stream is not in a valid pcap file format.
+    /// - The underlying data are not readable.
     pub fn with_capacity(reader: R, capacity: usize) -> Result<PcapReader<R>, PcapReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
         let parser = reader.parse_with(PcapParser::new)?;
@@ -73,8 +71,8 @@ impl<R: Read> PcapReader<R> {
     }
 
     /// Returns the next [`PcapPacket`].
-    /// [`None`] means that the reader has reached the EoF.
-    /// Won't advance the reader past any malformed packets.
+    /// Returns [`None`] after reaching EOF.
+    /// The reader does not advance past a malformed packet.
     ///
     /// # Errors
     /// - Some variants of [`PcapReadError::Io`] can be retried.
@@ -93,14 +91,14 @@ impl<R: Read> PcapReader<R> {
     }
 
     /// Returns the next [`RawPcapPacket`].
-    /// [`None`] means that the reader has reached the EoF.
+    /// Returns [`None`] after reaching EOF.
     ///
-    /// More permissive than [`Self::next_packet`], can be used to parse malformed files.
+    /// This method is more permissive than [`Self::next_packet`] and can read malformed files.
     ///
     /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
     ///
     /// # Errors
-    /// - Only [`PcapReadError::Io`] can happen, some of its variants can be retried.
+    /// - Only [`PcapReadError::Io`] can occur; some variants can be retried.
     pub fn next_raw_packet(&mut self) -> Option<Result<RawPcapPacket<'_>, PcapReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
@@ -152,7 +150,7 @@ impl<R: Read> IntoIterator for PcapReader<R> {
 /// for pkt in pcap_reader {
 ///     let pkt = pkt.unwrap();
 ///
-///     //Do something
+///     // Process the packet.
 /// }
 /// ```
 #[derive(Debug)]

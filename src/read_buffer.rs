@@ -23,12 +23,12 @@ pub(crate) struct ReadBuffer<R: Read> {
 }
 
 impl<R: Read> ReadBuffer<R> {
-    /// Creates a new ReadBuffer with capacity of 8_000_000
+    /// Creates a new `ReadBuffer` with a default capacity of 8 MB.
     pub fn new(reader: R) -> Self {
         Self::with_capacity(reader, 8_000_000)
     }
 
-    /// Creates a new ReadBuffer with the given capacity
+    /// Creates a new `ReadBuffer` with the given capacity.
     pub fn with_capacity(reader: R, capacity: usize) -> Self {
         Self {
             reader,
@@ -39,7 +39,7 @@ impl<R: Read> ReadBuffer<R> {
         }
     }
 
-    /// Parse data from the internal buffer
+    /// Parses data from the internal buffer.
     ///
     /// Safety
     ///
@@ -116,12 +116,12 @@ impl<R: Read> ReadBuffer<R> {
         self.advance(diff_len)
     }
 
-    /// Return the valid data of the internal buffer
+    /// Returns the valid data in the internal buffer.
     pub fn buffer(&self) -> &[u8] {
         &self.buffer[self.pos..self.len]
     }
 
-    /// Return true if there is some data that can be read
+    /// Returns whether data remains to be read.
     pub fn has_data_left(&mut self) -> Result<bool, std::io::Error> {
         // The buffer can be empty and the reader can still have data
         if self.buffer().is_empty() {
@@ -134,12 +134,12 @@ impl<R: Read> ReadBuffer<R> {
         Ok(true)
     }
 
-    /// Return the inner reader
+    /// Returns the inner reader.
     pub fn into_inner(self) -> R {
         self.reader
     }
 
-    /// Return a reference over the inner reader
+    /// Returns a reference to the inner reader.
     pub fn get_ref(&self) -> &R {
         &self.reader
     }

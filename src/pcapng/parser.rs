@@ -8,9 +8,9 @@ use super::blocks::section_header::SectionHeaderBlock;
 use crate::Endianness;
 use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 
-/// Parses a PcapNg from a slice of bytes.
+/// Parses a pcapng stream from a byte slice.
 ///
-/// You can match on [`PcapNgParseError::IncompleteBuffer`](crate::pcapng::PcapNgParseError) to know if the parser needs more data.
+/// Match [`PcapNgParseError::IncompleteBuffer`] to determine whether more data is needed.
 /// Some typed conversion errors from [`Self::next_block`] can be recovered by
 /// calling [`Self::next_raw_block`] with the same input slice.
 ///
@@ -27,16 +27,16 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 /// while !src.is_empty() {
 ///     match pcapng_parser.next_block(src) {
 ///         Ok((rem, block)) => {
-///             // Do something
+///             // Process the block.
 ///
-///             // Don't forget to update src
+///             // Advance to the remaining input.
 ///             src = rem;
 ///         },
 ///         Err(PcapNgParseError::IncompleteBuffer(_,_)) => {
 ///             // Load more data into src if parsing a stream.
 ///         },
 ///         Err(_) => {
-///             // Handle parsing error
+///             // Handle an unrecoverable parsing error.
 ///         },
 ///     }
 /// }
@@ -100,7 +100,7 @@ impl PcapNgParser {
     }
 
     /// Returns the remainder and the next [`RawBlock`].
-    /// More permissive than [`Self::next_block`].
+    /// This method is more permissive than [`Self::next_block`].
     ///
     /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
     /// Section Header and Interface Description blocks are still decoded before
@@ -110,7 +110,7 @@ impl PcapNgParser {
     ///
     /// # Errors
     /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
-    /// - [`PcapNgParseError::StateUpdate`] can happen when a state-changing raw block cannot be decoded.
+    /// - [`PcapNgParseError::StateUpdate`] can occur when a state-changing raw block cannot be decoded.
     /// - All other errors will prevent the parser from advancing further.
     pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
         /// Inner function to parse the next RawBlock.

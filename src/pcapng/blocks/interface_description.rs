@@ -94,7 +94,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
 }
 
 impl<'a> InterfaceDescriptionBlock<'a> {
-    /// Creates a new [`InterfaceDescriptionBlock`]
+    /// Creates a new [`InterfaceDescriptionBlock`].
     pub fn new(linktype: DataLink, snaplen: u32) -> Self {
         Self {
             linktype,
@@ -449,7 +449,7 @@ impl InterfaceTsResolution {
     /// Encode a timestamp with the current resolution.
     ///
     /// # Errors
-    /// - Timestamp can't be encoded with the current resolution on a u64
+    /// - The timestamp cannot be encoded as a `u64` with the current resolution.
     pub fn encode_timestamp(&self, timestamp: Duration) -> Result<u64, ContentValidationError> {
         let timestamp_ns = timestamp.as_nanos();
         let ts = if self.is_bin {

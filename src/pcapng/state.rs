@@ -84,7 +84,7 @@ impl PcapNgState {
         }
     }
 
-    /// Return the endianness to use to write the [`Block`].
+    /// Returns the endianness to use when writing the given [`Block`].
     ///
     /// Takes an optional block as an argument to be used in conjunction with [`Self::decode_block_if_needed`].
     pub fn block_endianness(&self, block: Option<&Block>) -> Endianness {

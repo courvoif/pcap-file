@@ -512,9 +512,9 @@ impl<'a> Block<'a> {
     }
 }
 
-/// Common interface for the PcapNg blocks
+/// Common interface for pcapng blocks.
 pub trait PcapNgBlock<'a> {
-    /// Parse a new block from a slice, using a [`PcapNgState`].
+    /// Parses a block from a byte slice using the provided [`PcapNgState`].
     fn from_slice<B: ByteOrder>(
         state: &PcapNgState,
         slice: &'a [u8],
@@ -522,7 +522,7 @@ pub trait PcapNgBlock<'a> {
     where
         Self: std::marker::Sized;
 
-    /// Write the content of a block into a writer, using a [`PcapNgState`].
+    /// Writes the block content using the provided [`PcapNgState`].
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError>;
 
     /// Convert a block into the [`Block`] enumeration

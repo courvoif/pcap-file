@@ -9,7 +9,7 @@ use super::{PcapNgState, RawBlock};
 use crate::Endianness;
 use crate::pcapng::errors::PcapNgWriteError;
 
-/// Write a PcapNg to a writer.
+/// Writes a pcapng stream to a writer.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -25,24 +25,23 @@ use crate::pcapng::errors::PcapNgWriteError;
 ///
 /// // Read test.pcapng
 /// while let Some(block) = pcapng_reader.next_block() {
-///     // Check if there is no error
 ///     let (block, _) = block.unwrap();
 ///
-///     // Write back parsed Block
+///     // Write the parsed block.
 ///     pcapng_writer.write_block(&block).unwrap();
 /// }
 /// ```
 pub struct PcapNgWriter<W: Write> {
     /// Current state of the pcapng format.
     state: PcapNgState,
-    /// Wrapped writer to which the block are written to.
+    /// Wrapped writer to which blocks are written.
     writer: W,
 }
 
 impl<W: Write> PcapNgWriter<W> {
-    /// Create a new [`PcapNgWriter`] from an existing writer.
+    /// Creates a new [`PcapNgWriter`] from an existing writer.
     ///
-    /// Default to the native endianness of the CPU.
+    /// Uses the CPU's native endianness by default.
     ///
     /// Writes this section header to the file:
     /// ```rust
@@ -59,12 +58,12 @@ impl<W: Write> PcapNgWriter<W> {
     /// ```
     ///
     /// # Errors
-    /// The writer can't be written to.
+    /// Returns an error if the section header cannot be written.
     pub fn new(writer: W) -> Result<Self, PcapNgWriteError> {
         Self::with_endianness(writer, Endianness::default())
     }
 
-    /// Create a new [`PcapNgWriter`] from an existing writer with the given endianness.
+    /// Creates a new [`PcapNgWriter`] with the given endianness.
     pub fn with_endianness(writer: W, endianness: Endianness) -> Result<Self, PcapNgWriteError> {
         let section = SectionHeaderBlock {
             endianness,
@@ -74,7 +73,7 @@ impl<W: Write> PcapNgWriter<W> {
         Self::with_section_header(writer, section)
     }
 
-    /// Create a new [`PcapNgWriter`] from an existing writer with the given section header.
+    /// Creates a new [`PcapNgWriter`] with the given section header.
     pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'_>) -> Result<Self, PcapNgWriteError> {
         let mut state = PcapNgState::default();
 
@@ -92,7 +91,7 @@ impl<W: Write> PcapNgWriter<W> {
         Ok(Self { state, writer })
     }
 
-    /// Write a [`Block`].
+    /// Writes a [`Block`].
     ///
     /// I/O errors can leave the output stream partially written. After any error,
     /// callers should assume the pcapng stream is no longer usable.
@@ -142,7 +141,7 @@ impl<W: Write> PcapNgWriter<W> {
         Ok(nb_written)
     }
 
-    /// Write a [`PcapNgBlock`].
+    /// Writes a [`PcapNgBlock`].
     ///
     /// I/O errors can leave the output stream partially written. After any error,
     /// callers should assume the pcapng stream is no longer usable.
@@ -179,7 +178,7 @@ impl<W: Write> PcapNgWriter<W> {
         self.write_block(&block.into_block())
     }
 
-    /// Write a [`RawBlock`].
+    /// Writes a [`RawBlock`].
     ///
     /// I/O errors can leave the output stream partially written. After any error,
     /// callers should assume the pcapng stream is no longer usable.
@@ -215,14 +214,14 @@ impl<W: Write> PcapNgWriter<W> {
         self.writer
     }
 
-    /// Get a reference to the underlying writer.
+    /// Returns a reference to the underlying writer.
     pub fn get_ref(&self) -> &W {
         &self.writer
     }
 
-    /// Get a mutable reference to the underlying writer.
+    /// Returns a mutable reference to the underlying writer.
     ///
-    /// Should not be used unless you really know what you're doing
+    /// Modifying the writer directly can produce an invalid pcapng stream.
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.writer
     }
@@ -232,12 +231,12 @@ impl<W: Write> PcapNgWriter<W> {
         &self.state
     }
 
-    /// Return the current [`SectionHeaderBlock`].
+    /// Returns the current [`SectionHeaderBlock`].
     pub fn section(&self) -> &SectionHeaderBlock<'static> {
         &self.state.section
     }
 
-    /// Return all the current [`InterfaceDescriptionBlock`].
+    /// Returns all current [`InterfaceDescriptionBlock`] values.
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
         &self.state.interfaces
     }

@@ -1,4 +1,4 @@
-//! Contains the PcapNg parser, reader and writer
+//! Contains the pcapng parser, reader, writer, and block types.
 
 pub mod blocks;
 pub use blocks::{Block, PcapNgBlock, RawBlock};

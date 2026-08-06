@@ -1,4 +1,4 @@
-//! Contains the Pcap parser, reader and writer
+//! Contains the pcap parser, reader, and writer.
 
 mod errors;
 mod header;

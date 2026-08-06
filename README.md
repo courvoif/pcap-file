@@ -1,10 +1,10 @@
 # pcap-file
 
-Provides parsers, readers and writers for Pcap and PcapNg files.
+Provides parsers, readers, and writers for pcap and pcapng files.
 
-For Pcap files see the `pcap` module.
+For pcap files, see the `pcap` module.
 
-For PcapNg files see the `pcapng` module.
+For pcapng files, see the `pcapng` module.
 
 [![Crates.io](https://img.shields.io/crates/v/pcap-file.svg)](https://crates.io/crates/pcap-file)
 [![rustdoc](https://img.shields.io/badge/Doc-pcap--file-green.svg)](https://docs.rs/pcap-file/)
@@ -120,10 +120,10 @@ Runnable examples are available in the [`examples`](examples) directory:
 - Pcap: [parse](examples/pcap_parse.rs), [read](examples/pcap_read.rs), and
   [create and write a packet](examples/pcap_write.rs). See also how to
   [recover a malformed packet as raw data](examples/pcap_raw_recovery.rs).
-- PcapNg: [parse](examples/pcapng_parse.rs), [read](examples/pcapng_read.rs), and
+- pcapng: [parse](examples/pcapng_parse.rs), [read](examples/pcapng_read.rs), and
   [create and write a packet](examples/pcapng_write.rs). See also how to
   [recover a malformed block as raw data](examples/pcapng_raw_recovery.rs).
-- PcapNg extensions: read and write a [custom block](examples/pcapng_custom_block.rs)
+- pcapng extensions: read and write a [custom block](examples/pcapng_custom_block.rs)
   or a [custom option](examples/pcapng_custom_option.rs). Both examples propagate
   conversion errors and distinguish payloads registered under a different PEN.
 
@@ -140,7 +140,9 @@ cargo run --example pcapng_raw_recovery
 
 ## Fuzzing
 
-Currently there are 4 crude harnesses to check that the parser won't panic in any situation. To start fuzzing you must install `cargo-fuzz` with the command:
+Four fuzzing harnesses check that the parsers do not panic on arbitrary input.
+
+Install `cargo-fuzz` with:
 
 ```bash
 $ cargo install cargo-fuzz
@@ -169,4 +171,4 @@ Licensed under MIT.
 
 ## Disclaimer
 
-To test the library I used the excellent PcapNg testing suite provided by [hadrielk](https://github.com/hadrielk/pcapng-test-generator).
+The test suite uses the pcapng files provided by [hadrielk's pcapng test generator](https://github.com/hadrielk/pcapng-test-generator).

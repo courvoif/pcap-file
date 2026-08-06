@@ -86,9 +86,9 @@ impl<'a> CommonOption<'a> {
     }
 }
 
-/// Common functions of the PcapNg options
+/// Common behavior for pcapng options.
 pub(crate) trait PcapNgOption<'a> {
-    /// Parse an option from a slice
+    /// Parses an option from a byte slice.
     fn from_slice<B: ByteOrder>(
         state: &PcapNgState,
         interface_id: Option<u32>,
@@ -98,10 +98,10 @@ pub(crate) trait PcapNgOption<'a> {
     where
         Self: std::marker::Sized;
 
-    /// Return the name of the Option entry from its code
+    /// Returns the option-entry name for its code.
     fn code_name(code: u16) -> &'static str;
 
-    /// Parse all options in a block
+    /// Parses all options in a block.
     fn opts_from_slice<B: ByteOrder>(
         state: &PcapNgState,
         interface_id: Option<u32>,
@@ -158,7 +158,7 @@ pub(crate) trait PcapNgOption<'a> {
         Ok((slice, options))
     }
 
-    /// Write the option to a writer
+    /// Writes the option to a writer.
     fn write_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -166,7 +166,7 @@ pub(crate) trait PcapNgOption<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError>;
 
-    /// Write all options in a block
+    /// Writes all options in a block.
     fn write_opts_to<B: ByteOrder, W: Write>(
         opts: &[Self],
         state: &PcapNgState,
@@ -203,7 +203,7 @@ pub struct UnknownOption<'a> {
 }
 
 impl<'a> UnknownOption<'a> {
-    /// Creates a new [`UnknownOption`]
+    /// Creates a new [`UnknownOption`].
     pub fn new(code: u16, value: &'a [u8]) -> Self {
         UnknownOption {
             code,
@@ -216,7 +216,7 @@ pub(crate) trait WriteOpt {
     fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError>;
 }
 
-/// Write an option with its header and padding.
+/// Writes an option with its header and padding.
 fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
     writer: &mut W,
     code: u16,

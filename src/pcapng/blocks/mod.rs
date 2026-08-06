@@ -1,4 +1,4 @@
-//! Contains the PcapNg blocks.
+//! Contains pcapng block types.
 
 pub mod block_common;
 pub mod custom;

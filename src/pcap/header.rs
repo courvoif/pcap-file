@@ -38,7 +38,7 @@ pub struct PcapHeader {
 impl PcapHeader {
     /// Creates a new [`PcapHeader`] from a slice of bytes.
     ///
-    /// Returns an error if the reader doesn't contain a valid pcap
+    /// Returns an error if the input does not contain a valid pcap header.
     /// or if there is a reading error.
     ///
     /// [`PcapParseError::IncompleteBuffer`] indicates that there is not enough data in the buffer.

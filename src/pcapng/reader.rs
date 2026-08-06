@@ -8,9 +8,9 @@ use super::{PcapNgParser, PcapNgState};
 use crate::pcapng::errors::PcapNgReadError;
 use crate::read_buffer::ReadBuffer;
 
-/// Reads a PcapNg from a reader.
+/// Reads a pcapng stream from a reader.
 ///
-/// Automatically bufferizes the data coming from the input reader.
+/// Buffers data from the underlying reader internally.
 ///
 /// # Example
 /// ```rust,no_run
@@ -23,10 +23,9 @@ use crate::read_buffer::ReadBuffer;
 ///
 /// // Read test.pcapng
 /// while let Some(block) = pcapng_reader.next_block() {
-///     //Check if there is no error
 ///     let (block, state) = block.unwrap();
 ///
-///     //Do something
+///     // Process the block using its state.
 /// }
 /// ```
 #[derive(Debug)]
@@ -40,8 +39,8 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// Parses the first block which must be a valid SectionHeaderBlock.
     ///
-    /// Prefer a non-bufferized input reader as this reader bufferizes data internally,
-    /// with a default internal buffer capacity of 8 MB.
+    /// Prefer an unbuffered input because this type already uses an internal
+    /// buffer with a default capacity of 8 MB.
     pub fn new(reader: R) -> Result<PcapNgReader<R>, PcapNgReadError> {
         let mut reader = ReadBuffer::new(reader);
         let parser = reader.parse_with(PcapNgParser::new)?;
@@ -61,12 +60,14 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the next [`Block`] and the current [`PcapNgState`].
+    /// 
+    /// Returns [`None`] after reaching EOF.
+    ///
+    ///  The reader does not advance past a malformed block.
     ///
     /// The returned state already includes the effects of the returned block.
     /// Use this method instead of the owned iterator when processing a block
     /// requires state such as its section or interface descriptions.
-    /// [`None`] means that the reader has reached the EoF.
-    /// Won't advance the reader past any malformed packets.
     ///
     /// # Errors
     /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
@@ -97,7 +98,9 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the next [`RawBlock`] and the current [`PcapNgState`].
-    /// [`None`] means that the reader has reached the EoF.
+    /// 
+    /// Returns [`None`] after reaching EOF.
+    /// 
     /// More permissive than [`Self::next_block`].
     ///
     /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
@@ -197,7 +200,7 @@ impl<R: Read> IntoIterator for PcapNgReader<R> {
 /// for block in pcapng_reader {
 ///     let block = block.unwrap();
 ///
-///     //Do something
+///     // Process the block.
 /// }
 /// ```
 #[derive(Debug)]

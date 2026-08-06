@@ -31,7 +31,7 @@ pub trait CustomPayloadCopiable<'a> {
     where
         Self: Sized;
 
-    /// Write this payload into a writer.
+    /// Writes this payload to a writer.
     fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), Self::WriteToError>;
 
     /// Serialize this payload into bytes.
@@ -70,7 +70,7 @@ pub trait CustomPayloadNonCopiable<'a> {
     where
         Self: Sized;
 
-    /// Write this payload into a writer.
+    /// Writes this payload to a writer.
     fn write_to<W: Write>(&self, state: &Self::State, writer: &mut W) -> Result<(), Self::WriteToError>;
 
     /// Serialize this payload into bytes.
@@ -93,7 +93,7 @@ pub trait CustomPayloadNonCopiable<'a> {
 /// Common interface for custom block payloads.
 ///
 /// # Important
-/// Any implementor must also implements [`CustomPayloadCopiable`] and/or [`CustomPayloadNonCopiable`].
+/// Implementors must also implement [`CustomPayloadCopiable`] or [`CustomPayloadNonCopiable`].
 pub trait CustomBlockPayload<'a> {
     /// Convert this payload into a copiable [`CustomBlock`].
     ///
@@ -131,7 +131,7 @@ pub trait CustomBlockPayload<'a> {
 /// Common interface for custom option payloads.
 ///
 /// # Important
-/// Any implementor must also implements [`CustomPayloadCopiable`] and/or [`CustomPayloadNonCopiable`].
+/// Implementors must also implement [`CustomPayloadCopiable`] or [`CustomPayloadNonCopiable`].
 pub trait CustomOptionPayload<'a> {
     /// Convert this payload into a copiable [`CustomBinaryOption`].
     ///
@@ -175,7 +175,7 @@ pub trait CustomOptionPayload<'a> {
 #[derive(Debug, Error)]
 #[error("Error in custom conversion for PEN {pen:#X}")]
 pub struct CustomError {
-    /// Pen of the custom block/option
+    /// PEN of the custom block or option.
     pub pen: u32,
     /// Source of the error
     #[source]
@@ -302,7 +302,7 @@ pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
 }
 
 impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
-    /// Parse an [`CustomBinaryOption`] from a slice
+    /// Parses a [`CustomBinaryOption`] from a byte slice.
     pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, OptionEntryError> {
         let pen = src.read_u32::<B>().map_err(|_| OptionEntryError::WrongSize {
             expected: 4,
@@ -380,7 +380,7 @@ pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
 }
 
 impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
-    /// Parse a [`CustomUtf8Option`] from a slice
+    /// Parses a [`CustomUtf8Option`] from a byte slice.
     pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, OptionEntryError> {
         let pen = src.read_u32::<B>().map_err(|_| OptionEntryError::WrongSize {
             expected: 4,

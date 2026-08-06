@@ -26,7 +26,7 @@ impl Endianness {
         }
     }
 
-    /// Return the endianness of the given ByteOrder
+    /// Returns the endianness of the given byte order.
     pub fn from_byteorder<B: ByteOrder>() -> Self {
         if B::read_u32(&[0, 0, 0, 1]) == 1 {
             Endianness::Big
@@ -35,7 +35,7 @@ impl Endianness {
         }
     }
 
-    /// Return the native endianness of the system
+    /// Returns the system's native endianness.
     pub fn native() -> Self {
         #[cfg(target_endian = "big")]
         return Endianness::Big;
@@ -46,7 +46,7 @@ impl Endianness {
 }
 
 impl Default for Endianness {
-    /// Return the native endianness of the system
+    /// Returns the system's native endianness.
     fn default() -> Self {
         Self::native()
     }

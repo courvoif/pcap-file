@@ -6,9 +6,9 @@ use crate::pcap::PcapHeader;
 use crate::pcap::PcapPacket;
 use crate::pcap::PcapParseError;
 
-/// Parses a Pcap from a slice of bytes.
+/// Parses a pcap stream from a byte slice.
 ///
-/// You can match on [`PcapParseError::IncompleteBuffer`](crate::pcap::PcapParseError) to know if the parser needs more data.
+/// Match [`PcapParseError::IncompleteBuffer`] to determine whether more data is needed.
 ///
 /// # Example
 /// ```no_run
@@ -17,16 +17,16 @@ use crate::pcap::PcapParseError;
 /// let pcap = std::fs::read("test.pcap").expect("Error reading file");
 /// let mut src = &pcap[..];
 ///
-/// // Creates a new parser and parse the pcap header
+/// // Create a parser and parse the pcap header.
 /// let (rem, pcap_parser) = PcapParser::new(&pcap[..]).unwrap();
 /// src = rem;
 ///
 /// while !src.is_empty() {
 ///     match pcap_parser.next_packet(src) {
 ///         Ok((rem, packet)) => {
-///             // Do something
+///             // Process the packet.
 ///
-///             // Don't forget to update src
+///             // Advance to the remaining input.
 ///             src = rem;
 ///
 ///         },
@@ -34,7 +34,7 @@ use crate::pcap::PcapParseError;
 ///             // Load more data into src if parsing a stream.
 ///         },
 ///         Err(_) => {
-///             // Parsing error, unrecoverable
+///             // Handle an unrecoverable parsing error.
 ///         },
 ///     }
 /// }
@@ -77,12 +77,12 @@ impl PcapParser {
 
     /// Returns the remainder and the next [`RawPcapPacket`].
     ///
-    /// More permissive than [`Self::next_packet`], can be used to parse malformed files.
+    /// This method is more permissive than [`Self::next_packet`] and can parse malformed packets.
     ///
     /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
     ///
     /// # Errors
-    /// - Only [`PcapParseError::IncompleteBuffer`] can happen. It is recoverable by loading more data.
+    /// - Only [`PcapParseError::IncompleteBuffer`] can occur. Load more data and retry with the same input.
     pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], RawPcapPacket<'a>), PcapParseError> {
         match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),
