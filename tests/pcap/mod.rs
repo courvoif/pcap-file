@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::time::Duration;
 
 use pcap_file::pcap::{
-    PcapHeader, PcapPacket, PcapReader, PcapValidationError, PcapWriter, RawPcapPacket, PcapTsResolution,
+    PcapHeader, PcapPacket, PcapReader, PcapTsResolution, PcapValidationError, PcapWriter, RawPcapPacket,
 };
 
 static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");

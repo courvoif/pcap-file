@@ -10,6 +10,8 @@ use crate::read_buffer::ReadBuffer;
 
 /// Reads a PcapNg from a reader.
 ///
+/// Automatically bufferizes the data coming from the input reader.
+///
 /// # Example
 /// ```rust,no_run
 /// use std::fs::File;
@@ -37,6 +39,9 @@ impl<R: Read> PcapNgReader<R> {
     /// Creates a new [`PcapNgReader`] from a reader.
     ///
     /// Parses the first block which must be a valid SectionHeaderBlock.
+    ///
+    /// Prefer a non-bufferized input reader as this reader bufferizes data internally,
+    /// with a default internal buffer capacity of 8 MB.
     pub fn new(reader: R) -> Result<PcapNgReader<R>, PcapNgReadError> {
         let mut reader = ReadBuffer::new(reader);
         let parser = reader.parse_with(PcapNgParser::new)?;
@@ -45,10 +50,10 @@ impl<R: Read> PcapNgReader<R> {
 
     /// Creates a new [`PcapNgReader`] with a custom internal buffer capacity.
     ///
-    /// Use this when the stream can contain blocks larger than the default
-    /// reader buffer.
-    ///
     /// Parses the first block which must be a valid SectionHeaderBlock.
+    ///
+    /// Use this when the stream can contain blocks larger than the default
+    /// internal buffer capacity of 8 MB.
     pub fn with_capacity(reader: R, capacity: usize) -> Result<PcapNgReader<R>, PcapNgReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
         let parser = reader.parse_with(PcapNgParser::new)?;

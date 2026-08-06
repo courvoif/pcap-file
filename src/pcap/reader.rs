@@ -6,6 +6,8 @@ use crate::read_buffer::ReadBuffer;
 
 /// Reads a pcap from a reader.
 ///
+/// Automatically bufferizes the data coming from the input reader.
+///
 /// # Example
 ///
 /// ```rust,no_run
@@ -35,7 +37,8 @@ impl<R: Read> PcapReader<R> {
     ///
     /// This function reads the global pcap header of the file to verify its integrity.
     ///
-    /// The underlying reader must point to a valid pcap file/stream.
+    /// Prefer a non-bufferized input reader as this reader bufferizes data internally,
+    /// with a default internal buffer capacity of 8 MB.
     ///
     /// # Errors
     /// The data stream is not in a valid pcap file format.
@@ -51,7 +54,7 @@ impl<R: Read> PcapReader<R> {
     /// Creates a new [`PcapReader`] with a custom internal buffer capacity.
     ///
     /// Use this when the stream can contain packets larger than the default
-    /// reader buffer.
+    /// internal buffer capacity of 8 MB.
     ///
     /// # Errors
     /// The data stream is not in a valid pcap file format.
