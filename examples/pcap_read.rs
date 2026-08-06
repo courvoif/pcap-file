@@ -1,15 +1,16 @@
-use std::error::Error;
 use std::fs::File;
 
+use anyhow::{Context, Result};
 use pcap_file::pcap::PcapReader;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let path = std::env::args().nth(1).unwrap_or_else(|| "capture.pcap".into());
-    let mut reader = PcapReader::new(File::open(path)?)?;
+fn main() -> Result<()> {
+    let input = File::open("tests/pcap/little_endian.pcap").context("failed to open the pcap test capture")?;
+    let reader = PcapReader::new(input).context("failed to read the pcap header")?;
 
     println!("link type: {:?}", reader.header().datalink);
-    while let Some(packet) = reader.next_packet() {
-        let packet = packet?;
+
+    for packet in reader {
+        let packet = packet.context("failed to read a pcap packet")?;
         println!("{} bytes at {:?}", packet.len(), packet.timestamp());
     }
 

@@ -1,7 +1,7 @@
-use std::error::Error;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, BufWriter, Write};
 
+use anyhow::{Context, Result, anyhow};
 use byteorder_slice::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use pcap_file::pcapng::blocks::custom::{CustomOptionPayload, CustomPayloadCopiable};
 use pcap_file::pcapng::blocks::opt_common::CommonOption;
@@ -31,26 +31,38 @@ impl CustomPayloadCopiable<'_> for CaptureId {
 
 impl CustomOptionPayload<'_> for CaptureId {}
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let path = std::env::args().nth(1).unwrap_or_else(|| "custom-option.pcapng".into());
+fn main() -> Result<()> {
+    let path = "target/pcapng-custom-option-example.pcapng";
 
     let custom = CaptureId(1234)
-        .into_custom_binary_option_copiable()?
+        .into_custom_binary_option_copiable()
+        .context("failed to encode the custom option")?
         .into_common_option();
+
+    // We could have added the option to any block.
+    // We use a SectionHeaderBlock for the sake of simplicity.
     let section = SectionHeaderBlock {
         options: vec![SectionHeaderOption::Common(custom)],
         ..Default::default()
     };
-    PcapNgWriter::with_section_header(File::create(&path)?, section)?;
+
+    let output = File::create(path).context("failed to create the custom-option capture")?;
+    let writer = PcapNgWriter::with_section_header(BufWriter::new(output), section)
+        .context("failed to write the section header and custom option")?;
+    drop(writer);
 
     // The reader consumes the Section Header Block in new(), so inspect it via section().
-    let reader = PcapNgReader::new(File::open(path)?)?;
+    let input = File::open(path).context("failed to open the custom-option capture")?;
+    let reader = PcapNgReader::new(input).context("failed to read the section header")?;
+
     for option in &reader.section().options {
         if let SectionHeaderOption::Common(CommonOption::CustomBinaryCopiable(option)) = option {
-            match option.interpret::<CaptureId>()? {
-                Some(id) => println!("capture ID: {}", id.0),
-                None => println!("unrecognized custom option PEN: {}", option.pen),
-            }
+            let capture_id = option
+                .interpret::<CaptureId>()
+                .context("failed to decode the custom option")?
+                .ok_or_else(|| anyhow!("unrecognized custom option PEN: {}", option.pen))?;
+
+            println!("capture ID: {}", capture_id.0);
         }
     }
 

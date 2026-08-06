@@ -1,7 +1,7 @@
-use std::error::Error;
 use std::fs::File;
-use std::io::{self, Write};
+use std::io::{self, BufWriter, Write};
 
+use anyhow::{Context, Result, anyhow};
 use byteorder_slice::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use pcap_file::pcapng::blocks::custom::{CustomBlockPayload, CustomPayloadCopiable};
 use pcap_file::pcapng::{Block, PcapNgReader, PcapNgWriter};
@@ -29,20 +29,35 @@ impl CustomPayloadCopiable<'_> for Counter {
 
 impl CustomBlockPayload<'_> for Counter {}
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let path = std::env::args().nth(1).unwrap_or_else(|| "custom-block.pcapng".into());
+fn main() -> Result<()> {
+    let path = "target/pcapng-custom-block-example.pcapng";
 
-    let mut writer = PcapNgWriter::new(File::create(&path)?)?;
-    writer.write_pcapng_block(Counter(42).into_custom_block_copiable()?)?;
+    /* Custom block writing */
+    let output = File::create(path).context("failed to create the custom-block capture")?;
+    let mut writer = PcapNgWriter::new(BufWriter::new(output)).context("failed to write the section header")?;
+
+    let block = Counter(42)
+        .into_custom_block_copiable()
+        .context("failed to encode the custom block")?;
+
+    writer
+        .write_pcapng_block(block)
+        .context("failed to write the custom block")?;
+
     drop(writer);
 
-    let mut reader = PcapNgReader::new(File::open(path)?)?;
+    /* Custom block reading */
+    let input = File::open(path).context("failed to open the custom-block capture")?;
+    let mut reader = PcapNgReader::new(input).context("failed to read the section header")?;
+
     while let Some(result) = reader.next_block() {
-        if let Block::CustomCopiable(block) = result?.0 {
-            match block.interpret::<Counter>()? {
-                Some(counter) => println!("counter: {}", counter.0),
-                None => println!("unrecognized custom block PEN: {}", block.pen),
-            }
+        if let Block::CustomCopiable(block) = result.context("failed to read a pcapng block")?.0 {
+            let counter = block
+                .interpret::<Counter>()
+                .context("failed to decode the custom block")?
+                .ok_or_else(|| anyhow!("unrecognized custom block PEN: {}", block.pen))?;
+
+            println!("counter: {}", counter.0);
         }
     }
 

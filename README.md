@@ -113,11 +113,25 @@ block that uses that interface.
 Runnable examples are available in the [`examples`](examples) directory:
 
 - Pcap: [parse](examples/pcap_parse.rs), [read](examples/pcap_read.rs), and
-  [create and write a packet](examples/pcap_write.rs).
+  [create and write a packet](examples/pcap_write.rs). See also how to
+  [recover a malformed packet as raw data](examples/pcap_raw_recovery.rs).
 - PcapNg: [parse](examples/pcapng_parse.rs), [read](examples/pcapng_read.rs), and
-  [create and write a packet](examples/pcapng_write.rs).
+  [create and write a packet](examples/pcapng_write.rs). See also how to
+  [recover a malformed block as raw data](examples/pcapng_raw_recovery.rs).
 - PcapNg extensions: read and write a [custom block](examples/pcapng_custom_block.rs)
-  or a [custom option](examples/pcapng_custom_option.rs), including error handling.
+  or a [custom option](examples/pcapng_custom_option.rs). Both examples propagate
+  conversion errors and distinguish payloads registered under a different PEN.
+
+Run an example from the repository root. Read and parse examples use bundled
+test captures, recovery examples generate one malformed record, and write
+examples create a uniquely named file under `target/`:
+
+```bash
+cargo run --example pcap_read
+cargo run --example pcapng_parse
+cargo run --example pcap_raw_recovery
+cargo run --example pcapng_raw_recovery
+```
 
 ## Fuzzing
 
