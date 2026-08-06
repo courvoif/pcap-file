@@ -11,6 +11,8 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 /// Parses a PcapNg from a slice of bytes.
 ///
 /// You can match on [`PcapNgParseError::IncompleteBuffer`](crate::pcapng::PcapNgParseError) to know if the parser needs more data.
+/// Some typed conversion errors from [`Self::next_block`] can be recovered by
+/// calling [`Self::next_raw_block`] with the same input slice.
 ///
 /// # Example
 /// ```rust,no_run
@@ -72,7 +74,8 @@ impl PcapNgParser {
     /// # Errors
     /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
     /// - Other errors will prevent the parser from advancing further.
-    ///   Some of these can be recovered by calling [`Self::next_raw_block`].
+    ///   Some typed conversion errors for non-state blocks can be recovered by
+    ///   calling [`Self::next_raw_block`] with the same input slice.
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
         // This function doesn't call `self::next_raw_block()` because converting the Block before updating the state is faster and better for error handling.
 

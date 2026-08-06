@@ -89,6 +89,8 @@ does not expose `PcapNgState`, and stops after the first error. Use
 borrowed blocks and the state after applying that block. Some typed conversion
 errors returned by `next_block()` can be recovered by reading the same block
 with `next_raw_block()`; see the [raw recovery example](examples/pcapng_raw_recovery.rs).
+The same recovery pattern applies to `PcapNgParser`: after a recoverable typed
+conversion error, call `next_raw_block()` with the same input slice.
 
 ### PcapNgWriter
 

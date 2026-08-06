@@ -9,6 +9,8 @@ fn main() -> Result<()> {
     let (mut remaining, mut parser) = PcapNgParser::new(&data).context("failed to parse the pcapng section header")?;
     println!("section endianness: {:?}", parser.state().endianness());
 
+    // If next_block() returns a recoverable typed conversion error, the same
+    // remaining slice can instead be passed to next_raw_block().
     while !remaining.is_empty() {
         let (next, block) = parser.next_block(remaining).context("failed to parse a pcapng block")?;
 
