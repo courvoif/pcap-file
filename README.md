@@ -83,9 +83,12 @@ for block in pcapng_reader {
 }
 ```
 
-The iterator API returns owned blocks and is slower than `next_block()`, which
-can borrow block data directly from the internal read buffer and also exposes
-the current `PcapNgState`. It stops after the first error.
+The iterator API is intended for simple traversal: it returns owned blocks,
+does not expose `PcapNgState`, and stops after the first error. Use
+`next_block()` when processing a block requires the current state; it returns
+borrowed blocks and the state after applying that block. Some typed conversion
+errors returned by `next_block()` can be recovered by reading the same block
+with `next_raw_block()`; see the [raw recovery example](examples/pcapng_raw_recovery.rs).
 
 ### PcapNgWriter
 

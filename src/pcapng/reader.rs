@@ -61,6 +61,10 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the next [`Block`] and the current [`PcapNgState`].
+    ///
+    /// The returned state already includes the effects of the returned block.
+    /// Use this method instead of the owned iterator when processing a block
+    /// requires state such as its section or interface descriptions.
     /// [`None`] means that the reader has reached the EoF.
     /// Won't advance the reader past any malformed packets.
     ///
@@ -172,6 +176,11 @@ impl<R: Read> IntoIterator for PcapNgReader<R> {
 ///
 /// This is slower than [`PcapNgReader::next_block`] because each block payload
 /// is copied out of the internal read buffer.
+///
+/// This iterator is intended for simple traversal and does not expose the
+/// evolving [`PcapNgState`]. Use [`PcapNgReader::next_block`] when processing a
+/// block requires its corresponding state or typed-error recovery through
+/// [`PcapNgReader::next_raw_block`].
 ///
 /// Stops after the first error.
 ///
