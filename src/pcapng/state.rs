@@ -13,7 +13,7 @@ use {
     crate::pcapng::{PcapNgReader, PcapNgWriter},
 };
 
-/// State that must be maintained whilst reading or writing a PcapNg stream.
+/// State maintained while reading or writing a pcapng stream.
 ///
 /// This state is necessary because the encoding of blocks depends on
 /// information seen earlier in the stream, such as the [`Endianness`] of the
@@ -53,9 +53,10 @@ impl PcapNgState {
         self.section.endianness
     }
 
-    /// Decode the given [`RawBlock`] if it contains state information.
+    /// Decodes a [`RawBlock`] if it can change the state.
     ///
-    /// Returns [`None`] for blocks that don't affect the state.
+    /// Returns [`None`] unless the raw block is a Section Header or Interface
+    /// Description block.
     pub fn decode_block_if_needed<'a>(&self, raw_block: &RawBlock<'a>) -> Result<Option<Block<'a>>, StateUpdateError> {
         match raw_block.type_ {
             SECTION_HEADER_BLOCK | INTERFACE_DESCRIPTION_BLOCK => {
@@ -66,7 +67,8 @@ impl PcapNgState {
         }
     }
 
-    /// Update the state based on the next [`Block`].
+    /// Updates the state from a Section Header or Interface Description block.
+    /// Other block variants leave the state unchanged.
     pub fn update_from_block(&mut self, block: &Block) {
         match block {
             Block::SectionHeader(blk) => {
@@ -94,7 +96,7 @@ impl PcapNgState {
         }
     }
 
-    /// Decode a timestamp using the correct format for the current state.
+    /// Decodes a timestamp using the referenced interface's resolution and offset.
     ///
     /// Returns the time elapsed since 1970-01-01 00:00:00 UTC.
     pub fn decode_timestamp(
@@ -126,7 +128,7 @@ impl PcapNgState {
         })
     }
 
-    /// Encode a timestamp using the correct format for the current state.
+    /// Encodes a timestamp using the referenced interface's resolution and offset.
     ///
     /// `timestamp` is the time elapsed since 1970-01-01 00:00:00 UTC.
     pub fn encode_timestamp(

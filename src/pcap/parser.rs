@@ -58,8 +58,8 @@ impl PcapParser {
     ///
     /// # Errors
     /// - [`PcapParseError::IncompleteBuffer`] is recoverable (by loading more data).
-    /// - Other errors will prevent the parser from advancing further.
-    ///   Some can be recovered by calling [`PcapParser::next_raw_packet`].
+    /// - Validation errors leave the input unconsumed. They can be recovered by
+    ///   calling [`PcapParser::next_raw_packet`] with the same input slice.
     pub fn next_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], PcapPacket<'a>), PcapParseError> {
         let res = match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),

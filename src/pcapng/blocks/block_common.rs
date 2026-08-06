@@ -23,25 +23,25 @@ use crate::pcapng::errors::{
 };
 use crate::pcapng::{ContentValidationError, PcapNgState};
 
-/// Section header block type
+/// Section Header Block type code.
 pub const SECTION_HEADER_BLOCK: u32 = 0x0A0D0D0A;
-/// Interface description block type
+/// Interface Description Block type code.
 pub const INTERFACE_DESCRIPTION_BLOCK: u32 = 0x00000001;
-/// Packet block type
+/// Packet Block type code.
 pub const PACKET_BLOCK: u32 = 0x00000002;
-/// Simple packet block type
+/// Simple Packet Block type code.
 pub const SIMPLE_PACKET_BLOCK: u32 = 0x00000003;
-/// Name resolution block type
+/// Name Resolution Block type code.
 pub const NAME_RESOLUTION_BLOCK: u32 = 0x00000004;
-/// Interface statistic block type
+/// Interface Statistics Block type code.
 pub const INTERFACE_STATISTIC_BLOCK: u32 = 0x00000005;
-/// Enhanced packet block type
+/// Enhanced Packet Block type code.
 pub const ENHANCED_PACKET_BLOCK: u32 = 0x00000006;
-/// Systemd journal export block type
+/// systemd Journal Export Block type code.
 pub const SYSTEMD_JOURNAL_EXPORT_BLOCK: u32 = 0x00000009;
-/// Custom block type, copiable
+/// Copyable Custom Block type code.
 pub const CUSTOM_BLOCK_COPIABLE: u32 = 0x00000BAD;
-/// Custom block type, non-copiable
+/// Non-copyable Custom Block type code.
 pub const CUSTOM_BLOCK_NON_COPIABLE: u32 = 0x40000BAD;
 
 //   0               1               2               3
@@ -56,16 +56,16 @@ pub const CUSTOM_BLOCK_NON_COPIABLE: u32 = 0x40000BAD;
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //  |                      Block Total Length                       |
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/// PcapNg Block
+/// Raw pcapng block with unparsed body bytes.
 #[derive(Clone, Debug)]
 pub struct RawBlock<'a> {
-    /// Type field
+    /// Numeric block type.
     pub type_: u32,
-    /// Initial length field
+    /// Leading total-length field.
     pub initial_len: u32,
-    /// Body of the block
+    /// Unparsed block body.
     pub body: Cow<'a, [u8]>,
-    /// Trailer length field
+    /// Trailing total-length field.
     pub trailer_len: u32,
 }
 
@@ -143,7 +143,7 @@ impl<'a> RawBlock<'a> {
 
     /// Writes a [`RawBlock`] to a writer.
     ///
-    /// Uses the endianness of the header.
+    /// Uses the byte order specified by `B` and returns the number of bytes written.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         self.validate()?;
 
@@ -183,8 +183,8 @@ impl<'a> RawBlock<'a> {
         Ok(())
     }
 
-    /// Tries to convert a [`RawBlock`] into a [`Block`], using a [`PcapNgState`].
-    /// The byteorder is defined by the `state`.
+    /// Tries to convert a [`RawBlock`] into a [`Block`] using a [`PcapNgState`].
+    /// The state determines the byte order.
     pub fn try_into_block(self, state: &PcapNgState) -> Result<Block<'a>, BlockConversionError> {
         match state.section.endianness {
             crate::Endianness::Big => Block::try_from_raw_block::<BigEndian>(state, self),
@@ -192,8 +192,8 @@ impl<'a> RawBlock<'a> {
         }
     }
 
-    /// Tries to convert a [`RawBlock`] into a [`Block`], using a [`PcapNgState`].
-    /// The byteorder is defined by the caller
+    /// Tries to convert a [`RawBlock`] into a [`Block`] using a [`PcapNgState`]
+    /// and the byte order specified by `B`.
     pub fn try_into_block_with_byteorder<B: ByteOrder>(
         self,
         state: &PcapNgState,
@@ -202,7 +202,7 @@ impl<'a> RawBlock<'a> {
     }
 }
 
-/// PcapNg parsed blocks
+/// Parsed pcapng block.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum Block<'a> {
     /// Section Header block

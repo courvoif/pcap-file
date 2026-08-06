@@ -7,39 +7,38 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use crate::pcap::{PcapParseError, PcapTsResolution, PcapValidationError, PcapWriteError};
 use crate::{DataLink, Endianness};
 
-/// Pcap Global Header
+/// Global header of a pcap file.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PcapHeader {
-    /// Major version number
+    /// Major format version.
     pub version_major: u16,
 
-    /// Minor version number
+    /// Minor format version.
     pub version_minor: u16,
 
-    /// GMT to local timezone correction, should always be 0
+    /// GMT-to-local-time correction; should always be 0.
     pub ts_correction: i32,
 
-    /// Timestamp accuracy, should always be 0
+    /// Timestamp accuracy; should always be 0.
     pub ts_accuracy: u32,
 
-    /// Max length of captured packet, typically 65535
+    /// Maximum number of bytes captured from each packet.
     pub snaplen: u32,
 
-    /// DataLink type (first layer in the packet)
+    /// Link-layer protocol of captured packets.
     pub datalink: DataLink,
 
-    /// Timestamp resolution of the pcap (microsecond or nanosecond)
+    /// Resolution of packet timestamps.
     pub ts_resolution: PcapTsResolution,
 
-    /// Endianness of the pcap (excluding the packet data)
+    /// Byte order of pcap metadata, excluding packet data.
     pub endianness: Endianness,
 }
 
 impl PcapHeader {
     /// Creates a new [`PcapHeader`] from a slice of bytes.
     ///
-    /// Returns an error if the input does not contain a valid pcap header.
-    /// or if there is a reading error.
+    /// Returns an error if the input does not contain a complete, valid pcap header.
     ///
     /// [`PcapParseError::IncompleteBuffer`] indicates that there is not enough data in the buffer.
     pub fn from_slice(mut slice: &[u8]) -> Result<(&[u8], PcapHeader), PcapParseError> {
@@ -86,7 +85,8 @@ impl PcapHeader {
 
     /// Writes a [`PcapHeader`] to a writer.
     ///
-    /// Uses the endianness of the header.
+    /// Uses the byte order and timestamp resolution stored in the header.
+    /// Returns the number of bytes written.
     pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
         return match self.endianness {
             Endianness::Big => write_header::<_, BigEndian>(self, writer),

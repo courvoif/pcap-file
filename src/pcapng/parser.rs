@@ -73,9 +73,9 @@ impl PcapNgParser {
     ///
     /// # Errors
     /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
-    /// - Other errors will prevent the parser from advancing further.
-    ///   Some typed conversion errors for non-state blocks can be recovered by
-    ///   calling [`Self::next_raw_block`] with the same input slice.
+    /// - Other errors leave the input and parser state unchanged. Typed
+    ///   conversion errors for non-state blocks can be recovered by calling
+    ///   [`Self::next_raw_block`] with the same input slice.
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
         // This function doesn't call `self::next_raw_block()` because converting the Block before updating the state is faster and better for error handling.
 
@@ -111,7 +111,8 @@ impl PcapNgParser {
     /// # Errors
     /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
     /// - [`PcapNgParseError::StateUpdate`] can occur when a state-changing raw block cannot be decoded.
-    /// - All other errors will prevent the parser from advancing further.
+    /// - Other errors leave the input and parser state unchanged and are not
+    ///   recoverable with this parser.
     pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
         /// Inner function to parse the next RawBlock.
         fn next_raw_block_inner<'a, B: ByteOrder>(

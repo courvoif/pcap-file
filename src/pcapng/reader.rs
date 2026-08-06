@@ -60,7 +60,7 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the next [`Block`] and the current [`PcapNgState`].
-    /// 
+    ///
     /// Returns [`None`] after reaching EOF.
     ///
     ///  The reader does not advance past a malformed block.
@@ -98,16 +98,16 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the next [`RawBlock`] and the current [`PcapNgState`].
-    /// 
+    ///
     /// Returns [`None`] after reaching EOF.
-    /// 
+    ///
     /// More permissive than [`Self::next_block`].
     ///
     /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
     ///
     /// # Errors
     /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
-    /// - [`PcapNgReadError::StateUpdate`] can happen when a state-changing raw block cannot be decoded.
+    /// - [`PcapNgReadError::StateUpdate`] can occur when a state-changing raw block cannot be decoded.
     /// - All other errors will prevent the reader from advancing further.
     #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
     pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {

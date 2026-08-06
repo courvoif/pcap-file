@@ -344,7 +344,7 @@ pub enum ContentValidationError {
     #[error("Block content doesn't fit on a u32: {0}B")]
     BlockContentTooBig(u64),
 
-    /// The content of a PcapNgOption is too big to be written
+    /// The content of a pcapng option is too large to be written.
     #[error("Option content doesn't fit on a u16: {0}B")]
     OptionTooBig(usize),
 }

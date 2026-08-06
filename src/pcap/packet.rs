@@ -188,20 +188,20 @@ impl<'a> PcapPacket<'a> {
     }
 }
 
-/// Raw Pcap packet with its header and data.
-/// The fields of the packet are not validated.
-/// The payload can be owned or borrowed.
+/// Raw pcap packet header and payload.
+///
+/// Header fields are not validated, and the payload can be owned or borrowed.
 #[derive(Clone, Debug, IntoOwned)]
 pub struct RawPcapPacket<'a> {
-    /// Timestamp in seconds
+    /// Whole-second component of the timestamp.
     pub ts_sec: u32,
-    /// Nanosecond or microsecond part of the timestamp
+    /// Fractional timestamp component, interpreted using the file's resolution.
     pub ts_frac: u32,
-    /// Number of octets of the packet saved in file
+    /// Number of packet bytes stored in the file.
     pub incl_len: u32,
-    /// Original length of the packet on the wire
+    /// Original packet length on the wire.
     pub orig_len: u32,
-    /// Payload, owned or borrowed, of the packet
+    /// Owned or borrowed packet payload.
     pub data: Cow<'a, [u8]>,
 }
 
@@ -236,8 +236,9 @@ impl<'a> RawPcapPacket<'a> {
         Ok((rem, packet))
     }
 
-    /// Writes a [`RawPcapPacket`] to a writer.
-    /// The fields of the packet are not validated.
+    /// Writes a [`RawPcapPacket`] without validating its fields.
+    ///
+    /// Returns the number of bytes written.
     pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
         writer
             .write_u32::<B>(self.ts_sec)

@@ -26,7 +26,7 @@ pub trait CustomPayloadCopiable<'a> {
     /// Error returned by [`CustomPayloadCopiable::write_to()`].
     type WriteToError: Error + Sync + Send + 'static;
 
-    /// Try to parse this payload from a slice.
+    /// Tries to parse this payload from a byte slice.
     fn from_slice(slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
     where
         Self: Sized;
@@ -65,7 +65,7 @@ pub trait CustomPayloadNonCopiable<'a> {
     /// Error returned by [`CustomPayloadNonCopiable::write_to()`].
     type WriteToError: Error + Sync + Send + 'static;
 
-    /// Try to parse this payload from a slice.
+    /// Tries to parse this payload from a byte slice.
     fn from_slice(state: &Self::State, slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
     where
         Self: Sized;

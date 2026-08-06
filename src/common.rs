@@ -1,16 +1,16 @@
 use byteorder_slice::ByteOrder;
 
-/// Endianness of the pcap
+/// Byte order used to encode pcap and pcapng fields.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Endianness {
-    /// Big endian
+    /// Big-endian byte order.
     Big,
-    /// Little endian
+    /// Little-endian byte order.
     Little,
 }
 
 impl Endianness {
-    /// True if LittleEndian
+    /// Returns whether this value is [`Endianness::Little`].
     pub fn is_little(self) -> bool {
         match self {
             Endianness::Big => false,
@@ -18,7 +18,7 @@ impl Endianness {
         }
     }
 
-    /// True if BigEndian
+    /// Returns whether this value is [`Endianness::Big`].
     pub fn is_big(self) -> bool {
         match self {
             Endianness::Big => true,
@@ -52,11 +52,11 @@ impl Default for Endianness {
     }
 }
 
-/// Data link type
+/// Link-layer protocol type stored in a capture file.
 ///
 /// The link-layer header type specifies the first protocol of the packet.
 ///
-/// See [http://www.tcpdump.org/linktypes.html](http://www.tcpdump.org/linktypes.html)
+/// See the [tcpdump link-layer header types](https://www.tcpdump.org/linktypes.html).
 #[allow(non_camel_case_types)]
 #[allow(missing_docs)]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
