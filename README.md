@@ -2,13 +2,15 @@
 
 Provides parsers, readers, and writers for pcap and pcapng files.
 
-For pcap files, see the [`pcap`] module.
+For pcap files, see the [`pcap`] module, especially [`PcapParser`],
+[`PcapReader`], [`PcapReaderIterator`] and [`PcapWriter`].
 
-For pcapng files, see the [`pcapng`] module.
+For pcapng files, see the [`pcapng`] module, especially [`PcapNgParser`],
+[`PcapNgReader`], [`PcapNgReaderIterator`] and [`PcapNgWriter`].
 
-[![Crates.io](https://img.shields.io/crates/v/pcap-file.svg)](https://crates.io/crates/pcap-file)
-[![rustdoc](https://img.shields.io/badge/Doc-pcap--file-green.svg)](https://docs.rs/pcap-file/)
-[![Crates.io](https://img.shields.io/crates/l/pcap-file.svg)](https://github.com/courvoif/pcap-file/blob/master/LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/pcap-file)](https://crates.io/crates/pcap-file/3.0.0-rc.3)
+[![Docs](https://img.shields.io/docsrs/pcap-file)](https://docs.rs/pcap-file/latest/pcap_file/)
+[![License](https://img.shields.io/crates/l/pcap-file)](https://github.com/courvoif/pcap-file/blob/master/LICENSE)
 
 ## Documentation
 
@@ -21,7 +23,7 @@ Add it to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-pcap-file = "3.0.0-rc.2"
+pcap-file = "3.0.0-rc.3"
 ```
 
 ## Pcap
@@ -195,10 +197,17 @@ The test suite uses the pcapng files provided by [hadrielk's pcapng test generat
 
 [`pcap`]: crate::pcap
 [`pcapng`]: crate::pcapng
+[`PcapParser`]: crate::pcap::PcapParser
+[`PcapReader`]: crate::pcap::PcapReader
 [`PcapReader::next_packet`]: crate::pcap::PcapReader::next_packet
-[`PcapNgState`]: crate::pcapng::PcapNgState
-[`PcapNgReader::next_block`]: crate::pcapng::PcapNgReader::next_block
-[`PcapNgReader::next_raw_block`]: crate::pcapng::PcapNgReader::next_raw_block
+[`PcapReaderIterator`]: crate::pcap::PcapReaderIterator
+[`PcapWriter`]: crate::pcap::PcapWriter
 [`PcapNgParser`]: crate::pcapng::PcapNgParser
 [`PcapNgParser::next_raw_block`]: crate::pcapng::PcapNgParser::next_raw_block
+[`PcapNgReader`]: crate::pcapng::PcapNgReader
+[`PcapNgReader::next_block`]: crate::pcapng::PcapNgReader::next_block
+[`PcapNgReader::next_raw_block`]: crate::pcapng::PcapNgReader::next_raw_block
+[`PcapNgReaderIterator`]: crate::pcapng::PcapNgReaderIterator
+[`PcapNgWriter`]: crate::pcapng::PcapNgWriter
+[`PcapNgState`]: crate::pcapng::PcapNgState
 [`InterfaceDescriptionBlock`]: crate::pcapng::blocks::interface_description::InterfaceDescriptionBlock
