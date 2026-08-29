@@ -1,5 +1,6 @@
 #![allow(clippy::unreadable_literal)]
 #![warn(missing_docs)]
+#![doc = include_str!("../README.md")]
 
 //! Provides parsers, readers, and writers for pcap and pcapng files.
 //!
@@ -16,7 +17,3 @@ pub(crate) mod read_buffer;
 
 pub mod pcap;
 pub mod pcapng;
-
-#[allow(dead_code)]
-#[doc = include_str!("../README.md")]
-fn readme_compile_exemples() {}

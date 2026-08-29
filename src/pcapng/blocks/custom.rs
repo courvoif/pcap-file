@@ -27,17 +27,29 @@ pub trait CustomPayloadCopiable<'a> {
     type WriteToError: Error + Sync + Send + 'static;
 
     /// Tries to parse this payload from a byte slice.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the payload cannot be decoded.
     fn from_slice(slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
     where
         Self: Sized;
 
     /// Writes this payload to a writer.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the payload cannot be written.
     fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), Self::WriteToError>;
 
     /// Serialize this payload into bytes.
     ///
     /// # Important
     /// Do not override.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`CustomError`] if [`CustomPayloadCopiable::write_to`] fails.
     fn to_bytes(&self) -> Result<Vec<u8>, CustomError>
     where
         Self: Sized,
@@ -66,17 +78,29 @@ pub trait CustomPayloadNonCopiable<'a> {
     type WriteToError: Error + Sync + Send + 'static;
 
     /// Tries to parse this payload from a byte slice.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the payload cannot be decoded using `state`.
     fn from_slice(state: &Self::State, slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
     where
         Self: Sized;
 
     /// Writes this payload to a writer.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the payload cannot be written using `state`.
     fn write_to<W: Write>(&self, state: &Self::State, writer: &mut W) -> Result<(), Self::WriteToError>;
 
     /// Serialize this payload into bytes.
     ///
     /// # Important
     /// Do not override.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`CustomError`] if [`CustomPayloadNonCopiable::write_to`] fails.
     fn to_bytes(&self, state: &Self::State) -> Result<Vec<u8>, CustomError>
     where
         Self: Sized,
@@ -99,6 +123,10 @@ pub trait CustomBlockPayload<'a> {
     ///
     /// # Important
     /// Do not override.
+    ///
+    /// # Errors
+    ///
+    /// - Returns any error produced by [`CustomPayloadCopiable::to_bytes`].
     fn into_custom_block_copiable(self) -> Result<CustomBlock<'a, true>, CustomError>
     where
         Self: Sized,
@@ -115,6 +143,10 @@ pub trait CustomBlockPayload<'a> {
     ///
     /// # Important
     /// Do not override.
+    ///
+    /// # Errors
+    ///
+    /// - Returns any error produced by [`CustomPayloadNonCopiable::to_bytes`].
     fn into_custom_block_non_copiable(self, state: &Self::State) -> Result<CustomBlock<'a, false>, CustomError>
     where
         Self: Sized,
@@ -137,6 +169,10 @@ pub trait CustomOptionPayload<'a> {
     ///
     /// # Important
     /// Do not override.
+    ///
+    /// # Errors
+    ///
+    /// - Returns any error produced by [`CustomPayloadCopiable::to_bytes`].
     fn into_custom_binary_option_copiable(self) -> Result<CustomBinaryOption<'a, true>, CustomError>
     where
         Self: Sized,
@@ -153,6 +189,10 @@ pub trait CustomOptionPayload<'a> {
     ///
     /// # Important
     /// Do not override.
+    ///
+    /// # Errors
+    ///
+    /// - Returns any error produced by [`CustomPayloadNonCopiable::to_bytes`].
     fn into_custom_binary_option_non_copiable(
         self,
         state: &Self::State,
@@ -208,6 +248,10 @@ impl<'a, const COPIABLE: bool> CustomBlock<'a, COPIABLE> {
 
 impl<'a> CustomBlock<'a, true> {
     /// Converts this block's payload into a copiable custom payload type.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the payload cannot be decoded as `T`.
     pub fn interpret<T>(&'a self) -> Result<Option<T>, CustomError>
     where
         T: CustomPayloadCopiable<'a> + CustomBlockPayload<'a>,
@@ -225,6 +269,10 @@ impl<'a> CustomBlock<'a, true> {
 
 impl<'a> CustomBlock<'a, false> {
     /// Converts this block's payload into a non-copiable custom payload type.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the payload cannot be decoded as `T` using `state`.
     pub fn interpret<T>(&'a self, state: &T::State) -> Result<Option<T>, CustomError>
     where
         T: CustomPayloadNonCopiable<'a> + CustomBlockPayload<'a>,
@@ -303,6 +351,10 @@ pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
 
 impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
     /// Parses a [`CustomBinaryOption`] from a byte slice.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the option is too short to contain a PEN.
     pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, OptionEntryError> {
         let pen = src.read_u32::<B>().map_err(|_| OptionEntryError::WrongSize {
             expected: 4,
@@ -326,6 +378,10 @@ impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
 
 impl<'a> CustomBinaryOption<'a, true> {
     /// Converts this option's value into a copiable custom payload type.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the value cannot be decoded as `T`.
     pub fn interpret<T>(&'a self) -> Result<Option<T>, CustomError>
     where
         T: CustomPayloadCopiable<'a> + CustomOptionPayload<'a>,
@@ -348,6 +404,10 @@ impl<'a> CustomBinaryOption<'a, true> {
 
 impl<'a> CustomBinaryOption<'a, false> {
     /// Converts this option's value into a non-copiable custom payload type.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the value cannot be decoded as `T` using `state`.
     pub fn interpret<T>(&'a self, state: &T::State) -> Result<Option<T>, CustomError>
     where
         T: CustomPayloadNonCopiable<'a> + CustomOptionPayload<'a>,
@@ -381,6 +441,11 @@ pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
 
 impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
     /// Parses a [`CustomUtf8Option`] from a byte slice.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the option is too short to contain a PEN or its
+    ///   value is not valid UTF-8.
     pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, OptionEntryError> {
         let pen = src.read_u32::<B>().map_err(|_| OptionEntryError::WrongSize {
             expected: 4,

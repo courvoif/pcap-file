@@ -81,6 +81,10 @@ pub enum Record<'a> {
 
 impl<'a> Record<'a> {
     /// Parses a [`Record`] from a byte slice.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the record header or content is invalid.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
         if slice.len() < 4 {
             return Err(BlockContentParseError::BlockContentTooSmall {
@@ -136,6 +140,11 @@ impl<'a> Record<'a> {
     }
 
     /// Writes a [`Record`] to a writer.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the record is too large for its length field.
+    /// - Returns an error if the record cannot be written.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         match self {
             Record::End => {
@@ -207,6 +216,11 @@ pub struct Ipv4Record<'a> {
 
 impl<'a> Ipv4Record<'a> {
     /// Parses an [`Ipv4Record`] from a byte slice.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the IPv4 record is too short or contains an
+    ///   invalid name.
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
         if slice.len() < 6 {
             return Err(ContentValidationError::RecordWrongMinSize {
@@ -239,6 +253,10 @@ impl<'a> Ipv4Record<'a> {
     }
 
     /// Writes an [`Ipv4Record`] to a writer.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the record cannot be written.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 4;
 
@@ -267,6 +285,11 @@ pub struct Ipv6Record<'a> {
 
 impl<'a> Ipv6Record<'a> {
     /// Parses an [`Ipv6Record`] from a byte slice.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the IPv6 record is too short or contains an
+    ///   invalid name.
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
         if slice.len() < 18 {
             return Err(ContentValidationError::RecordWrongMinSize {
@@ -299,6 +322,10 @@ impl<'a> Ipv6Record<'a> {
     }
 
     /// Writes an [`Ipv6Record`] to a writer.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the record cannot be written.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 16;
 

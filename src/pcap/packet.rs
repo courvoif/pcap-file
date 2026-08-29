@@ -24,6 +24,15 @@ pub struct PcapPacket<'a> {
 
 impl<'a> PcapPacket<'a> {
     /// Creates a new [`PcapPacket`] with the given parameters.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`PcapValidationError::TimestampTooBig`] if the timestamp in seconds
+    ///   cannot be represented on a u32.
+    /// - Returns [`PcapValidationError::DataTooBig`] if the packet data is
+    ///   larger than `u32::MAX` bytes.
+    /// - Returns [`PcapValidationError::OriginLenTooSmall`] if `orig_len` is
+    ///   smaller than the packet data length.
     pub fn new(
         timestamp: Duration,
         orig_len: u32,
@@ -101,6 +110,18 @@ impl<'a> PcapPacket<'a> {
     }
 
     /// Tries to create a [`PcapPacket`] from a [`RawPcapPacket`].
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`PcapValidationError::TsFracMicroTooBig`] or
+    ///   [`PcapValidationError::TsFracNanoTooBig`] if the fractional timestamp
+    ///   exceeds the range of `ts_resolution`.
+    /// - Returns [`PcapValidationError::IncludedLenTooBig`] if `raw.incl_len`
+    ///   exceeds `snap_len`.
+    /// - Returns [`PcapValidationError::DataTooBig`] if the packet data is
+    ///   larger than `u32::MAX` bytes.
+    /// - Returns [`PcapValidationError::OriginLenTooSmall`] if `raw.orig_len`
+    ///   is smaller than the packet data length.
     pub fn try_from_raw_packet(
         raw: RawPcapPacket<'a>,
         ts_resolution: PcapTsResolution,
@@ -207,6 +228,11 @@ pub struct RawPcapPacket<'a> {
 
 impl<'a> RawPcapPacket<'a> {
     /// Parses a new borrowed [`RawPcapPacket`] from a slice.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`PcapParseError::IncompleteBuffer`] if the input does not
+    ///   contain the complete packet header and payload.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapParseError> {
         // Check header length
         if slice.len() < 16 {
@@ -239,6 +265,10 @@ impl<'a> RawPcapPacket<'a> {
     /// Writes a [`RawPcapPacket`] without validating its fields.
     ///
     /// Returns the number of bytes written.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the packet header or payload cannot be written.
     pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
         writer
             .write_u32::<B>(self.ts_sec)
@@ -260,6 +290,10 @@ impl<'a> RawPcapPacket<'a> {
     }
 
     /// Tries to convert a [`RawPcapPacket`] into a [`PcapPacket`].
+    ///
+    /// # Errors
+    ///
+    /// - Returns any error produced by [`PcapPacket::try_from_raw_packet`].
     pub fn try_into_pcap_packet(
         self,
         ts_resolution: PcapTsResolution,

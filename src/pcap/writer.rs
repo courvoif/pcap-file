@@ -57,7 +57,7 @@ impl<W: Write> PcapWriter<W> {
     /// ```
     ///
     /// # Errors
-    /// Returns an error if the header cannot be written.
+    /// - Returns any error produced by [`Self::with_header`].
     pub fn new(writer: W) -> Result<PcapWriter<W>, PcapWriteError> {
         let header = PcapHeader {
             endianness: Endianness::native(),
@@ -72,7 +72,7 @@ impl<W: Write> PcapWriter<W> {
     /// It also writes the pcap header to the file.
     ///
     /// # Errors
-    /// Returns an error if the header cannot be written.
+    /// - Returns any error produced by [`PcapHeader::write_to`].
     pub fn with_header(mut writer: W, header: PcapHeader) -> Result<PcapWriter<W>, PcapWriteError> {
         header.write_to(&mut writer)?;
 
@@ -92,8 +92,10 @@ impl<W: Write> PcapWriter<W> {
     /// Writes a [`PcapPacket`].
     ///
     /// # Errors
-    /// Returns an error if the captured packet length exceeds the file's snaplen
-    /// or if the packet cannot be written.
+    ///
+    /// - Returns an error if the captured packet length exceeds the file's
+    ///   snaplen.
+    /// - Returns an error if the packet cannot be written.
     pub fn write_packet(&mut self, packet: &PcapPacket) -> Result<usize, PcapWriteError> {
         // Check that the included length of the packet is not bigger than the snaplen of the file
         if packet.len() > self.snaplen {
@@ -109,6 +111,10 @@ impl<W: Write> PcapWriter<W> {
     /// # Notes
     /// The packet fields are not validated; callers are responsible for their correctness.
     /// The resulting pcap file may not be readable by some parsers if the fields are not correct.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the raw packet cannot be written.
     pub fn write_raw_packet(&mut self, packet: &RawPcapPacket) -> Result<usize, PcapWriteError> {
         match self.endianness {
             Endianness::Big => packet.write_to::<_, BigEndian>(&mut self.writer),
@@ -117,6 +123,10 @@ impl<W: Write> PcapWriter<W> {
     }
 
     /// Flushes buffered output.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the underlying writer cannot be flushed.
     pub fn flush(&mut self) -> Result<(), PcapWriteError> {
         self.writer.flush().map_err(PcapWriteError::Io)
     }

@@ -48,6 +48,10 @@ impl PcapParser {
     /// Creates a new [`PcapParser`].
     ///
     /// Returns the remainder and the parser.
+    ///
+    /// # Errors
+    ///
+    /// - Returns any error produced by [`PcapHeader::from_slice`].
     pub fn new(slice: &[u8]) -> Result<(&[u8], PcapParser), PcapParseError> {
         let (slice, header) = PcapHeader::from_slice(slice)?;
         let parser = PcapParser { header };
@@ -57,9 +61,11 @@ impl PcapParser {
     /// Returns the remainder and the next [`PcapPacket`].
     ///
     /// # Errors
-    /// - [`PcapParseError::IncompleteBuffer`] is recoverable (by loading more data).
-    /// - Validation errors leave the input unconsumed. They can be recovered by
-    ///   calling [`PcapParser::next_raw_packet`] with the same input slice.
+    /// - Returns [`PcapParseError::IncompleteBuffer`] if the input does not
+    ///   contain a complete packet. Load more data and retry with the same input.
+    /// - Returns [`PcapParseError::Validation`] if a packet field is invalid.
+    ///   The input remains unconsumed and can be passed to
+    ///   [`PcapParser::next_raw_packet`].
     pub fn next_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], PcapPacket<'a>), PcapParseError> {
         let res = match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),
@@ -82,7 +88,9 @@ impl PcapParser {
     /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
     ///
     /// # Errors
-    /// - Only [`PcapParseError::IncompleteBuffer`] can occur. Load more data and retry with the same input.
+    ///
+    /// - Returns [`PcapParseError::IncompleteBuffer`] if the input does not
+    ///   contain a complete packet. Load more data and retry with the same input.
     pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], RawPcapPacket<'a>), PcapParseError> {
         match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),

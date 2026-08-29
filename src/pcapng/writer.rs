@@ -58,12 +58,16 @@ impl<W: Write> PcapNgWriter<W> {
     /// ```
     ///
     /// # Errors
-    /// Returns an error if the section header cannot be written.
+    /// - Returns any error produced by [`Self::with_endianness`].
     pub fn new(writer: W) -> Result<Self, PcapNgWriteError> {
         Self::with_endianness(writer, Endianness::default())
     }
 
     /// Creates a new [`PcapNgWriter`] with the given endianness.
+    ///
+    /// # Errors
+    ///
+    /// - Returns any error produced by [`Self::with_section_header`].
     pub fn with_endianness(writer: W, endianness: Endianness) -> Result<Self, PcapNgWriteError> {
         let section = SectionHeaderBlock {
             endianness,
@@ -74,6 +78,10 @@ impl<W: Write> PcapNgWriter<W> {
     }
 
     /// Creates a new [`PcapNgWriter`] with the given section header.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the Section Header Block cannot be written.
     pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'_>) -> Result<Self, PcapNgWriteError> {
         let mut state = PcapNgState::default();
 
@@ -95,6 +103,11 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// I/O errors can leave the output stream partially written. After any error,
     /// callers should assume the pcapng stream is no longer usable.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the block is invalid for the current state.
+    /// - Returns an error if the block cannot be written.
     ///
     /// # Example
     /// ```rust,no_run
@@ -146,6 +159,11 @@ impl<W: Write> PcapNgWriter<W> {
     /// I/O errors can leave the output stream partially written. After any error,
     /// callers should assume the pcapng stream is no longer usable.
     ///
+    /// # Errors
+    ///
+    /// - Returns an error if a block is invalid for the current state.
+    /// - Returns an error if a block cannot be written.
+    ///
     /// # Example
     /// ```rust,no_run
     /// use std::borrow::Cow;
@@ -189,6 +207,12 @@ impl<W: Write> PcapNgWriter<W> {
     /// Section Header and Interface Description raw blocks are decoded before writing
     /// so the writer can update its state after a successful write. If decoding fails,
     /// nothing is written and the writer state is unchanged.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the raw block is invalid or incompatible with the
+    ///   current state.
+    /// - Returns an error if the raw block cannot be written.
     pub fn write_raw_block(&mut self, raw_block: &RawBlock) -> Result<usize, PcapNgWriteError> {
         // The order of operation is important to prevent writing invalid files in case of error.
         // The state is updated only after a successful write.

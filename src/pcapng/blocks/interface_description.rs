@@ -400,8 +400,10 @@ impl InterfaceTsResolution {
 
     /// Creates a new [`InterfaceTsResolution`].
     ///
-    /// - If binary, the resolution must be in the range [0-29].
-    /// - If decimal, the resolution must be in the range [0-9].
+    /// # Errors
+    ///
+    /// - Returns an error if a binary resolution is greater than 29 or a
+    ///   decimal resolution is greater than 9.
     pub fn new(is_bin: bool, resol: u8) -> Result<Self, ContentValidationError> {
         // 2^29 is the last power of 2 inferior to 1_000_000_000 which is the number of nanosec in one second
         if is_bin && resol > 29 {
@@ -419,8 +421,10 @@ impl InterfaceTsResolution {
 
     /// Creates a new [`InterfaceTsResolution`] from a [`u8`].
     ///
-    /// - If binary, the resolution must be in the range [0-29].
-    /// - If decimal, the resolution must be in the range [0-9].
+    /// # Errors
+    ///
+    /// - Returns an error if the encoded binary resolution is greater than 29
+    ///   or the encoded decimal resolution is greater than 9.
     pub fn from_u8(ts_resol: u8) -> Result<Self, ContentValidationError> {
         let is_bin = (ts_resol >> 7) & 0x1 == 1;
         let resol = ts_resol & 0x7F;
@@ -449,7 +453,9 @@ impl InterfaceTsResolution {
     /// Encode a timestamp with the current resolution.
     ///
     /// # Errors
-    /// - The timestamp cannot be encoded as a `u64` with the current resolution.
+    ///
+    /// - Returns an error if the timestamp cannot be represented as a `u64`
+    ///   using the current resolution.
     pub fn encode_timestamp(&self, timestamp: Duration) -> Result<u64, ContentValidationError> {
         let timestamp_ns = timestamp.as_nanos();
         let ts = if self.is_bin {

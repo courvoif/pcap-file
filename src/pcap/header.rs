@@ -38,9 +38,11 @@ pub struct PcapHeader {
 impl PcapHeader {
     /// Creates a new [`PcapHeader`] from a slice of bytes.
     ///
-    /// Returns an error if the input does not contain a complete, valid pcap header.
+    /// # Errors
     ///
-    /// [`PcapParseError::IncompleteBuffer`] indicates that there is not enough data in the buffer.
+    /// - Returns [`PcapParseError::IncompleteBuffer`] if the input does not
+    ///   contain a complete header.
+    /// - Returns [`PcapParseError::Validation`] if the header is invalid.
     pub fn from_slice(mut slice: &[u8]) -> Result<(&[u8], PcapHeader), PcapParseError> {
         // Check that slice.len() > PcapHeader length
         if slice.len() < 24 {
@@ -86,7 +88,12 @@ impl PcapHeader {
     /// Writes a [`PcapHeader`] to a writer.
     ///
     /// Uses the byte order and timestamp resolution stored in the header.
+    ///
     /// Returns the number of bytes written.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the header cannot be written.
     pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
         return match self.endianness {
             Endianness::Big => write_header::<_, BigEndian>(self, writer),

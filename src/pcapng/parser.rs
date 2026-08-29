@@ -51,6 +51,13 @@ impl PcapNgParser {
     /// Creates a new [`PcapNgParser`].
     ///
     /// Parses the first block which must be a valid SectionHeaderBlock.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`PcapNgParseError::IncompleteBuffer`] if the input does not
+    ///   contain a complete first block.
+    /// - Returns an error if the input does not start with a valid Section
+    ///   Header Block.
     pub fn new(src: &[u8]) -> Result<(&[u8], Self), PcapNgParseError> {
         // Always use BigEndian here because we can't know the SectionHeaderBlock endianness
         let mut state = PcapNgState::default();
@@ -72,8 +79,10 @@ impl PcapNgParser {
     /// Returns the remainder and the next [`Block`].
     ///
     /// # Errors
-    /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
-    /// - Other errors leave the input and parser state unchanged. Typed
+    /// - Returns [`PcapNgParseError::IncompleteBuffer`] if the input does not
+    ///   contain a complete block. Load more data and retry with the same input.
+    /// - Returns another error if the block is malformed. These errors leave
+    ///   the input and parser state unchanged. Typed
     ///   conversion errors for non-state blocks can be recovered by calling
     ///   [`Self::next_raw_block`] with the same input slice.
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
@@ -109,10 +118,13 @@ impl PcapNgParser {
     /// parser and no raw block is returned.
     ///
     /// # Errors
-    /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
-    /// - [`PcapNgParseError::StateUpdate`] can occur when a state-changing raw block cannot be decoded.
-    /// - Other errors leave the input and parser state unchanged and are not
-    ///   recoverable with this parser.
+    /// - Returns [`PcapNgParseError::IncompleteBuffer`] if the input does not
+    ///   contain a complete block. Load more data and retry with the same input.
+    /// - Returns [`PcapNgParseError::StateUpdate`] if a state-changing raw block
+    ///   cannot be decoded.
+    /// - Returns another error if the raw block is malformed. These errors leave
+    ///   the input and parser state unchanged and are not recoverable with this
+    ///   parser.
     pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
         /// Inner function to parse the next RawBlock.
         fn next_raw_block_inner<'a, B: ByteOrder>(

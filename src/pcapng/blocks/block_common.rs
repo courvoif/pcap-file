@@ -71,6 +71,11 @@ pub struct RawBlock<'a> {
 
 impl<'a> RawBlock<'a> {
     /// Parses a borrowed [`RawBlock`] from a slice.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the input does not contain a complete block.
+    /// - Returns an error if the block length fields are invalid.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), RawBlockParseError> {
         if slice.len() < 12 {
             return Err(RawBlockParseError::IncompleteBuffer(12, slice.len()));
@@ -144,6 +149,11 @@ impl<'a> RawBlock<'a> {
     /// Writes a [`RawBlock`] to a writer.
     ///
     /// Uses the byte order specified by `B` and returns the number of bytes written.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the raw block length fields are invalid.
+    /// - Returns an error if the block cannot be written.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         self.validate()?;
 
@@ -156,6 +166,11 @@ impl<'a> RawBlock<'a> {
     }
 
     /// Validates that the raw block length fields match its body.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the two block lengths differ, the total length is
+    ///   not aligned to four bytes, or the body length does not match them.
     pub fn validate(&self) -> Result<(), PcapNgFormatError> {
         if self.initial_len != self.trailer_len {
             return Err(PcapNgFormatError::BlockLengthMismatch(
@@ -185,6 +200,10 @@ impl<'a> RawBlock<'a> {
 
     /// Tries to convert a [`RawBlock`] into a [`Block`] using a [`PcapNgState`].
     /// The state determines the byte order.
+    ///
+    /// # Errors
+    ///
+    /// - Returns any error produced by [`Block::try_from_raw_block`].
     pub fn try_into_block(self, state: &PcapNgState) -> Result<Block<'a>, BlockConversionError> {
         match state.section.endianness {
             crate::Endianness::Big => Block::try_from_raw_block::<BigEndian>(state, self),
@@ -194,6 +213,10 @@ impl<'a> RawBlock<'a> {
 
     /// Tries to convert a [`RawBlock`] into a [`Block`] using a [`PcapNgState`]
     /// and the byte order specified by `B`.
+    ///
+    /// # Errors
+    ///
+    /// - Returns any error produced by [`Block::try_from_raw_block`].
     pub fn try_into_block_with_byteorder<B: ByteOrder>(
         self,
         state: &PcapNgState,
@@ -231,6 +254,11 @@ pub enum Block<'a> {
 
 impl<'a> Block<'a> {
     /// Tries to create a [`Block`] from a [`RawBlock`], given a [`PcapNgState`].
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the raw block cannot be decoded or validated using
+    ///   the supplied byte order and state.
     ///
     /// If `raw_block` borrows its body, the returned [`Block`] will borrow from
     /// that same buffer whenever possible.
@@ -291,6 +319,11 @@ impl<'a> Block<'a> {
     }
 
     /// Writes a [`Block`] to a writer, using a [`PcapNgState`].
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the block is invalid for the given state.
+    /// - Returns an error if the block cannot be written.
     pub fn write_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -515,6 +548,10 @@ impl<'a> Block<'a> {
 /// Common interface for pcapng blocks.
 pub trait PcapNgBlock<'a> {
     /// Parses a block from a byte slice using the provided [`PcapNgState`].
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the block data cannot be decoded or validated.
     fn from_slice<B: ByteOrder>(
         state: &PcapNgState,
         slice: &'a [u8],
@@ -523,6 +560,11 @@ pub trait PcapNgBlock<'a> {
         Self: std::marker::Sized;
 
     /// Writes the block content using the provided [`PcapNgState`].
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if the block is invalid for the given state.
+    /// - Returns an error if the block cannot be written.
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError>;
 
     /// Convert a block into the [`Block`] enumeration

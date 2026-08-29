@@ -57,6 +57,11 @@ impl PcapNgState {
     ///
     /// Returns [`None`] unless the raw block is a Section Header or Interface
     /// Description block.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`StateUpdateError`] if a Section Header or Interface
+    ///   Description block cannot be decoded or validated.
     pub fn decode_block_if_needed<'a>(&self, raw_block: &RawBlock<'a>) -> Result<Option<Block<'a>>, StateUpdateError> {
         match raw_block.type_ {
             SECTION_HEADER_BLOCK | INTERFACE_DESCRIPTION_BLOCK => {
@@ -99,6 +104,13 @@ impl PcapNgState {
     /// Decodes a timestamp using the referenced interface's resolution and offset.
     ///
     /// Returns the time elapsed since 1970-01-01 00:00:00 UTC.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if `interface_id` does not identify an interface in
+    ///   the current section.
+    /// - Returns an error if applying the interface's timestamp resolution and
+    ///   offset cannot produce a [`Duration`].
     pub fn decode_timestamp(
         &self,
         interface_id: u32,
@@ -131,6 +143,13 @@ impl PcapNgState {
     /// Encodes a timestamp using the referenced interface's resolution and offset.
     ///
     /// `timestamp` is the time elapsed since 1970-01-01 00:00:00 UTC.
+    ///
+    /// # Errors
+    ///
+    /// - Returns an error if `interface_id` does not identify an interface in
+    ///   the current section.
+    /// - Returns an error if the timestamp cannot be represented using the
+    ///   interface's resolution and offset.
     pub fn encode_timestamp(
         &self,
         interface_id: u32,

@@ -40,9 +40,10 @@ impl<R: Read> PcapReader<R> {
     /// buffer with a default capacity of 8 MB.
     ///
     /// # Errors
-    /// The data stream is not in a valid pcap file format.
     ///
-    /// The underlying data are not readable.
+    /// - Returns [`PcapReadError::Io`] if the underlying reader cannot be read.
+    /// - Returns [`PcapReadError::Validation`] if the input does not start with
+    ///   a valid pcap header.
     pub fn new(reader: R) -> Result<PcapReader<R>, PcapReadError> {
         let mut reader = ReadBuffer::new(reader);
         let parser = reader.parse_with(PcapParser::new)?;
@@ -56,8 +57,10 @@ impl<R: Read> PcapReader<R> {
     /// internal buffer capacity of 8 MB.
     ///
     /// # Errors
-    /// - The data stream is not in a valid pcap file format.
-    /// - The underlying data are not readable.
+    ///
+    /// - Returns [`PcapReadError::Io`] if the underlying reader cannot be read.
+    /// - Returns [`PcapReadError::Validation`] if the input does not start with
+    ///   a valid pcap header.
     pub fn with_capacity(reader: R, capacity: usize) -> Result<PcapReader<R>, PcapReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
         let parser = reader.parse_with(PcapParser::new)?;
@@ -75,8 +78,10 @@ impl<R: Read> PcapReader<R> {
     /// The reader does not advance past a malformed packet.
     ///
     /// # Errors
-    /// - Some variants of [`PcapReadError::Io`] can be retried.
-    /// - Other variants can be retried using [`Self::next_raw_packet`] to parse the faulty packet.
+    /// - Returns [`PcapReadError::Io`] if the underlying reader cannot provide
+    ///   a complete packet. Some I/O errors can be retried.
+    /// - Returns [`PcapReadError::Validation`] if a packet field is invalid.
+    ///   The same packet can be read with [`Self::next_raw_packet`].
     pub fn next_packet(&mut self) -> Option<Result<PcapPacket<'_>, PcapReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
@@ -98,7 +103,11 @@ impl<R: Read> PcapReader<R> {
     /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
     ///
     /// # Errors
-    /// - Only [`PcapReadError::Io`] can occur; some variants can be retried.
+    ///
+    /// - Returns [`PcapReadError::Io`] if the underlying reader cannot be read.
+    /// - Returns [`PcapReadError::Io`] with [`std::io::ErrorKind::UnexpectedEof`]
+    ///   if the packet exceeds the internal buffer capacity or the input ends
+    ///   before the complete packet is read.
     pub fn next_raw_packet(&mut self) -> Option<Result<RawPcapPacket<'_>, PcapReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {

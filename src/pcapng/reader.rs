@@ -41,6 +41,12 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// Prefer an unbuffered input because this type already uses an internal
     /// buffer with a default capacity of 8 MB.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`PcapNgReadError::Io`] if the underlying reader cannot be read.
+    /// - Returns an error if the input does not start with a valid Section
+    ///   Header Block.
     pub fn new(reader: R) -> Result<PcapNgReader<R>, PcapNgReadError> {
         let mut reader = ReadBuffer::new(reader);
         let parser = reader.parse_with(PcapNgParser::new)?;
@@ -53,6 +59,12 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// Use this when the stream can contain blocks larger than the default
     /// internal buffer capacity of 8 MB.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`PcapNgReadError::Io`] if the underlying reader cannot be read.
+    /// - Returns an error if the input does not start with a valid Section
+    ///   Header Block.
     pub fn with_capacity(reader: R, capacity: usize) -> Result<PcapNgReader<R>, PcapNgReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
         let parser = reader.parse_with(PcapNgParser::new)?;
@@ -70,10 +82,14 @@ impl<R: Read> PcapNgReader<R> {
     /// requires state such as its section or interface descriptions.
     ///
     /// # Errors
-    /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
-    /// - [`PcapNgReadError::BlockConversion`] for non-state blocks can be recovered by calling [`Self::next_raw_block`].
+    /// - Returns [`PcapNgReadError::Io`] if the underlying reader cannot provide
+    ///   a complete block. Some I/O errors can be retried.
+    /// - Returns [`PcapNgReadError::BlockConversion`] if a block cannot be
+    ///   converted. For non-state blocks, the same block can be read with
+    ///   [`Self::next_raw_block`].
     ///   Malformed Section Header or Interface Description blocks may still fail there because the reader must decode them to keep its state consistent.
-    /// - Other errors will prevent the reader from advancing further.
+    /// - Returns another error if parsing or updating the state fails. The
+    ///   reader cannot advance past these errors.
     #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
     pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
@@ -106,9 +122,12 @@ impl<R: Read> PcapNgReader<R> {
     /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
     ///
     /// # Errors
-    /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
-    /// - [`PcapNgReadError::StateUpdate`] can occur when a state-changing raw block cannot be decoded.
-    /// - All other errors will prevent the reader from advancing further.
+    /// - Returns [`PcapNgReadError::Io`] if the underlying reader cannot provide
+    ///   a complete block. Some I/O errors can be retried.
+    /// - Returns [`PcapNgReadError::StateUpdate`] if a state-changing raw block
+    ///   cannot be decoded.
+    /// - Returns another error if the raw block is malformed. The reader cannot
+    ///   advance past these errors.
     #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
     pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
