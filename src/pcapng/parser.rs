@@ -11,12 +11,14 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 /// Parses a pcapng stream from a byte slice.
 ///
 /// Match [`PcapNgParseError::IncompleteBuffer`] to determine whether more data is needed.
+///
 /// Some typed conversion errors from [`Self::next_block`] can be recovered by
 /// calling [`Self::next_raw_block`] with the same input slice.
 ///
 /// # Example
 /// ```rust,no_run
-/// use pcap_file::pcapng::{PcapNgParseError, PcapNgParser};
+/// use pcap_file::pcapng::errors::PcapNgParseError;
+/// use pcap_file::pcapng::PcapNgParser;
 ///
 /// let pcap = std::fs::read("test.pcapng").expect("Error reading file");
 /// let mut src = &pcap[..];

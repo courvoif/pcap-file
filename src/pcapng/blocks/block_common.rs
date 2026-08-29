@@ -1,4 +1,12 @@
-//! Common block types.
+//! Common types and operations for pcapng blocks.
+//!
+//! [`Block`] represents a decoded block, while [`RawBlock`] preserves an
+//! unparsed block body. Raw blocks are useful when typed decoding fails or when
+//! an application needs to retain malformed or unsupported data.
+//!
+//! [`PcapNgBlock`] defines the parsing and writing interface implemented by
+//! typed block structures. This module also provides the numeric block type
+//! constants used by the pcapng format.
 
 use std::borrow::Cow;
 use std::io::Write;
@@ -18,10 +26,11 @@ use super::section_header::SectionHeaderBlock;
 use super::simple_packet::SimplePacketBlock;
 use super::systemd_journal_export::SystemdJournalExportBlock;
 use super::unknown::UnknownBlock;
+use crate::pcapng::PcapNgState;
+use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{
     BlockContentParseError, BlockConversionError, PcapNgFormatError, PcapNgWriteError, RawBlockParseError,
 };
-use crate::pcapng::{ContentValidationError, PcapNgState};
 
 /// Section Header Block type code.
 pub const SECTION_HEADER_BLOCK: u32 = 0x0A0D0D0A;
@@ -596,7 +605,8 @@ mod tests {
 
     use super::{Block, RawBlock, SECTION_HEADER_BLOCK};
     use crate::Endianness;
-    use crate::pcapng::{PcapNgFormatError, PcapNgState};
+    use crate::pcapng::PcapNgState;
+    use crate::pcapng::errors::PcapNgFormatError;
 
     #[test]
     fn try_from_raw_block_accepts_owned_bodies() {

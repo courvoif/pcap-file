@@ -2,9 +2,9 @@
 
 Provides parsers, readers, and writers for pcap and pcapng files.
 
-For pcap files, see the `pcap` module.
+For pcap files, see the [`pcap`] module.
 
-For pcapng files, see the `pcapng` module.
+For pcapng files, see the [`pcapng`] module.
 
 [![Crates.io](https://img.shields.io/crates/v/pcap-file.svg)](https://crates.io/crates/pcap-file)
 [![rustdoc](https://img.shields.io/badge/Doc-pcap--file-green.svg)](https://docs.rs/pcap-file/)
@@ -24,7 +24,7 @@ Add it to your `Cargo.toml`:
 pcap-file = "3.0.0-rc.2"
 ```
 
-## Examples
+## Pcap
 
 ### PcapReader
 
@@ -44,7 +44,8 @@ for pkt in pcap_reader {
 }
 ```
 
-The iterator API returns owned packets and is slower than `next_packet()`,
+The iterator API returns owned packets and is slower than
+[`PcapReader::next_packet`],
 which can borrow packet data directly from the internal read buffer. It stops
 after the first error.
 
@@ -65,6 +66,8 @@ for pkt in pcap_reader {
 }
 ```
 
+## PcapNg
+
 ### PcapNgReader
 
 ```rust,no_run
@@ -84,13 +87,14 @@ for block in pcapng_reader {
 ```
 
 The iterator API is intended for simple traversal: it returns owned blocks,
-does not expose `PcapNgState`, and stops after the first error. Use
-`next_block()` when processing a block requires the current state; it returns
+does not expose [`PcapNgState`], and stops after the first error. Use
+[`PcapNgReader::next_block`] when processing a block requires the current state; it returns
 borrowed blocks and the state after applying that block. Some typed conversion
-errors returned by `next_block()` can be recovered by reading the same block
-with `next_raw_block()`; see the [raw recovery example](examples/pcapng_raw_recovery.rs).
-The same recovery pattern applies to `PcapNgParser`: after a recoverable typed
-conversion error, call `next_raw_block()` with the same input slice.
+errors returned by [`PcapNgReader::next_block`] can be recovered by reading the
+same block with [`PcapNgReader::next_raw_block`]; see the
+[raw recovery example][pcapng-raw-recovery]. The same recovery pattern applies
+to [`PcapNgParser`]: after a recoverable typed conversion error, call
+[`PcapNgParser::next_raw_block`] with the same input slice.
 
 ### PcapNgWriter
 
@@ -112,20 +116,24 @@ for block in pcapng_reader {
 ```
 
 Packet blocks in pcapng refer to interface blocks by index. When creating a
-pcapng file from scratch, write an `InterfaceDescriptionBlock` before any packet
-block that uses that interface.
+pcapng file from scratch, write an [`InterfaceDescriptionBlock`] before any
+packet block that uses that interface.
 
-Runnable examples are available in the [`examples`](examples) directory:
+## Examples
 
-- Pcap: [parse](examples/pcap_parse.rs), [read](examples/pcap_read.rs), and
-  [create and write a packet](examples/pcap_write.rs). See also how to
-  [recover a malformed packet as raw data](examples/pcap_raw_recovery.rs).
-- pcapng: [parse](examples/pcapng_parse.rs), [read](examples/pcapng_read.rs), and
-  [create and write a packet](examples/pcapng_write.rs). See also how to
-  [recover a malformed block as raw data](examples/pcapng_raw_recovery.rs).
-- pcapng extensions: read and write a [custom block](examples/pcapng_custom_block.rs)
-  or a [custom option](examples/pcapng_custom_option.rs). Both examples propagate
-  conversion errors and distinguish payloads registered under a different PEN.
+Runnable examples are available in the [examples on GitHub][examples]:
+
+- Pcap: [parse][pcap-parse], [read][pcap-read], and
+  [create and write a packet][pcap-write]. See also how to
+  [recover a malformed packet as raw data][pcap-raw-recovery].
+- pcapng: [parse][pcapng-parse], [read][pcapng-read], and
+  [create and write a packet][pcapng-write]. See also how to
+  [recover a malformed block as raw data][pcapng-raw-recovery].
+- pcapng extensions: read and write a
+  [custom block][pcapng-custom-block] or a
+  [custom option][pcapng-custom-option].
+  Both examples propagate conversion errors and distinguish payloads registered
+  under a different PEN.
 
 Run an example from the repository root. Read and parse examples use bundled
 test captures, recovery examples generate one malformed record, and write
@@ -172,3 +180,25 @@ Licensed under MIT.
 ## Disclaimer
 
 The test suite uses the pcapng files provided by [hadrielk's pcapng test generator](https://github.com/hadrielk/pcapng-test-generator).
+
+[examples]: https://github.com/courvoif/pcap-file/tree/master/examples
+[pcap-parse]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_parse.rs
+[pcap-read]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_read.rs
+[pcap-write]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_write.rs
+[pcap-raw-recovery]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_raw_recovery.rs
+[pcapng-parse]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_parse.rs
+[pcapng-read]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_read.rs
+[pcapng-write]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_write.rs
+[pcapng-raw-recovery]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_raw_recovery.rs
+[pcapng-custom-block]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_custom_block.rs
+[pcapng-custom-option]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_custom_option.rs
+
+[`pcap`]: crate::pcap
+[`pcapng`]: crate::pcapng
+[`PcapReader::next_packet`]: crate::pcap::PcapReader::next_packet
+[`PcapNgState`]: crate::pcapng::PcapNgState
+[`PcapNgReader::next_block`]: crate::pcapng::PcapNgReader::next_block
+[`PcapNgReader::next_raw_block`]: crate::pcapng::PcapNgReader::next_raw_block
+[`PcapNgParser`]: crate::pcapng::PcapNgParser
+[`PcapNgParser::next_raw_block`]: crate::pcapng::PcapNgParser::next_raw_block
+[`InterfaceDescriptionBlock`]: crate::pcapng::blocks::interface_description::InterfaceDescriptionBlock

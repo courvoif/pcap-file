@@ -2,10 +2,11 @@ use std::io::Write;
 
 use byteorder_slice::{BigEndian, LittleEndian};
 
+use super::PcapNgState;
+use super::blocks::RawBlock;
 use super::blocks::block_common::{Block, PcapNgBlock};
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
-use super::{PcapNgState, RawBlock};
 use crate::Endianness;
 use crate::pcapng::errors::PcapNgWriteError;
 
@@ -116,7 +117,8 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     /// use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-    /// use pcap_file::pcapng::{PcapNgBlock, PcapNgWriter};
+    /// use pcap_file::pcapng::blocks::PcapNgBlock;
+    /// use pcap_file::pcapng::PcapNgWriter;
     /// use pcap_file::DataLink;
     ///
     /// let data = [0u8; 10];
@@ -171,7 +173,8 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     /// use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-    /// use pcap_file::pcapng::{PcapNgBlock, PcapNgWriter};
+    /// use pcap_file::pcapng::blocks::PcapNgBlock;
+    /// use pcap_file::pcapng::PcapNgWriter;
     /// use pcap_file::DataLink;
     ///
     /// let data = [0u8; 10];

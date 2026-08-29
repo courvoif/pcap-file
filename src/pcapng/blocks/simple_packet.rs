@@ -10,8 +10,9 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
+use crate::pcapng::PcapNgState;
+use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
-use crate::pcapng::{ContentValidationError, PcapNgState};
 
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
 ///
@@ -128,10 +129,11 @@ mod tests {
 
     use super::SimplePacketBlock;
     use crate::DataLink;
+    use crate::pcapng::PcapNgState;
     use crate::pcapng::blocks::PcapNgBlock;
     use crate::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
+    use crate::pcapng::errors::ContentValidationError;
     use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
-    use crate::pcapng::{ContentValidationError, PcapNgState};
 
     fn state_with_snaplen(snaplen: u32) -> PcapNgState {
         let mut state = PcapNgState::default();

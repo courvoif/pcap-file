@@ -1,3 +1,5 @@
+//! Errors produced when parsing, reading, writing, or validating pcapng data.
+
 use std::{fmt::Display, time::Duration};
 
 use thiserror::Error;

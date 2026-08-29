@@ -6,7 +6,8 @@ use byteorder_slice::BigEndian;
 use pcap_file::DataLink;
 use pcap_file::pcapng::blocks::block_common::{ENHANCED_PACKET_BLOCK, RawBlock};
 use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-use pcap_file::pcapng::{PcapNgReadError, PcapNgReader, PcapNgWriter};
+use pcap_file::pcapng::errors::PcapNgReadError;
+use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 
 fn main() -> Result<()> {
     let data = malformed_pcapng().context("failed to build the malformed pcapng")?;

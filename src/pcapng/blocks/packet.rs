@@ -11,8 +11,9 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
+use crate::pcapng::PcapNgState;
+use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
-use crate::pcapng::{ContentValidationError, PcapNgState};
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
@@ -95,14 +96,14 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         if (self.interface_id as usize) >= state.interfaces.len() {
             return Err(PcapNgWriteError::validation_error(
                 "PacketBlock.interface_id",
-                crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id as u32),
+                ContentValidationError::InvalidInterfaceId(self.interface_id as u32),
             ));
         }
 
         if (self.original_len as usize) < self.data.len() {
             return Err(PcapNgWriteError::validation_error(
                 "PacketBlock.original_len",
-                crate::pcapng::ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+                ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
             ));
         }
 

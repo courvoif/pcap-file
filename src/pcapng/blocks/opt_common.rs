@@ -8,9 +8,10 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
+use crate::pcapng::PcapNgState;
 use crate::pcapng::blocks::custom::{CustomBinaryOption, CustomUtf8Option};
+use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{OptionEntryError, OptionParseError, PcapNgWriteError};
-use crate::pcapng::{ContentValidationError, PcapNgState};
 
 /// Comment
 pub const COMMENT: u16 = 0x0001;

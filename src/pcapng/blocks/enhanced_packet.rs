@@ -11,8 +11,9 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
+use crate::pcapng::PcapNgState;
+use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
-use crate::pcapng::{ContentValidationError, PcapNgState};
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
 #[derive(Clone, Debug, Default, IntoOwned, Eq, PartialEq)]
@@ -97,14 +98,14 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         if (self.interface_id as usize) >= state.interfaces.len() {
             return Err(PcapNgWriteError::validation_error(
                 "EnhancedPacketBlock.interface_id",
-                crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id),
+                ContentValidationError::InvalidInterfaceId(self.interface_id),
             ));
         }
 
         if (self.original_len as usize) < self.data.len() {
             return Err(PcapNgWriteError::validation_error(
                 "EnhancedPacketBlock.original_len",
-                crate::pcapng::ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+                ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
             ));
         }
 

@@ -1,7 +1,8 @@
 use std::fs::File;
 
 use anyhow::{Context, Result};
-use pcap_file::pcapng::{Block, PcapNgReader};
+use pcap_file::pcapng::PcapNgReader;
+use pcap_file::pcapng::blocks::Block;
 
 fn main() -> Result<()> {
     let input =

@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use glob::glob;
-use pcap_file::pcapng::{ContentValidationError, PcapNgParser, PcapNgReader, PcapNgWriter};
+use pcap_file::pcapng::errors::ContentValidationError;
+use pcap_file::pcapng::{PcapNgParser, PcapNgReader, PcapNgWriter};
 
 #[test]
 fn reader() {
@@ -172,7 +173,7 @@ fn pcapng_with_invalid_packet_block() -> Vec<u8> {
 fn raw_writer_rejects_invalid_state_block_lengths_without_state_update() {
     use pcap_file::Endianness;
     use pcap_file::pcapng::blocks::block_common::{INTERFACE_DESCRIPTION_BLOCK, RawBlock};
-    use pcap_file::pcapng::{PcapNgFormatError, PcapNgWriteError};
+    use pcap_file::pcapng::errors::{PcapNgFormatError, PcapNgWriteError};
 
     let mut writer = PcapNgWriter::with_endianness(Vec::new(), Endianness::Big).unwrap();
     let len_before = writer.get_ref().len();
@@ -431,7 +432,7 @@ fn raw_reader_recovers_after_typed_block_validation_error() {
     use pcap_file::pcapng::blocks::PcapNgBlock;
     use pcap_file::pcapng::blocks::block_common::{ENHANCED_PACKET_BLOCK, RawBlock};
     use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-    use pcap_file::pcapng::{ContentValidationError, PcapNgReadError};
+    use pcap_file::pcapng::errors::{ContentValidationError, PcapNgReadError};
 
     let interface = InterfaceDescriptionBlock::new(DataLink::ETHERNET, 0xFFFF);
     let invalid_packet = RawBlock {
@@ -461,7 +462,9 @@ fn raw_reader_recovers_after_typed_block_validation_error() {
         PcapNgReadError::BlockConversion(error) => {
             assert!(matches!(
                 error.source.as_ref(),
-                pcap_file::pcapng::BlockContentParseError::Validation(ContentValidationError::InvalidInterfaceId(7))
+                pcap_file::pcapng::errors::BlockContentParseError::Validation(
+                    ContentValidationError::InvalidInterfaceId(7)
+                )
             ));
         }
         other => panic!("Expected block conversion error, got {other:?}"),

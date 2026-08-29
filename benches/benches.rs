@@ -1,6 +1,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use pcap_file::pcap::{PcapParseError, PcapParser, PcapReader};
-use pcap_file::pcapng::{PcapNgParseError, PcapNgParser, PcapNgReader};
+use pcap_file::pcapng::errors::PcapNgParseError;
+use pcap_file::pcapng::{PcapNgParser, PcapNgReader};
 
 /// Bench and compare Pcap readers and parsers
 pub fn pcap(c: &mut Criterion) {

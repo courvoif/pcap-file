@@ -1,4 +1,13 @@
-//! Custom Block.
+//! Custom pcapng blocks and options.
+//!
+//! [`CustomBlock`] stores vendor-defined block data identified by a Private
+//! Enterprise Number (PEN). [`CustomBinaryOption`] and [`CustomUtf8Option`]
+//! provide the corresponding custom option representations.
+//!
+//! Implement [`CustomBlockPayload`] or [`CustomOptionPayload`] together with
+//! [`CustomPayloadCopiable`] for self-contained payloads. Use
+//! [`CustomPayloadNonCopiable`] when encoding or decoding requires application
+//! state.
 
 use std::borrow::Cow;
 use std::error::Error;
@@ -9,13 +18,38 @@ use byteorder_slice::byteorder::{ReadBytesExt, WriteBytesExt};
 use thiserror::Error;
 
 use super::block_common::{Block, PcapNgBlock};
+use crate::pcapng::PcapNgState;
 use crate::pcapng::blocks::opt_common::CommonOption;
+use crate::pcapng::errors::OptionEntryError;
 use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
-use crate::pcapng::{OptionEntryError, PcapNgState};
 
 /* ----- traits for Custom Payload ----- */
 
 /// Common interface for copiable custom block and custom option payloads.
+///
+/// # Examples
+///
+/// ```
+/// use std::convert::Infallible;
+/// use std::io::Write;
+/// use pcap_file::pcapng::blocks::custom::CustomPayloadCopiable;
+///
+/// struct Payload(u8);
+///
+/// impl CustomPayloadCopiable<'_> for Payload {
+///     const PEN: u32 = 70_000;
+///     type FromSliceError = Infallible;
+///     type WriteToError = std::io::Error;
+///
+///     fn from_slice(slice: &[u8]) -> Result<Option<Self>, Self::FromSliceError> {
+///         Ok(slice.first().copied().map(Self))
+///     }
+///
+///     fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), Self::WriteToError> {
+///         writer.write_all(&[self.0])
+///     }
+/// }
+/// ```
 pub trait CustomPayloadCopiable<'a> {
     /// Private Enterprise Number of the entity which defined this payload format.
     const PEN: u32;
@@ -64,6 +98,31 @@ pub trait CustomPayloadCopiable<'a> {
 }
 
 /// Common interface for non-copiable custom block and custom option payloads.
+///
+/// # Examples
+///
+/// ```
+/// use std::convert::Infallible;
+/// use std::io::Write;
+/// use pcap_file::pcapng::blocks::custom::CustomPayloadNonCopiable;
+///
+/// struct Payload(u8);
+///
+/// impl CustomPayloadNonCopiable<'_> for Payload {
+///     const PEN: u32 = 70_000;
+///     type State = u8;
+///     type FromSliceError = Infallible;
+///     type WriteToError = std::io::Error;
+///
+///     fn from_slice(state: &Self::State, slice: &[u8]) -> Result<Option<Self>, Self::FromSliceError> {
+///         Ok(slice.first().map(|value| Self(value ^ state)))
+///     }
+///
+///     fn write_to<W: Write>(&self, state: &Self::State, writer: &mut W) -> Result<(), Self::WriteToError> {
+///         writer.write_all(&[self.0 ^ state])
+///     }
+/// }
+/// ```
 pub trait CustomPayloadNonCopiable<'a> {
     /// Private Enterprise Number of the entity which defined this payload format.
     const PEN: u32;
@@ -114,10 +173,20 @@ pub trait CustomPayloadNonCopiable<'a> {
     }
 }
 
-/// Common interface for custom block payloads.
+/// Marker trait for payload types used in custom blocks.
 ///
 /// # Important
 /// Implementors must also implement [`CustomPayloadCopiable`] or [`CustomPayloadNonCopiable`].
+///
+/// # Examples
+///
+/// ```
+/// use pcap_file::pcapng::blocks::custom::CustomBlockPayload;
+///
+/// struct Payload;
+///
+/// impl CustomBlockPayload<'_> for Payload {}
+/// ```
 pub trait CustomBlockPayload<'a> {
     /// Convert this payload into a copiable [`CustomBlock`].
     ///
@@ -160,10 +229,20 @@ pub trait CustomBlockPayload<'a> {
     }
 }
 
-/// Common interface for custom option payloads.
+/// Marker trait for payload types used in custom options.
 ///
 /// # Important
 /// Implementors must also implement [`CustomPayloadCopiable`] or [`CustomPayloadNonCopiable`].
+///
+/// # Examples
+///
+/// ```
+/// use pcap_file::pcapng::blocks::custom::CustomOptionPayload;
+///
+/// struct Payload;
+///
+/// impl CustomOptionPayload<'_> for Payload {}
+/// ```
 pub trait CustomOptionPayload<'a> {
     /// Convert this payload into a copiable [`CustomBinaryOption`].
     ///

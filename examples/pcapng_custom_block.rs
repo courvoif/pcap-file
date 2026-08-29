@@ -3,8 +3,9 @@ use std::io::{self, BufWriter, Write};
 
 use anyhow::{Context, Result, anyhow};
 use byteorder_slice::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use pcap_file::pcapng::blocks::Block;
 use pcap_file::pcapng::blocks::custom::{CustomBlockPayload, CustomPayloadCopiable};
-use pcap_file::pcapng::{Block, PcapNgReader, PcapNgWriter};
+use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 
 #[derive(Clone, Debug)]
 struct Counter(u64);

@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use pcap_file::pcapng::{Block, PcapNgParser};
+use pcap_file::pcapng::PcapNgParser;
+use pcap_file::pcapng::blocks::Block;
 
 fn main() -> Result<()> {
     let data = std::fs::read("tests/pcapng/little_endian/basic/test001.pcapng")
