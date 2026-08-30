@@ -75,7 +75,7 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// Returns [`None`] after reaching EOF.
     ///
-    ///  The reader does not advance past a malformed block.
+    /// **Does NOT advance in case of an error.**
     ///
     /// The returned state already includes the effects of the returned block.
     /// Use this method instead of the owned iterator when processing a block
@@ -116,6 +116,8 @@ impl<R: Read> PcapNgReader<R> {
     /// Returns the next [`RawBlock`] and the current [`PcapNgState`].
     ///
     /// Returns [`None`] after reaching EOF.
+    /// 
+    /// **Does NOT advance in case of an error.**
     ///
     /// More permissive than [`Self::next_block`].
     ///

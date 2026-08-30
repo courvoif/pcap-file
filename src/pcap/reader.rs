@@ -74,8 +74,10 @@ impl<R: Read> PcapReader<R> {
     }
 
     /// Returns the next [`PcapPacket`].
+    /// 
     /// Returns [`None`] after reaching EOF.
-    /// The reader does not advance past a malformed packet.
+    /// 
+    /// **Does NOT advance in case of an error.**
     ///
     /// # Errors
     /// - Returns [`PcapReadError::Io`] if the underlying reader cannot provide
@@ -96,7 +98,10 @@ impl<R: Read> PcapReader<R> {
     }
 
     /// Returns the next [`RawPcapPacket`].
+    /// 
     /// Returns [`None`] after reaching EOF.
+    /// 
+    /// **Does NOT advance in case of an error.**
     ///
     /// This method is more permissive than [`Self::next_packet`] and can read malformed files.
     ///

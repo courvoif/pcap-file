@@ -11,10 +11,16 @@ use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 
 fn main() -> Result<()> {
     let data = malformed_pcapng().context("failed to build the malformed pcapng")?;
-    let mut reader = PcapNgReader::new(Cursor::new(data)).context("failed to read the pcapng section header")?;
+    let mut reader =
+        PcapNgReader::new(Cursor::new(data)).context("failed to read the pcapng section header")?;
+
+    while let Some(block_res) = reader.next_raw_block() {
+        let (raw_block, state) = block_res.context("Failed to parse RawBlock")?;
+        let block = raw_block.try_into_block(state).context("Failed to validate RawBlock")?;
+    }
 
     loop {
-        match reader.next_block() {
+        match reader.next_raw_block() {
             Some(Ok((block, _state))) => println!("valid block: {block:?}"),
             Some(Err(PcapNgReadError::BlockConversion(error))) => {
                 // A non-state block that fails typed conversion does not advance the
