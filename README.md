@@ -46,10 +46,9 @@ for pkt in pcap_reader {
 }
 ```
 
-The iterator API returns owned packets and is slower than
-[`PcapReader::next_packet`],
-which can borrow packet data directly from the internal read buffer. It stops
-after the first error.
+The iterator API returns owned packets and is slower than [`PcapReader::next_packet`],
+which can borrow packet data directly from the internal read buffer. 
+It stops after the first error.
 
 ### PcapWriter
 
@@ -80,22 +79,23 @@ let file_in = File::open("test.pcapng").expect("Error opening file");
 let pcapng_reader = PcapNgReader::new(file_in).unwrap();
 
 // Read test.pcapng
-for block in pcapng_reader {
+for packet in pcapng_reader {
     // Check if there is no error
-    let block = block.unwrap();
+    let packet = packet.unwrap();
 
     // Do something
 }
 ```
 
-The iterator API is intended for simple traversal: it returns owned blocks,
-does not expose [`PcapNgState`], and stops after the first error. Use
-[`PcapNgReader::next_block`] when processing a block requires the current state; it returns
-borrowed blocks and the state after applying that block. Some typed conversion
-errors returned by [`PcapNgReader::next_block`] can be recovered by reading the
-same block with [`PcapNgReader::next_raw_block`]; see the
-[raw recovery example][pcapng-raw-recovery]. The same recovery pattern applies
-to [`PcapNgParser`]: after a recoverable typed conversion error, call
+The iterator API is intended for simple packet traversal: it skips non-packet
+blocks, returns owned packets, does not expose [`PcapNgState`], and stops after
+the first error. 
+Use [`PcapNgReader::next_block`] when processing a block requires the current state; it returns
+borrowed blocks and the state after applying that block. 
+Some typed conversion errors returned by [`PcapNgReader::next_block`] can be recovered by reading the
+same block with [`PcapNgReader::next_raw_block`].
+See the [raw recovery example][pcapng-raw-recovery]. 
+The same recovery pattern applies to [`PcapNgParser`]: after a recoverable typed conversion error, call
 [`PcapNgParser::next_raw_block`] with the same input slice.
 
 ### PcapNgWriter
@@ -105,14 +105,14 @@ use std::fs::File;
 use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 
 let file_in = File::open("test.pcapng").expect("Error opening file");
-let pcapng_reader = PcapNgReader::new(file_in).unwrap();
+let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
 
 let file_out = File::create("out.pcapng").expect("Error creating file");
 let mut pcapng_writer =
     PcapNgWriter::with_section_header(file_out, pcapng_reader.section().clone()).unwrap();
 
-for block in pcapng_reader {
-    let block = block.unwrap();
+while let Some(block) = pcapng_reader.next_block() {
+    let (block, _) = block.unwrap();
     pcapng_writer.write_block(&block).unwrap();
 }
 ```

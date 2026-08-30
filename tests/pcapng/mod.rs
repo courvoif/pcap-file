@@ -31,10 +31,47 @@ fn reader_iterator() {
         let file = File::open(&entry).unwrap();
         let pcapng_reader = PcapNgReader::new(file).unwrap();
 
-        for (i, block) in pcapng_reader.into_iter().enumerate() {
-            let _block = block.unwrap_or_else(|_| panic!("Error on block {i} on file: {entry:?}"));
+        for (i, packet) in pcapng_reader.into_iter().enumerate() {
+            let _packet = packet.unwrap_or_else(|_| panic!("Error on packet {i} on file: {entry:?}"));
         }
     }
+}
+
+#[test]
+fn reader_iterator_skips_non_packet_blocks() {
+    use std::borrow::Cow;
+
+    use pcap_file::DataLink;
+    use pcap_file::pcapng::blocks::PcapNgBlock;
+    use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
+    use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
+
+    let mut writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big).unwrap();
+    writer
+        .write_block(&InterfaceDescriptionBlock::new(DataLink::ETHERNET, 2).into_block())
+        .unwrap();
+    writer
+        .write_block(
+            &EnhancedPacketBlock {
+                interface_id: 0,
+                timestamp: Duration::from_secs(1),
+                original_len: 2,
+                data: Cow::Borrowed(&[1, 2]),
+                options: Vec::new(),
+            }
+            .into_block(),
+        )
+        .unwrap();
+
+    let pcapng = writer.into_inner();
+    let mut packets = PcapNgReader::new(&pcapng[..]).unwrap().into_iter();
+    let packet = packets
+        .next()
+        .unwrap()
+        .unwrap_or_else(|error| panic!("failed to read packet: {error}"));
+
+    assert_eq!(packet.data(), [1, 2]);
+    assert!(packets.next().is_none());
 }
 
 #[test]
@@ -112,33 +149,14 @@ fn writer() {
 }
 
 #[test]
-fn writer_iterator() {
-    for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
-        let entry = entry.unwrap();
-
-        let pcapng_in = std::fs::read(&entry).unwrap();
-        let pcapng_reader = PcapNgReader::new(&pcapng_in[..]).unwrap();
-        let mut pcapng_writer = PcapNgWriter::with_section_header(Vec::new(), pcapng_reader.section().clone()).unwrap();
-
-        for (idx, block) in pcapng_reader.into_iter().enumerate() {
-            let block = block.unwrap();
-            pcapng_writer
-                .write_block(&block)
-                .unwrap_or_else(|_| panic!("Error writing block, file: {entry:?}, block n°{idx}, block: {block:?}"));
-        }
-
-        assert_eq!(&pcapng_in, pcapng_writer.get_ref());
-    }
-}
-
-#[test]
 fn iterator_stops_after_error() {
     let pcapng = pcapng_with_invalid_packet_block();
-    let mut blocks = PcapNgReader::new(&pcapng[..]).unwrap().into_iter();
+    let mut packets = PcapNgReader::new(&pcapng[..]).unwrap().into_iter();
 
-    assert!(blocks.next().unwrap().is_ok());
-    assert!(blocks.next().unwrap().is_err());
-    assert!(blocks.next().is_none());
+    // The interface block is consumed internally before the invalid packet is
+    // returned as the iterator's first item.
+    assert!(packets.next().unwrap().is_err());
+    assert!(packets.next().is_none());
 }
 
 fn pcapng_with_invalid_packet_block() -> Vec<u8> {
