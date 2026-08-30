@@ -64,7 +64,7 @@ impl<R: Read> ReadBuffer<R> {
                 }
 
                 Err(e) if e.is_incomplete() => {
-                    // The parsed data len should never be more than the buffer capacity
+                    // A buffer extension is needed but the buffer is already full
                     if buf.len() == self.buffer.len() {
                         return Err(E::from_io(Error::from(ErrorKind::UnexpectedEof)));
                     }
@@ -84,17 +84,23 @@ impl<R: Read> ReadBuffer<R> {
     /// Copy the remaining data inside buffer at its start and the fill the end part with data from the reader.
     fn fill_buf(&mut self) -> Result<usize, std::io::Error> {
         // Copy the remaining data to the start of the buffer
-        let rem_len = unsafe {
-            let buf_ptr_mut = self.buffer.as_mut_ptr();
-            let rem_ptr_mut = buf_ptr_mut.add(self.pos);
-            std::ptr::copy(rem_ptr_mut, buf_ptr_mut, self.len - self.pos);
+        let new_len = unsafe {
+            if self.pos != 0 {
+                let buf_ptr_mut = self.buffer.as_mut_ptr();
+                let rem_ptr_mut = buf_ptr_mut.add(self.pos);
+                std::ptr::copy(rem_ptr_mut, buf_ptr_mut, self.len - self.pos);
+            }
+
             self.len - self.pos
         };
 
-        let nb_read = self.reader.read(&mut self.buffer[rem_len..])?;
-
-        self.len = rem_len + nb_read;
+        // Update the buffer boundaries with the temporary values to
+        // prevent an invalid state if the next read fails
         self.pos = 0;
+        self.len = new_len;
+
+        let nb_read = self.reader.read(&mut self.buffer[new_len..])?;
+        self.len += nb_read;
 
         Ok(nb_read)
     }
@@ -204,29 +210,88 @@ impl ReadBufferParseError for PcapNgParseError {
 
 #[cfg(test)]
 mod test {
-    /*
-    // Shouldn't compile
-    #[test]
-    fn parse_with_safety() {
-        let a = &[0_u8; 10];
-        let b = &mut &a[..];
+    use std::io::{Error, ErrorKind, Read};
 
-        let input = vec![1_u8; 100];
-        let input_read = &mut &input[..];
-        let mut reader = super::ReadBuffer::new(input_read);
+    use byteorder_slice::option::ReadSlice;
 
-        unsafe {
-            reader.parse_with(|buf| {
-                *b = buf;
-                Ok((buf, ()))
-            });
-        }
+    use crate::pcap::{PcapParseError, PcapReadError};
 
-        unsafe {
-            reader.has_data_left();
-        }
-
-        println!("{:?}", b);
+    /// Fake reader that returns two data chunks separated by a transient I/O error.
+    #[derive(Debug, Default)]
+    struct FailOnceReader {
+        read_count: usize,
     }
-    */
+
+    impl Read for FailOnceReader {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let result = match self.read_count {
+                0 => {
+                    buf[..6].copy_from_slice(&[1, 2, 3, 4, 5, 6]);
+                    Ok(6)
+                }
+                1 => Err(Error::other("injected read failure")),
+                2 => {
+                    buf[..4].copy_from_slice(&[1, 2, 3, 4]);
+                    Ok(4)
+                }
+                _ => unreachable!(),
+            };
+
+            self.read_count += 1;
+            result
+        }
+    }
+
+    /// Parsing function that always parses 4B.
+    fn parse_4_bytes(mut src: &[u8]) -> Result<(&[u8], &[u8]), PcapParseError> {
+        src.read_slice(4)
+            .map(|slice| (src, slice))
+            .ok_or(PcapParseError::IncompleteBuffer(4, src.len()))
+    }
+
+    /// Checks that buffered data is preserved when an I/O error interrupts a
+    /// refill and that parsing can resume successfully on the next attempt.
+    #[test]
+    fn parse_with_can_retry_after_io_error() {
+        let mut reader = super::ReadBuffer::with_capacity(FailOnceReader::default(), 6);
+
+        // Consume four bytes from the first chunk, leaving [5, 6] buffered.
+        let first = reader.parse_with(|buf| parse_4_bytes(buf)).expect("1st read failed");
+        assert_eq!(first, [1, 2, 3, 4]);
+
+        // Parsing the next value requires a refill. The buffer is compacted
+        // before the underlying reader returns its injected error.
+        let second = reader
+            .parse_with(|buf| parse_4_bytes(buf))
+            .expect_err("2nd read didn't fail");
+        assert!(matches!(second, PcapReadError::Io(error) if error.kind() == ErrorKind::Other));
+
+        // A retry must preserve the two compacted bytes and append new input.
+        let third = reader.parse_with(|buf| parse_4_bytes(buf)).expect("3rd read failed");
+        assert_eq!(third, [5, 6, 1, 2]);
+    }
+
+    // Shouldn't compile
+    // #[test]
+    // fn parse_with_safety() {
+    //     let a = &[0_u8; 10];
+    //     let b = &mut &a[..];
+    //
+    //     let input = vec![1_u8; 100];
+    //     let input_read = &mut &input[..];
+    //     let mut reader = super::ReadBuffer::new(input_read);
+    //
+    //     unsafe {
+    //         reader.parse_with(|buf| {
+    //             *b = buf;
+    //             Ok((buf, ()))
+    //         });
+    //     }
+    //
+    //     unsafe {
+    //         reader.has_data_left();
+    //     }
+    //
+    //     println!("{:?}", b);
+    // }
 }
