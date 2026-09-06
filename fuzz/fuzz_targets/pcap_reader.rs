@@ -4,5 +4,6 @@ use pcap_file::pcap::PcapReader;
 
 fuzz_target!(|data: &[u8]| {
     if let Ok(mut pcap_reader) = PcapReader::new(data) {
-        while let Some(Ok(_packet)) = pcap_reader.next_packet() {}    }
+        while let Some(Ok(_packet)) = pcap_reader.next_packet() {}
+    }
 });

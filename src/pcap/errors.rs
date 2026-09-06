@@ -107,6 +107,9 @@ pub enum PcapValidationError {
     /// The captured packet length is larger than the file snaplen.
     #[error("included_len > snap_len: {0} > {1}")]
     IncludedLenTooBig(u32, u32),
+    /// The captured packet length does not match the packet data length.
+    #[error("included_len != data length: {0} != {1}")]
+    IncludedLenMismatch(u32, u32),
     /// The original packet length is smaller than the captured packet length.
     #[error("origin_len < included_len: {0} < {1}")]
     OriginLenTooSmall(u32, u32),

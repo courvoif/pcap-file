@@ -143,7 +143,7 @@ Runnable examples are available in the [examples on GitHub][examples]:
 
 Run an example from the repository root. Standard read and parse examples use
 bundled test captures, raw-reading examples generate one malformed record, and
-write examples create a uniquely named file under `target/`:
+write examples create a fixed example file under `target/`:
 
 ```bash
 cargo run --example pcap_read

@@ -1,6 +1,6 @@
 //! Errors produced when parsing, reading, writing, or validating pcapng data.
 
-use std::{fmt::Display, time::Duration};
+use std::time::Duration;
 
 use thiserror::Error;
 
@@ -196,6 +196,7 @@ pub enum RawBlockParseError {
 /// Error returned when a raw pcapng block cannot be converted into a typed
 /// block.
 #[derive(Debug, Error)]
+#[error("Invalid content for block '{}' ({:#X})", block_name(self.block.type_), self.block.type_)]
 pub struct RawBlockConversionError<'a> {
     /// Original raw block that failed conversion.
     pub block: RawBlock<'a>,
@@ -204,39 +205,18 @@ pub struct RawBlockConversionError<'a> {
     pub source: Box<BlockContentParseError>,
 }
 
-impl Display for RawBlockConversionError<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Invalid content for block '{}' ({:#X})",
-            block_name(self.block.type_),
-            self.block.type_
-        )
-    }
-}
-
 /* ----- BlockConversionError ----- */
 
 /// Error returned by typed parsers and readers when a raw block cannot be
 /// converted into a typed block.
 #[derive(Debug, Error)]
+#[error("Invalid content for block '{}' ({:#X})", block_name(self.type_), self.type_)]
 pub struct BlockConversionError {
     /// Numeric block type.
     pub type_: u32,
     /// Underlying block content parse error.
     // Boxed to keep the error small
     pub source: Box<BlockContentParseError>,
-}
-
-impl Display for BlockConversionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Invalid content for block '{}' ({:#X})",
-            block_name(self.type_),
-            self.type_
-        )
-    }
 }
 
 impl From<RawBlockConversionError<'_>> for BlockConversionError {

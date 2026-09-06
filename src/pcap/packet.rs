@@ -113,8 +113,9 @@ impl<'a> PcapPacket<'a> {
     ///
     /// # Errors
     ///
-    /// Returns a [`PcapPacketConversionError`] containing the original raw
-    /// packet and the validation error if its fields are invalid.
+    /// - Returns a [`PcapPacketConversionError`] if the raw packet fields are
+    ///   invalid. The error contains the original packet, which can be
+    ///   inspected, corrected, and passed to this method again.
     pub fn try_from_raw_packet(
         raw: RawPcapPacket<'a>,
         ts_resolution: PcapTsResolution,
@@ -164,6 +165,13 @@ impl<'a> PcapPacket<'a> {
                 packet: raw,
             });
         };
+
+        if raw.incl_len != data_len {
+            return Err(PcapPacketConversionError {
+                source: PcapValidationError::IncludedLenMismatch(raw.incl_len, data_len),
+                packet: raw,
+            });
+        }
 
         if data_len > raw.orig_len {
             return Err(PcapPacketConversionError {
@@ -313,13 +321,37 @@ impl<'a> RawPcapPacket<'a> {
     ///
     /// # Errors
     ///
-    /// Returns a [`PcapPacketConversionError`] containing this raw packet and
-    /// the validation error if conversion fails.
+    /// - Returns a [`PcapPacketConversionError`] if this raw packet is invalid.
+    ///   The error contains the original packet, which can be inspected,
+    ///   corrected, and passed to this method again.
     pub fn try_into_pcap_packet(
         self,
         ts_resolution: PcapTsResolution,
         snap_len: u32,
     ) -> Result<PcapPacket<'a>, PcapPacketConversionError<'a>> {
         PcapPacket::try_from_raw_packet(self, ts_resolution, snap_len)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_from_raw_packet_rejects_included_len_mismatch() {
+        let raw_packet = RawPcapPacket {
+            ts_sec: 1,
+            ts_frac: 0,
+            incl_len: 2,
+            orig_len: 4,
+            data: Cow::Borrowed(&[1, 2, 3, 4]),
+        };
+
+        // Typed conversion must not silently replace the raw included length
+        // with the actual payload length.
+        let error = PcapPacket::try_from_raw_packet(raw_packet, PcapTsResolution::MicroSecond, 65_535).unwrap_err();
+        assert!(matches!(error.source, PcapValidationError::IncludedLenMismatch(2, 4)));
+        assert_eq!(error.packet.incl_len, 2);
+        assert_eq!(&*error.packet.data, &[1, 2, 3, 4]);
     }
 }

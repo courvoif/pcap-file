@@ -270,6 +270,7 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
 /* ----- PcapNgPacket ----- */
 
 /// A packet read from any pcapng packet block type.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PcapNgPacket<'a> {
     /// A packet from an Enhanced Packet Block.
     Enhanced(EnhancedPacketBlock<'a>),
