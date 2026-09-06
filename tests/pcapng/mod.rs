@@ -444,7 +444,7 @@ fn reader_with_capacity_handles_large_blocks() {
 }
 
 #[test]
-fn raw_reader_recovers_after_typed_block_validation_error() {
+fn typed_reader_returns_conversion_error() {
     use byteorder_slice::BigEndian;
     use pcap_file::DataLink;
     use pcap_file::pcapng::blocks::PcapNgBlock;
@@ -487,11 +487,6 @@ fn raw_reader_recovers_after_typed_block_validation_error() {
         }
         other => panic!("Expected block conversion error, got {other:?}"),
     }
-
-    let (raw_block, _) = reader.next_raw_block().unwrap().unwrap();
-    assert_eq!(raw_block.type_, ENHANCED_PACKET_BLOCK);
-    assert_eq!(raw_block.body.len(), 20);
-    assert!(reader.next_raw_block().is_none());
 }
 
 #[test]

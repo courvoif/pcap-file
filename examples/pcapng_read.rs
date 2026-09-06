@@ -11,8 +11,8 @@ fn main() -> Result<()> {
     // The iterator is the simplest API when processing packets does not require
     // pcapng state. It skips non-packet blocks, returns owned packets, and stops
     // after the first error.
-    // Use PcapNgReader::next_block() when the state is needed for each block or
-    // when typed errors may need recovery through next_raw_block().
+    // Use PcapNgReader::next_block() when the state is needed for each block,
+    // or next_raw_block() when malformed block content must be preserved.
     for packet in reader {
         let packet = packet.context("failed to read a pcapng packet")?;
         println!("{} captured bytes", packet.data().len());

@@ -92,10 +92,11 @@ blocks, returns owned packets, does not expose [`PcapNgState`], and stops after
 the first error. 
 Use [`PcapNgReader::next_block`] when processing a block requires the current state; it returns
 borrowed blocks and the state after applying that block. 
-Some typed conversion errors returned by [`PcapNgReader::next_block`] can be recovered by reading the
-same block with [`PcapNgReader::next_raw_block`].
-See the [raw recovery example][pcapng-raw-recovery]. 
-The same recovery pattern applies to [`PcapNgParser`]: after a recoverable typed conversion error, call
+After an unrecoverable reading error, callers should discard the reader. Use
+[`PcapNgReader::next_raw_block`] from the outset when malformed block content
+must be inspected or preserved; see the [raw recovery example][pcapng-raw-recovery].
+The slice-based [`PcapNgParser`] leaves cursor management to the caller: after
+a recoverable typed conversion error, call
 [`PcapNgParser::next_raw_block`] with the same input slice.
 
 ### PcapNgWriter

@@ -6,36 +6,24 @@ use byteorder_slice::BigEndian;
 use pcap_file::DataLink;
 use pcap_file::pcapng::blocks::block_common::{ENHANCED_PACKET_BLOCK, RawBlock};
 use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-use pcap_file::pcapng::errors::PcapNgReadError;
 use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 
 fn main() -> Result<()> {
     let data = malformed_pcapng().context("failed to build the malformed pcapng")?;
-    let mut reader =
-        PcapNgReader::new(Cursor::new(data)).context("failed to read the pcapng section header")?;
+    let mut reader = PcapNgReader::new(Cursor::new(data)).context("failed to read the pcapng section header")?;
 
     while let Some(block_res) = reader.next_raw_block() {
         let (raw_block, state) = block_res.context("Failed to parse RawBlock")?;
-        let block = raw_block.try_into_block(state).context("Failed to validate RawBlock")?;
-    }
+        let type_ = raw_block.type_;
 
-    loop {
-        match reader.next_raw_block() {
-            Some(Ok((block, _state))) => println!("valid block: {block:?}"),
-            Some(Err(PcapNgReadError::BlockConversion(error))) => {
-                // A non-state block that fails typed conversion does not advance the
-                // reader. Reading it raw lets an application inspect or preserve it.
+        match raw_block.try_into_block(state) {
+            Ok(block) => println!("valid block: {block:?}"),
+            Err(error) => {
+                // Raw reading has already consumed the structurally valid block,
+                // so malformed typed content can be inspected without retrying.
                 eprintln!("invalid block: {error}");
-
-                let (raw, _state) = reader
-                    .next_raw_block()
-                    .context("typed error was not followed by a raw block")?
-                    .context("failed to read the malformed block as raw data")?;
-
-                println!("recovered raw block type: {:#x}", raw.type_);
+                println!("preserved raw block type: {type_:#x}");
             }
-            Some(Err(error)) => return Err(error.into()),
-            None => break,
         }
     }
 

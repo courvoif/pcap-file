@@ -79,41 +79,34 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// Returns [`None`] after reaching EOF.
     ///
-    /// **Does NOT advance in case of an error.**
-    ///
     /// The returned state already includes the effects of the returned block.
     /// Use this method instead of the owned iterator when processing a block
     /// requires state such as its section or interface descriptions.
     ///
     /// # Errors
-    /// - Returns [`PcapNgReadError::Io`] if the underlying reader cannot provide
-    ///   a complete block. Some I/O errors can be retried.
-    /// - Returns [`PcapNgReadError::BlockConversion`] if a block cannot be
-    ///   converted. For non-state blocks, the same block can be read with
-    ///   [`Self::next_raw_block`].
-    ///   Malformed Section Header or Interface Description blocks may still fail there because the reader must decode them to keep its state consistent.
-    /// - Returns another error if parsing or updating the state fails. The
-    ///   reader cannot advance past these errors.
-    #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
+    ///
+    /// - Returns an error if the input cannot be read, the next block is
+    ///   incomplete or malformed, its typed content cannot be decoded,
+    ///   or the pcapng state cannot be maintained.
+    /// - Transient I/O errors may be retried by calling this method again.
+    /// - All other errors are terminal for this reader. Use
+    ///   [`Self::next_raw_block`] from the beginning when invalid blocks need to
+    ///   be handled.
+    #[must_use = "the result must be handled before reading another block"]
     pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
-            Ok(has_data) => {
-                if has_data {
-                    // # SAFETY
-                    // Block must NOT contain a mutable reference to the state.
-                    // Keep the annotations to be sure that only the lifetime is transmuted.
-                    let res: Result<Block<'_>, PcapNgReadError> =
-                        self.reader.parse_with(|src| self.parser.next_block(src));
-                    let res: Result<Block<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
+            Ok(true) => {
+                // # SAFETY
+                // Block must NOT contain a mutable reference to the state.
+                // Keep the annotations to be sure that only the lifetime is transmuted.
+                let result: Result<Block<'_>, PcapNgReadError> =
+                    self.reader.parse_with(|src| self.parser.next_block(src));
+                let result: Result<Block<'_>, PcapNgReadError> = unsafe { std::mem::transmute(result) };
 
-                    let state = &self.parser.state;
-
-                    Some(res.map(|blk| (blk, state)))
-                } else {
-                    None
-                }
+                Some(result.map(|block| (block, &self.parser.state)))
             }
-            Err(e) => Some(Err(PcapNgReadError::Io(e))),
+            Ok(false) => None,
+            Err(error) => Some(Err(PcapNgReadError::Io(error))),
         }
     }
 
@@ -121,20 +114,19 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// Returns [`None`] after reaching EOF.
     ///
-    /// **Does NOT advance in case of an error.**
-    ///
-    /// More permissive than [`Self::next_block`].
+    /// This is the permissive API for preserving structurally valid blocks
+    /// whose typed content may be malformed.
     ///
     /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
     ///
     /// # Errors
-    /// - Returns [`PcapNgReadError::Io`] if the underlying reader cannot provide
-    ///   a complete block. Some I/O errors can be retried.
-    /// - Returns [`PcapNgReadError::StateUpdate`] if a state-changing raw block
-    ///   cannot be decoded.
-    /// - Returns another error if the raw block is malformed. The reader cannot
-    ///   advance past these errors.
-    #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
+    ///
+    /// - Returns an error if the input cannot be read, the next block is
+    ///   incomplete or has invalid framing, or the pcapng state cannot be maintained.
+    /// - Transient I/O errors may be retried by calling this method again.
+    /// - All other errors are terminal for this reader. After receiving an
+    ///   error, callers should discard the reader.
+    #[must_use = "the result must be handled before reading another block"]
     pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
@@ -146,14 +138,12 @@ impl<R: Read> PcapNgReader<R> {
                         self.reader.parse_with(|src| self.parser.next_raw_block(src));
                     let res: Result<RawBlock<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
 
-                    let state = &self.parser.state;
-
-                    Some(res.map(|blk| (blk, state)))
+                    Some(res.map(|block| (block, &self.parser.state)))
                 } else {
                     None
                 }
             }
-            Err(e) => Some(Err(PcapNgReadError::Io(e))),
+            Err(error) => Some(Err(PcapNgReadError::Io(error))),
         }
     }
 
@@ -204,16 +194,13 @@ impl<R: Read> IntoIterator for PcapNgReader<R> {
 
 /// Iterator over owned [`PcapNgPacket`] values.
 ///
-/// Non-packet blocks are parsed to maintain the pcapng state, but are not returned. 
-/// Each returned packet's data is copied out of the internal read buffer. 
+/// This iterator is intended for simple traversal and does not expose the
+/// evolving [`PcapNgState`].
+///
 /// Stops after the first error.
 ///
-/// This iterator is intended for simple traversal and does not expose the
-/// evolving [`PcapNgState`]. 
-/// Use [`PcapNgReader::next_block`] when processing a
-/// block requires its corresponding state.
-/// Use [`PcapNgReader::next_block`] when processing a
-/// block requires format-error recovery.
+/// Use [`PcapNgReader::next_block`] when processing a block requires its corresponding state,
+///  and [`PcapNgReader::next_raw_block`] when invalid blocks need to be handled.
 ///
 /// # Example
 ///
