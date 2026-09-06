@@ -6,7 +6,7 @@ use thiserror::Error;
 
 use crate::{
     DataLink,
-    pcapng::blocks::{block_name, interface_description::InterfaceTsResolution},
+    pcapng::blocks::{block_common::RawBlock, block_name, interface_description::InterfaceTsResolution},
 };
 
 /* ----- PcapError ----- */
@@ -49,7 +49,7 @@ pub enum PcapNgParseError {
 
     /// Error while converting a raw block into a typed block.
     #[error(transparent)]
-    BlockConversion(#[from] BlockConversionError),
+    BlockConversion(#[from] BlockDecodingError),
 
     /// Error while updating the pcapng state.
     #[error(transparent)]
@@ -80,7 +80,7 @@ pub enum PcapNgReadError {
 
     /// Error while converting a raw block into a typed block.
     #[error(transparent)]
-    BlockConversion(#[from] BlockConversionError),
+    BlockConversion(#[from] BlockDecodingError),
 
     /// Error while updating the pcapng state.
     #[error(transparent)]
@@ -193,17 +193,42 @@ pub enum RawBlockParseError {
 
 /* ----- BlockConversionError ----- */
 
-/// Errors that can occur while converting a raw block into a typed block.
+/// Error returned when a raw pcapng block cannot be converted into a typed
+/// block.
 #[derive(Debug, Error)]
-pub struct BlockConversionError {
-    /// Numeric block type
-    pub type_: u32,
-    /// Underlying block content parse error
+pub struct BlockConversionError<'a> {
+    /// Original raw block that failed conversion.
+    pub block: RawBlock<'a>,
+    /// Underlying block content parse error.
     // Boxed to keep the error small
     pub source: Box<BlockContentParseError>,
 }
 
-impl Display for BlockConversionError {
+impl Display for BlockConversionError<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Invalid content for block '{}' ({:#X})",
+            block_name(self.block.type_),
+            self.block.type_
+        )
+    }
+}
+
+/* ----- BlockDecodingError ----- */
+
+/// Error returned by typed parsers and readers when block content cannot be
+/// decoded.
+#[derive(Debug, Error)]
+pub struct BlockDecodingError {
+    /// Numeric block type.
+    pub type_: u32,
+    /// Underlying block content parse error.
+    // Boxed to keep the error small
+    pub source: Box<BlockContentParseError>,
+}
+
+impl Display for BlockDecodingError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -211,6 +236,15 @@ impl Display for BlockConversionError {
             block_name(self.type_),
             self.type_
         )
+    }
+}
+
+impl From<BlockConversionError<'_>> for BlockDecodingError {
+    fn from(error: BlockConversionError<'_>) -> Self {
+        Self {
+            type_: error.block.type_,
+            source: error.source,
+        }
     }
 }
 
@@ -244,7 +278,7 @@ pub enum BlockContentParseError {
 pub enum StateUpdateError {
     /// A state-relevant raw block could not be converted into a typed block.
     #[error("Failed to convert raw block to update the pcapng state")]
-    BlockConversion(#[from] BlockConversionError),
+    BlockConversion(#[from] BlockDecodingError),
 }
 
 /* ----- ContentValidationError ----- */

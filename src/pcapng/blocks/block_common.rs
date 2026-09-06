@@ -212,8 +212,9 @@ impl<'a> RawBlock<'a> {
     ///
     /// # Errors
     ///
-    /// - Returns any error produced by [`Block::try_from_raw_block`].
-    pub fn try_into_block(self, state: &PcapNgState) -> Result<Block<'a>, BlockConversionError> {
+    /// Returns a [`BlockConversionError`] containing this raw block and the
+    /// content error if conversion fails.
+    pub fn try_into_block(self, state: &PcapNgState) -> Result<Block<'a>, BlockConversionError<'a>> {
         match state.section.endianness {
             crate::Endianness::Big => Block::try_from_raw_block::<BigEndian>(state, self),
             crate::Endianness::Little => Block::try_from_raw_block::<LittleEndian>(state, self),
@@ -225,11 +226,12 @@ impl<'a> RawBlock<'a> {
     ///
     /// # Errors
     ///
-    /// - Returns any error produced by [`Block::try_from_raw_block`].
+    /// Returns a [`BlockConversionError`] containing this raw block and the
+    /// content error if conversion fails.
     pub fn try_into_block_with_byteorder<B: ByteOrder>(
         self,
         state: &PcapNgState,
-    ) -> Result<Block<'a>, BlockConversionError> {
+    ) -> Result<Block<'a>, BlockConversionError<'a>> {
         Block::try_from_raw_block::<B>(state, self)
     }
 }
@@ -266,8 +268,9 @@ impl<'a> Block<'a> {
     ///
     /// # Errors
     ///
-    /// - Returns an error if the raw block cannot be decoded or validated using
-    ///   the supplied byte order and state.
+    /// Returns a [`BlockConversionError`] containing the original raw block and
+    /// the content error if it cannot be decoded or validated using the
+    /// supplied byte order and state.
     ///
     /// If `raw_block` borrows its body, the returned [`Block`] will borrow from
     /// that same buffer whenever possible.
@@ -277,13 +280,13 @@ impl<'a> Block<'a> {
     pub fn try_from_raw_block<B: ByteOrder>(
         state: &PcapNgState,
         raw_block: RawBlock<'a>,
-    ) -> Result<Block<'a>, BlockConversionError> {
+    ) -> Result<Block<'a>, BlockConversionError<'a>> {
         fn parse_body<'a, B: ByteOrder>(
             state: &PcapNgState,
             type_: u32,
             initial_len: u32,
             body: &'a [u8],
-        ) -> Result<Block<'a>, BlockConversionError> {
+        ) -> Result<Block<'a>, BlockContentParseError> {
             match type_ {
                 SECTION_HEADER_BLOCK => {
                     SectionHeaderBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SectionHeader(blk))
@@ -312,18 +315,36 @@ impl<'a> Block<'a> {
                 }
                 _ => Ok(Block::Unknown(UnknownBlock::new(type_, initial_len, body))),
             }
-            .map_err(|source| BlockConversionError {
-                type_,
-                source: source.into(),
-            })
         }
 
         let type_ = raw_block.type_;
         let initial_len = raw_block.initial_len;
+        let trailer_len = raw_block.trailer_len;
 
         match raw_block.body {
-            Cow::Borrowed(body) => parse_body::<B>(state, type_, initial_len, body),
-            Cow::Owned(body) => parse_body::<B>(state, type_, initial_len, &body).map(|block| block.into_owned()),
+            Cow::Borrowed(body) => {
+                parse_body::<B>(state, type_, initial_len, body).map_err(|source| BlockConversionError {
+                    block: RawBlock {
+                        type_,
+                        initial_len,
+                        body: Cow::Borrowed(body),
+                        trailer_len,
+                    },
+                    source: source.into(),
+                })
+            }
+            Cow::Owned(body) => match parse_body::<B>(state, type_, initial_len, &body) {
+                Ok(block) => Ok(block.into_owned()),
+                Err(source) => Err(BlockConversionError {
+                    block: RawBlock {
+                        type_,
+                        initial_len,
+                        body: Cow::Owned(body),
+                        trailer_len,
+                    },
+                    source: source.into(),
+                }),
+            },
         }
     }
 
@@ -604,10 +625,10 @@ mod tests {
 
     use byteorder_slice::BigEndian;
 
-    use super::{Block, RawBlock, SECTION_HEADER_BLOCK};
+    use super::{Block, ENHANCED_PACKET_BLOCK, RawBlock, SECTION_HEADER_BLOCK};
     use crate::Endianness;
     use crate::pcapng::PcapNgState;
-    use crate::pcapng::errors::PcapNgFormatError;
+    use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, PcapNgFormatError};
 
     #[test]
     fn try_from_raw_block_accepts_owned_bodies() {
@@ -634,6 +655,66 @@ mod tests {
             }
             other => panic!("expected SectionHeader block, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn try_from_raw_block_returns_original_block_on_error() {
+        let body = vec![
+            0, 0, 0, 7, // Invalid interface ID: the state has no interfaces.
+            0, 0, 0, 0, // Timestamp high.
+            0, 0, 0, 0, // Timestamp low.
+            0, 0, 0, 0, // Captured length.
+            0, 0, 0, 0, // Original length.
+        ];
+        let body_ptr = body.as_ptr();
+        let raw_block = RawBlock {
+            type_: ENHANCED_PACKET_BLOCK,
+            initial_len: 32,
+            body: Cow::Owned(body),
+            trailer_len: 32,
+        };
+
+        // A failed conversion returns the complete raw block without cloning
+        // its owned body.
+        let error = Block::try_from_raw_block::<BigEndian>(&PcapNgState::default(), raw_block).unwrap_err();
+        assert!(matches!(
+            error.source.as_ref(),
+            BlockContentParseError::Validation(ContentValidationError::InvalidInterfaceId(7))
+        ));
+        assert_eq!(error.block.type_, ENHANCED_PACKET_BLOCK);
+        assert_eq!(error.block.initial_len, 32);
+        assert_eq!(error.block.trailer_len, 32);
+        assert_eq!(error.block.body.as_ptr(), body_ptr);
+        assert_eq!(error.block.body.as_ref().len(), 20);
+    }
+
+    #[test]
+    fn try_into_block_returns_original_block_on_error() {
+        let body = [
+            0, 0, 0, 7, // Invalid interface ID: the state has no interfaces.
+            0, 0, 0, 0, // Timestamp high.
+            0, 0, 0, 0, // Timestamp low.
+            0, 0, 0, 0, // Captured length.
+            0, 0, 0, 0, // Original length.
+        ];
+        let raw_block = RawBlock {
+            type_: ENHANCED_PACKET_BLOCK,
+            initial_len: 32,
+            body: Cow::Borrowed(&body),
+            trailer_len: 32,
+        };
+
+        // The convenience conversion method returns the same borrowed block.
+        let error = raw_block.try_into_block(&PcapNgState::default()).unwrap_err();
+        assert!(matches!(
+            error.source.as_ref(),
+            BlockContentParseError::Validation(ContentValidationError::InvalidInterfaceId(7))
+        ));
+        assert_eq!(error.block.type_, ENHANCED_PACKET_BLOCK);
+        assert_eq!(error.block.initial_len, 32);
+        assert_eq!(error.block.trailer_len, 32);
+        assert_eq!(error.block.body.as_ptr(), body.as_ptr());
+        assert!(matches!(error.block.body, Cow::Borrowed(_)));
     }
 
     #[test]

@@ -12,16 +12,13 @@ fn main() -> Result<()> {
     while let Some(packet) = reader.next_raw_packet() {
         let raw_packet = packet.context("failed to read a raw packet")?;
 
-        match raw_packet
-            .clone()
-            .try_into_pcap_packet(header.ts_resolution, header.snaplen)
-        {
+        match raw_packet.try_into_pcap_packet(header.ts_resolution, header.snaplen) {
             Ok(packet) => println!("valid packet: {} bytes", packet.len()),
             Err(error) => {
                 // Reading raw packets from the beginning lets an application
                 // handle malformed typed content.
                 eprintln!("invalid packet: {error}");
-                println!("handled raw packet: {} bytes", raw_packet.data.len());
+                println!("handled raw packet: {} bytes", error.packet.data.len());
             }
         }
     }

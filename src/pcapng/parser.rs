@@ -65,7 +65,8 @@ impl PcapNgParser {
         let mut state = PcapNgState::default();
 
         let (rem, raw_block) = RawBlock::from_slice::<BigEndian>(src)?;
-        let block = Block::try_from_raw_block::<BigEndian>(&state, raw_block)?;
+        let block = Block::try_from_raw_block::<BigEndian>(&state, raw_block)
+            .map_err(|error| PcapNgParseError::BlockConversion(error.into()))?;
 
         if !matches!(&block, Block::SectionHeader(_)) {
             return Err(PcapNgFormatError::MissingSectionHeader.into());
@@ -97,7 +98,9 @@ impl PcapNgParser {
         ) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
             let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
             let state = &parser.state;
-            let block = raw_block.try_into_block(state)?;
+            let block = raw_block
+                .try_into_block(state)
+                .map_err(|error| PcapNgParseError::BlockConversion(error.into()))?;
 
             parser.state.update_from_block(&block);
             Ok((rem, block))

@@ -77,7 +77,7 @@ impl PcapParser {
             raw_pkt
                 .try_into_pcap_packet(header.ts_resolution, header.snaplen)
                 .map(|pkt| (rem, pkt))
-                .map_err(|e| e.into())
+                .map_err(|error| PcapParseError::Validation(error.source))
         })
     }
 

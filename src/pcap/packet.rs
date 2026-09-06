@@ -7,7 +7,7 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use crate::pcap::{PcapParseError, PcapTsResolution, PcapValidationError, PcapWriteError};
+use crate::pcap::{PcapPacketConversionError, PcapParseError, PcapTsResolution, PcapValidationError, PcapWriteError};
 
 /// A valid pcap packet.
 ///
@@ -113,20 +113,13 @@ impl<'a> PcapPacket<'a> {
     ///
     /// # Errors
     ///
-    /// - Returns [`PcapValidationError::TsFracMicroTooBig`] or
-    ///   [`PcapValidationError::TsFracNanoTooBig`] if the fractional timestamp
-    ///   exceeds the range of `ts_resolution`.
-    /// - Returns [`PcapValidationError::IncludedLenTooBig`] if `raw.incl_len`
-    ///   exceeds `snap_len`.
-    /// - Returns [`PcapValidationError::DataTooBig`] if the packet data is
-    ///   larger than `u32::MAX` bytes.
-    /// - Returns [`PcapValidationError::OriginLenTooSmall`] if `raw.orig_len`
-    ///   is smaller than the packet data length.
+    /// Returns a [`PcapPacketConversionError`] containing the original raw
+    /// packet and the validation error if its fields are invalid.
     pub fn try_from_raw_packet(
         raw: RawPcapPacket<'a>,
         ts_resolution: PcapTsResolution,
         snap_len: u32,
-    ) -> Result<Self, PcapValidationError> {
+    ) -> Result<Self, PcapPacketConversionError<'a>> {
         // Convert and validate timestamps //
         let ts_sec = raw.ts_sec;
 
@@ -134,7 +127,10 @@ impl<'a> PcapPacket<'a> {
         let ts_nsec = if ts_resolution == PcapTsResolution::MicroSecond {
             let ts_usec = raw.ts_frac;
             if ts_usec >= 1_000_000 {
-                return Err(PcapValidationError::TsFracMicroTooBig(ts_usec));
+                return Err(PcapPacketConversionError {
+                    packet: raw,
+                    source: PcapValidationError::TsFracMicroTooBig(ts_usec),
+                });
             }
 
             ts_usec
@@ -143,7 +139,10 @@ impl<'a> PcapPacket<'a> {
         } else {
             let ts_nsec = raw.ts_frac;
             if ts_nsec >= 1_000_000_000 {
-                return Err(PcapValidationError::TsFracNanoTooBig(raw.ts_frac));
+                return Err(PcapPacketConversionError {
+                    packet: raw,
+                    source: PcapValidationError::TsFracNanoTooBig(ts_nsec),
+                });
             }
 
             ts_nsec
@@ -153,10 +152,31 @@ impl<'a> PcapPacket<'a> {
 
         // Validate lengths //
         if raw.incl_len > snap_len {
-            return Err(PcapValidationError::IncludedLenTooBig(raw.incl_len, snap_len));
+            return Err(PcapPacketConversionError {
+                source: PcapValidationError::IncludedLenTooBig(raw.incl_len, snap_len),
+                packet: raw,
+            });
         }
 
-        Self::new(timestamp, raw.orig_len, raw.data)
+        let Ok(data_len): Result<u32, _> = raw.data.len().try_into() else {
+            return Err(PcapPacketConversionError {
+                source: PcapValidationError::DataTooBig(raw.data.len()),
+                packet: raw,
+            });
+        };
+
+        if data_len > raw.orig_len {
+            return Err(PcapPacketConversionError {
+                source: PcapValidationError::OriginLenTooSmall(raw.orig_len, data_len),
+                packet: raw,
+            });
+        }
+
+        Ok(Self {
+            timestamp,
+            orig_len: raw.orig_len,
+            data: raw.data,
+        })
     }
 
     /// Converts a [`PcapPacket`] into a [`RawPcapPacket`].
@@ -293,12 +313,13 @@ impl<'a> RawPcapPacket<'a> {
     ///
     /// # Errors
     ///
-    /// - Returns any error produced by [`PcapPacket::try_from_raw_packet`].
+    /// Returns a [`PcapPacketConversionError`] containing this raw packet and
+    /// the validation error if conversion fails.
     pub fn try_into_pcap_packet(
         self,
         ts_resolution: PcapTsResolution,
         snap_len: u32,
-    ) -> Result<PcapPacket<'a>, PcapValidationError> {
+    ) -> Result<PcapPacket<'a>, PcapPacketConversionError<'a>> {
         PcapPacket::try_from_raw_packet(self, ts_resolution, snap_len)
     }
 }

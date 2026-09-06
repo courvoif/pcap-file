@@ -255,9 +255,17 @@ fn raw_reader_handles_malformed_typed_content() {
     let pcap = pcap_with_invalid_packet();
 
     let mut reader = PcapReader::new(&pcap[..]).unwrap();
+    let header = reader.header();
     let raw_packet = reader.next_raw_packet().unwrap().unwrap();
-    assert_eq!(raw_packet.incl_len, 4);
-    assert_eq!(raw_packet.orig_len, 2);
-    assert_eq!(&*raw_packet.data, &[1, 2, 3, 4]);
+
+    // A failed conversion returns ownership of the malformed packet so it can
+    // still be handled by the caller.
+    let error = raw_packet
+        .try_into_pcap_packet(header.ts_resolution, header.snaplen)
+        .unwrap_err();
+    assert!(matches!(error.source, PcapValidationError::OriginLenTooSmall(2, 4)));
+    assert_eq!(error.packet.incl_len, 4);
+    assert_eq!(error.packet.orig_len, 2);
+    assert_eq!(&*error.packet.data, &[1, 2, 3, 4]);
     assert!(reader.next_raw_packet().is_none());
 }

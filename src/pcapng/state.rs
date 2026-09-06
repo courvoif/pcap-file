@@ -65,7 +65,10 @@ impl PcapNgState {
     pub fn decode_block_if_needed<'a>(&self, raw_block: &RawBlock<'a>) -> Result<Option<Block<'a>>, StateUpdateError> {
         match raw_block.type_ {
             SECTION_HEADER_BLOCK | INTERFACE_DESCRIPTION_BLOCK => {
-                let block = raw_block.clone().try_into_block(self)?;
+                let block = raw_block
+                    .clone()
+                    .try_into_block(self)
+                    .map_err(|error| StateUpdateError::BlockConversion(error.into()))?;
                 Ok(Some(block))
             }
             _ => Ok(None),

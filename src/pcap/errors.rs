@@ -2,6 +2,22 @@ use std::time::Duration;
 
 use thiserror::Error;
 
+use super::packet::RawPcapPacket;
+
+/* ----- PcapPacketConversionError ----- */
+
+/// Error returned when a raw pcap packet cannot be converted into a typed
+/// packet.
+#[derive(Debug, Error)]
+#[error("Failed to convert raw pcap packet: {source}")]
+pub struct PcapPacketConversionError<'a> {
+    /// Original raw packet that failed conversion.
+    pub packet: RawPcapPacket<'a>,
+    /// Validation error that caused the conversion to fail.
+    #[source]
+    pub source: PcapValidationError,
+}
+
 /* ----- PcapError ----- */
 
 /// Convenience error type that wraps all errors that can occur while parsing,
