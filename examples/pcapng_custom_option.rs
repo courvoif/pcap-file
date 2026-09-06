@@ -49,7 +49,10 @@ fn main() -> Result<()> {
     let output = File::create(path).context("failed to create the custom-option capture")?;
     let writer = PcapNgWriter::with_section_header(BufWriter::new(output), section)
         .context("failed to write the section header and custom option")?;
-    drop(writer);
+    writer
+        .into_inner()
+        .flush()
+        .context("failed to flush the custom-option capture")?;
 
     // The reader consumes the Section Header Block in new(), so inspect it via section().
     let input = File::open(path).context("failed to open the custom-option capture")?;

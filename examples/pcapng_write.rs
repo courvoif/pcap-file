@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::BufWriter;
+use std::io::{BufWriter, Write};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -28,6 +28,11 @@ fn main() -> Result<()> {
             options: vec![],
         })
         .context("failed to write the enhanced packet")?;
+
+    writer
+        .into_inner()
+        .flush()
+        .context("failed to flush the output pcapng")?;
 
     Ok(())
 }

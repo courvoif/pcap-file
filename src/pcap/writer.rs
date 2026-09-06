@@ -122,15 +122,6 @@ impl<W: Write> PcapWriter<W> {
         }
     }
 
-    /// Flushes buffered output.
-    ///
-    /// # Errors
-    ///
-    /// - Returns an error if the underlying writer cannot be flushed.
-    pub fn flush(&mut self) -> Result<(), PcapWriteError> {
-        self.writer.flush().map_err(PcapWriteError::Io)
-    }
-
     /// Returns the endianness used by the writer.
     pub fn endianness(&self) -> Endianness {
         self.endianness

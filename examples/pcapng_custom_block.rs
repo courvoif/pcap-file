@@ -45,7 +45,10 @@ fn main() -> Result<()> {
         .write_pcapng_block(block)
         .context("failed to write the custom block")?;
 
-    drop(writer);
+    writer
+        .into_inner()
+        .flush()
+        .context("failed to flush the custom-block capture")?;
 
     /* Custom block reading */
     let input = File::open(path).context("failed to open the custom-block capture")?;
