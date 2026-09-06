@@ -360,7 +360,8 @@ impl<'a> Block<'a> {
             writer: &mut W,
         ) -> Result<usize, PcapNgWriteError> {
             // Fake write to compute the data length
-            // It also do all the write checks, so any malformed block will fail before anything is written on the writer
+            // This also performs all validation, so a malformed block fails
+            // before anything is written to the writer.
             let data_len = block.write_to::<B, _>(state, &mut std::io::sink())?;
             let pad_len = (4 - (data_len % 4)) % 4;
 
@@ -393,7 +394,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcasts the current block into an [`EnhancedPacketBlock`]
+    /// Returns the contained [`EnhancedPacketBlock`], if present.
     pub fn into_enhanced_packet(self) -> Option<EnhancedPacketBlock<'a>> {
         match self {
             Block::EnhancedPacket(a) => Some(a),
@@ -401,7 +402,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcasts the current block as an [`EnhancedPacketBlock`]
+    /// Returns a reference to the contained [`EnhancedPacketBlock`], if present.
     pub fn as_enhanced_packet(&self) -> Option<&EnhancedPacketBlock<'a>> {
         match self {
             Block::EnhancedPacket(a) => Some(a),
@@ -409,7 +410,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcasts the current block into an [`InterfaceDescriptionBlock`]
+    /// Returns the contained [`InterfaceDescriptionBlock`], if present.
     pub fn into_interface_description(self) -> Option<InterfaceDescriptionBlock<'a>> {
         match self {
             Block::InterfaceDescription(a) => Some(a),
@@ -417,7 +418,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcasts the current block as an [`InterfaceDescriptionBlock`]
+    /// Returns a reference to the contained [`InterfaceDescriptionBlock`], if present.
     pub fn as_interface_description(&self) -> Option<&InterfaceDescriptionBlock<'a>> {
         match self {
             Block::InterfaceDescription(a) => Some(a),
@@ -425,7 +426,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcasts the current block into an [`InterfaceStatisticsBlock`]
+    /// Returns the contained [`InterfaceStatisticsBlock`], if present.
     pub fn into_interface_statistics(self) -> Option<InterfaceStatisticsBlock<'a>> {
         match self {
             Block::InterfaceStatistics(a) => Some(a),
@@ -433,7 +434,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcasts the current block as an [`InterfaceStatisticsBlock`]
+    /// Returns a reference to the contained [`InterfaceStatisticsBlock`], if present.
     pub fn as_interface_statistics(&self) -> Option<&InterfaceStatisticsBlock<'a>> {
         match self {
             Block::InterfaceStatistics(a) => Some(a),
@@ -441,7 +442,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into a [`NameResolutionBlock`], if possible
+    /// Returns the contained [`NameResolutionBlock`], if present.
     pub fn into_name_resolution(self) -> Option<NameResolutionBlock<'a>> {
         match self {
             Block::NameResolution(a) => Some(a),
@@ -449,7 +450,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block as a [`NameResolutionBlock`], if possible
+    /// Returns a reference to the contained [`NameResolutionBlock`], if present.
     pub fn as_name_resolution(&self) -> Option<&NameResolutionBlock<'a>> {
         match self {
             Block::NameResolution(a) => Some(a),
@@ -457,7 +458,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into a [`PacketBlock`], if possible
+    /// Returns the contained [`PacketBlock`], if present.
     pub fn into_packet(self) -> Option<PacketBlock<'a>> {
         match self {
             Block::Packet(a) => Some(a),
@@ -465,7 +466,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block as a [`PacketBlock`], if possible
+    /// Returns a reference to the contained [`PacketBlock`], if present.
     pub fn as_packet(&self) -> Option<&PacketBlock<'a>> {
         match self {
             Block::Packet(a) => Some(a),
@@ -473,7 +474,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into a [`SectionHeaderBlock`], if possible
+    /// Returns the contained [`SectionHeaderBlock`], if present.
     pub fn into_section_header(self) -> Option<SectionHeaderBlock<'a>> {
         match self {
             Block::SectionHeader(a) => Some(a),
@@ -481,7 +482,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block as a [`SectionHeaderBlock`], if possible
+    /// Returns a reference to the contained [`SectionHeaderBlock`], if present.
     pub fn as_section_header(&self) -> Option<&SectionHeaderBlock<'a>> {
         match self {
             Block::SectionHeader(a) => Some(a),
@@ -489,7 +490,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into a [`SimplePacketBlock`], if possible
+    /// Returns the contained [`SimplePacketBlock`], if present.
     pub fn into_simple_packet(self) -> Option<SimplePacketBlock<'a>> {
         match self {
             Block::SimplePacket(a) => Some(a),
@@ -497,7 +498,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block as a [`SimplePacketBlock`], if possible
+    /// Returns a reference to the contained [`SimplePacketBlock`], if present.
     pub fn as_simple_packet(&self) -> Option<&SimplePacketBlock<'a>> {
         match self {
             Block::SimplePacket(a) => Some(a),
@@ -505,7 +506,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into a [`SystemdJournalExportBlock`], if possible
+    /// Returns the contained [`SystemdJournalExportBlock`], if present.
     pub fn into_systemd_journal_export(self) -> Option<SystemdJournalExportBlock<'a>> {
         match self {
             Block::SystemdJournalExport(a) => Some(a),
@@ -513,7 +514,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block as a [`SystemdJournalExportBlock`], if possible
+    /// Returns a reference to the contained [`SystemdJournalExportBlock`], if present.
     pub fn as_systemd_journal_export(&self) -> Option<&SystemdJournalExportBlock<'a>> {
         match self {
             Block::SystemdJournalExport(a) => Some(a),
@@ -521,7 +522,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into a copiable [`CustomBlock`], if possible
+    /// Returns the contained copiable [`CustomBlock`], if present.
     pub fn into_custom_copiable(self) -> Option<CustomBlock<'a, true>> {
         match self {
             Block::CustomCopiable(a) => Some(a),
@@ -529,7 +530,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block as a copiable [`CustomBlock`], if possible
+    /// Returns a reference to the contained copiable [`CustomBlock`], if present.
     pub fn as_custom_copiable(&self) -> Option<&CustomBlock<'a, true>> {
         match self {
             Block::CustomCopiable(a) => Some(a),
@@ -537,7 +538,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block into a non-copiable [`CustomBlock`], if possible
+    /// Returns the contained non-copiable [`CustomBlock`], if present.
     pub fn into_custom_non_copiable(self) -> Option<CustomBlock<'a, false>> {
         match self {
             Block::CustomNonCopiable(a) => Some(a),
@@ -545,7 +546,7 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Tries to downcast the current block as a non-copiable [`CustomBlock`], if possible
+    /// Returns a reference to the contained non-copiable [`CustomBlock`], if present.
     pub fn as_custom_non_copiable(&self) -> Option<&CustomBlock<'a, false>> {
         match self {
             Block::CustomNonCopiable(a) => Some(a),
@@ -576,11 +577,11 @@ pub trait PcapNgBlock<'a> {
     /// - Returns an error if the block cannot be written.
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError>;
 
-    /// Convert a block into the [`Block`] enumeration
+    /// Converts a block into the [`Block`] enumeration.
     fn into_block(self) -> Block<'a>;
 }
 
-/// Convert a block type into its name
+/// Converts a block type into its name.
 pub fn block_name(type_: u32) -> &'static str {
     match type_ {
         SECTION_HEADER_BLOCK => "Section Header Block",

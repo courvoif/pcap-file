@@ -74,16 +74,17 @@ impl<R: Read> PcapReader<R> {
     }
 
     /// Returns the next [`PcapPacket`].
-    /// 
+    ///
     /// Returns [`None`] after reaching EOF.
-    /// 
-    /// **Does NOT advance in case of an error.**
     ///
     /// # Errors
-    /// - Returns [`PcapReadError::Io`] if the underlying reader cannot provide
-    ///   a complete packet. Some I/O errors can be retried.
-    /// - Returns [`PcapReadError::Validation`] if a packet field is invalid.
-    ///   The same packet can be read with [`Self::next_raw_packet`].
+    ///
+    /// - Returns an error if the input cannot be read, the next packet is
+    ///   incomplete, or its typed content is malformed.
+    /// - Transient I/O errors may be retried by calling this method again.
+    /// - All other errors are terminal for this reader. After receiving one,
+    ///   callers should discard the reader. Use [`Self::next_raw_packet`] from
+    ///   the beginning when malformed packet content must be handled.
     pub fn next_packet(&mut self) -> Option<Result<PcapPacket<'_>, PcapReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
@@ -98,21 +99,21 @@ impl<R: Read> PcapReader<R> {
     }
 
     /// Returns the next [`RawPcapPacket`].
-    /// 
-    /// Returns [`None`] after reaching EOF.
-    /// 
-    /// **Does NOT advance in case of an error.**
     ///
-    /// This method is more permissive than [`Self::next_packet`] and can read malformed files.
+    /// Returns [`None`] after reaching EOF.
+    ///
+    /// This is the permissive API for handling packets whose typed content
+    /// may be malformed.
     ///
     /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
     ///
     /// # Errors
     ///
-    /// - Returns [`PcapReadError::Io`] if the underlying reader cannot be read.
-    /// - Returns [`PcapReadError::Io`] with [`std::io::ErrorKind::UnexpectedEof`]
-    ///   if the packet exceeds the internal buffer capacity or the input ends
-    ///   before the complete packet is read.
+    /// - Returns an error if the input cannot be read or the next packet is
+    ///   incomplete or too large for the internal buffer.
+    /// - Transient I/O errors may be retried by calling this method again.
+    /// - All other errors are terminal for this reader. After receiving one,
+    ///   callers should discard the reader.
     pub fn next_raw_packet(&mut self) -> Option<Result<RawPcapPacket<'_>, PcapReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
@@ -134,10 +135,10 @@ impl<R: Read> PcapReader<R> {
 
 impl<R: Read> IntoIterator for PcapReader<R> {
     type Item = Result<PcapPacket<'static>, PcapReadError>;
-    type IntoIter = PcapReaderIterator<R>;
+    type IntoIter = PcapPacketIterator<R>;
 
     fn into_iter(self) -> Self::IntoIter {
-        PcapReaderIterator {
+        PcapPacketIterator {
             reader: self,
             err: false,
         }
@@ -146,10 +147,9 @@ impl<R: Read> IntoIterator for PcapReader<R> {
 
 /// Iterator over owned [`PcapPacket`] values.
 ///
-/// This is slower than [`PcapReader::next_packet`] because each packet payload
-/// is copied out of the internal read buffer.
-///
-/// Stops after the first error.
+/// This iterator copies each packet payload out of the internal read buffer, so
+/// it is slower than [`PcapReader::next_packet`]. It stops after the first
+/// error.
 ///
 /// # Example
 ///
@@ -168,13 +168,13 @@ impl<R: Read> IntoIterator for PcapReader<R> {
 /// }
 /// ```
 #[derive(Debug)]
-pub struct PcapReaderIterator<R: Read> {
+pub struct PcapPacketIterator<R: Read> {
     reader: PcapReader<R>,
     err: bool,
 }
 
-impl<R: Read> PcapReaderIterator<R> {
-    /// Gets a reference to the wrapped [`PcapReader`].
+impl<R: Read> PcapPacketIterator<R> {
+    /// Returns a reference to the wrapped [`PcapReader`].
     pub fn get_ref(&self) -> &PcapReader<R> {
         &self.reader
     }
@@ -185,7 +185,7 @@ impl<R: Read> PcapReaderIterator<R> {
     }
 }
 
-impl<R: Read> Iterator for PcapReaderIterator<R> {
+impl<R: Read> Iterator for PcapPacketIterator<R> {
     type Item = Result<PcapPacket<'static>, PcapReadError>;
 
     fn next(&mut self) -> Option<Self::Item> {

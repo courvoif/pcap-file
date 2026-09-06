@@ -13,7 +13,7 @@ fn main() -> Result<()> {
     let mut reader = PcapNgReader::new(Cursor::new(data)).context("failed to read the pcapng section header")?;
 
     while let Some(block_res) = reader.next_raw_block() {
-        let (raw_block, state) = block_res.context("Failed to parse RawBlock")?;
+        let (raw_block, state) = block_res.context("failed to read a raw block")?;
         let type_ = raw_block.type_;
 
         match raw_block.try_into_block(state) {
@@ -22,7 +22,7 @@ fn main() -> Result<()> {
                 // Raw reading has already consumed the structurally valid block,
                 // so malformed typed content can be inspected without retrying.
                 eprintln!("invalid block: {error}");
-                println!("preserved raw block type: {type_:#x}");
+                println!("handled raw block type: {type_:#x}");
             }
         }
     }

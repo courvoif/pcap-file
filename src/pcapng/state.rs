@@ -43,7 +43,7 @@ impl PcapNgState {
         &self.section
     }
 
-    /// Returns all the current [`InterfaceDescriptionBlock`].
+    /// Returns the current [`InterfaceDescriptionBlock`] values.
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
         &self.interfaces[..]
     }

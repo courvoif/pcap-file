@@ -224,8 +224,7 @@ fn reader_with_capacity_handles_large_packets() {
     assert!(reader.next_packet().is_none());
 }
 
-#[test]
-fn raw_reader_recovers_after_typed_packet_validation_error() {
+fn pcap_with_invalid_packet() -> Vec<u8> {
     let packet = RawPcapPacket {
         ts_sec: 1,
         ts_frac: 0,
@@ -236,7 +235,12 @@ fn raw_reader_recovers_after_typed_packet_validation_error() {
 
     let mut writer = PcapWriter::new(Vec::new()).unwrap();
     writer.write_raw_packet(&packet).unwrap();
-    let pcap = writer.into_inner();
+    writer.into_inner()
+}
+
+#[test]
+fn typed_reader_returns_validation_error() {
+    let pcap = pcap_with_invalid_packet();
 
     let mut reader = PcapReader::new(&pcap[..]).unwrap();
     let typed_error = reader.next_packet().unwrap().unwrap_err();
@@ -244,7 +248,13 @@ fn raw_reader_recovers_after_typed_packet_validation_error() {
         typed_error,
         pcap_file::pcap::PcapReadError::Validation(PcapValidationError::OriginLenTooSmall(2, 4))
     ));
+}
 
+#[test]
+fn raw_reader_handles_malformed_typed_content() {
+    let pcap = pcap_with_invalid_packet();
+
+    let mut reader = PcapReader::new(&pcap[..]).unwrap();
     let raw_packet = reader.next_raw_packet().unwrap().unwrap();
     assert_eq!(raw_packet.incl_len, 4);
     assert_eq!(raw_packet.orig_len, 2);

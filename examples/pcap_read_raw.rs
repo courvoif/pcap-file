@@ -2,29 +2,27 @@ use std::borrow::Cow;
 use std::io::Cursor;
 
 use anyhow::{Context, Result};
-use pcap_file::pcap::{PcapReadError, PcapReader, PcapWriter, RawPcapPacket};
+use pcap_file::pcap::{PcapReader, PcapWriter, RawPcapPacket};
 
 fn main() -> Result<()> {
     let data = malformed_pcap().context("failed to build the malformed pcap")?;
     let mut reader = PcapReader::new(Cursor::new(data)).context("failed to read the pcap header")?;
+    let header = reader.header();
 
-    loop {
-        match reader.next_packet() {
-            Some(Ok(packet)) => println!("valid packet: {} bytes", packet.len()),
-            Some(Err(PcapReadError::Validation(error))) => {
-                // A typed validation error does not advance the reader. Reading the
-                // same packet in raw form lets an application inspect or preserve it.
+    while let Some(packet) = reader.next_raw_packet() {
+        let raw_packet = packet.context("failed to read a raw packet")?;
+
+        match raw_packet
+            .clone()
+            .try_into_pcap_packet(header.ts_resolution, header.snaplen)
+        {
+            Ok(packet) => println!("valid packet: {} bytes", packet.len()),
+            Err(error) => {
+                // Reading raw packets from the beginning lets an application
+                // handle malformed typed content.
                 eprintln!("invalid packet: {error}");
-
-                let raw = reader
-                    .next_raw_packet()
-                    .context("typed error was not followed by a raw packet")?
-                    .context("failed to read the malformed packet as raw data")?;
-
-                println!("recovered raw packet: {} bytes", raw.data.len());
+                println!("handled raw packet: {} bytes", raw_packet.data.len());
             }
-            Some(Err(error)) => return Err(error.into()),
-            None => break,
         }
     }
 

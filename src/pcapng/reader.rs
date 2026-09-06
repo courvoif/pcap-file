@@ -39,9 +39,9 @@ pub struct PcapNgReader<R: Read> {
 }
 
 impl<R: Read> PcapNgReader<R> {
-    /// Creates a new [`PcapNgReader`] from a reader.
+    /// Creates a new [`PcapNgReader`] from an existing reader.
     ///
-    /// Parses the first block which must be a valid SectionHeaderBlock.
+    /// Parses the first block, which must be a valid [`SectionHeaderBlock`].
     ///
     /// Prefer an unbuffered input because this type already uses an internal
     /// buffer with a default capacity of 8 MB.
@@ -59,7 +59,7 @@ impl<R: Read> PcapNgReader<R> {
 
     /// Creates a new [`PcapNgReader`] with a custom internal buffer capacity.
     ///
-    /// Parses the first block which must be a valid SectionHeaderBlock.
+    /// Parses the first block, which must be a valid [`SectionHeaderBlock`].
     ///
     /// Use this when the stream can contain blocks larger than the default
     /// internal buffer capacity of 8 MB.
@@ -89,9 +89,9 @@ impl<R: Read> PcapNgReader<R> {
     ///   incomplete or malformed, its typed content cannot be decoded,
     ///   or the pcapng state cannot be maintained.
     /// - Transient I/O errors may be retried by calling this method again.
-    /// - All other errors are terminal for this reader. Use
-    ///   [`Self::next_raw_block`] from the beginning when invalid blocks need to
-    ///   be handled.
+    /// - All other errors are terminal for this reader. After receiving one,
+    ///   callers should discard the reader. Use [`Self::next_raw_block`] from
+    ///   the beginning when malformed block content must be handled.
     #[must_use = "the result must be handled before reading another block"]
     pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
@@ -114,15 +114,16 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// Returns [`None`] after reaching EOF.
     ///
-    /// This is the permissive API for preserving structurally valid blocks
-    /// whose typed content may be malformed.
+    /// This is the permissive API for handling structurally valid blocks whose
+    /// typed content may be malformed.
     ///
     /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
     ///
     /// # Errors
     ///
     /// - Returns an error if the input cannot be read, the next block is
-    ///   incomplete or has invalid framing, or the pcapng state cannot be maintained.
+    ///   incomplete or has invalid framing, or the pcapng state cannot be
+    ///   maintained.
     /// - Transient I/O errors may be retried by calling this method again.
     /// - All other errors are terminal for this reader. After receiving an
     ///   error, callers should discard the reader.
@@ -152,22 +153,22 @@ impl<R: Read> PcapNgReader<R> {
         self.parser.section()
     }
 
-    /// Returns all the current [`InterfaceDescriptionBlock`].
+    /// Returns the current [`InterfaceDescriptionBlock`] values.
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
         self.parser.interfaces()
     }
 
-    /// Returns the [`InterfaceDescriptionBlock`] corresponding to the given packet
+    /// Returns the [`InterfaceDescriptionBlock`] corresponding to the given packet.
     pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock<'_>> {
         self.interfaces().get(packet.interface_id as usize)
     }
 
-    /// Consumes the [`Self`], returning the wrapped reader.
+    /// Consumes the [`PcapNgReader`], returning the wrapped reader.
     pub fn into_inner(self) -> R {
         self.reader.into_inner()
     }
 
-    /// Gets a reference to the wrapped reader.
+    /// Returns a reference to the wrapped reader.
     pub fn get_ref(&self) -> &R {
         self.reader.get_ref()
     }
@@ -180,27 +181,27 @@ impl<R: Read> PcapNgReader<R> {
 
 impl<R: Read> IntoIterator for PcapNgReader<R> {
     type Item = Result<PcapNgPacket<'static>, PcapNgReadError>;
-    type IntoIter = PcapNgReaderIterator<R>;
+    type IntoIter = PcapNgPacketIterator<R>;
 
     fn into_iter(self) -> Self::IntoIter {
-        PcapNgReaderIterator {
+        PcapNgPacketIterator {
             reader: self,
             err: false,
         }
     }
 }
 
-/* ----- PcapNgReaderIterator ----- */
+/* ----- PcapNgPacketIterator ----- */
 
 /// Iterator over owned [`PcapNgPacket`] values.
 ///
-/// This iterator is intended for simple traversal and does not expose the
-/// evolving [`PcapNgState`].
+/// This iterator is intended for simple packet traversal. It skips non-packet
+/// blocks, returns owned packets, does not expose the evolving [`PcapNgState`],
+/// and stops after the first error.
 ///
-/// Stops after the first error.
-///
-/// Use [`PcapNgReader::next_block`] when processing a block requires its corresponding state,
-///  and [`PcapNgReader::next_raw_block`] when invalid blocks need to be handled.
+/// Use [`PcapNgReader::next_block`] when processing a block requires its
+/// corresponding state, and [`PcapNgReader::next_raw_block`] when malformed
+/// block content must be handled.
 ///
 /// # Example
 ///
@@ -219,13 +220,13 @@ impl<R: Read> IntoIterator for PcapNgReader<R> {
 /// }
 /// ```
 #[derive(Debug)]
-pub struct PcapNgReaderIterator<R: Read> {
+pub struct PcapNgPacketIterator<R: Read> {
     reader: PcapNgReader<R>,
     err: bool,
 }
 
-impl<R: Read> PcapNgReaderIterator<R> {
-    /// Gets a reference to the wrapped [`PcapNgReader`].
+impl<R: Read> PcapNgPacketIterator<R> {
+    /// Returns a reference to the wrapped [`PcapNgReader`].
     pub fn get_ref(&self) -> &PcapNgReader<R> {
         &self.reader
     }
@@ -236,7 +237,7 @@ impl<R: Read> PcapNgReaderIterator<R> {
     }
 }
 
-impl<R: Read> Iterator for PcapNgReaderIterator<R> {
+impl<R: Read> Iterator for PcapNgPacketIterator<R> {
     type Item = Result<PcapNgPacket<'static>, PcapNgReadError>;
 
     fn next(&mut self) -> Option<Self::Item> {

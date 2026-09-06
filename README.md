@@ -3,10 +3,10 @@
 Provides parsers, readers, and writers for pcap and pcapng files.
 
 For pcap files, see the [`pcap`] module, especially [`PcapParser`],
-[`PcapReader`], [`PcapReaderIterator`] and [`PcapWriter`].
+[`PcapReader`], [`PcapPacketIterator`] and [`PcapWriter`].
 
 For pcapng files, see the [`pcapng`] module, especially [`PcapNgParser`],
-[`PcapNgReader`], [`PcapNgReaderIterator`] and [`PcapNgWriter`].
+[`PcapNgReader`], [`PcapNgPacketIterator`] and [`PcapNgWriter`].
 
 [![Crates.io](https://img.shields.io/crates/v/pcap-file)](https://crates.io/crates/pcap-file/3.0.0-rc.3)
 [![Docs](https://img.shields.io/docsrs/pcap-file)](https://docs.rs/pcap-file/latest/pcap_file/)
@@ -46,9 +46,12 @@ for pkt in pcap_reader {
 }
 ```
 
-The iterator API returns owned packets and is slower than [`PcapReader::next_packet`],
-which can borrow packet data directly from the internal read buffer. 
-It stops after the first error.
+The iterator API returns owned packets, stops after the first error, and is
+slower than [`PcapReader::next_packet`], which can borrow packet data directly
+from the internal read buffer.
+After an unrecoverable reading error, callers should discard the reader. Use
+[`PcapReader::next_raw_packet`] from the outset when malformed packet content
+must be handled; see the [raw-reading example][pcap-read-raw].
 
 ### PcapWriter
 
@@ -89,12 +92,12 @@ for packet in pcapng_reader {
 
 The iterator API is intended for simple packet traversal: it skips non-packet
 blocks, returns owned packets, does not expose [`PcapNgState`], and stops after
-the first error. 
-Use [`PcapNgReader::next_block`] when processing a block requires the current state; it returns
-borrowed blocks and the state after applying that block. 
+the first error. Use [`PcapNgReader::next_block`] when processing a block
+requires the current state; it returns borrowed blocks and the state after
+applying that block.
 After an unrecoverable reading error, callers should discard the reader. Use
 [`PcapNgReader::next_raw_block`] from the outset when malformed block content
-must be inspected or preserved; see the [raw recovery example][pcapng-raw-recovery].
+must be handled; see the [raw-reading example][pcapng-read-raw].
 The slice-based [`PcapNgParser`] leaves cursor management to the caller: after
 a recoverable typed conversion error, call
 [`PcapNgParser::next_raw_block`] with the same input slice.
@@ -128,25 +131,25 @@ Runnable examples are available in the [examples on GitHub][examples]:
 
 - Pcap: [parse][pcap-parse], [read][pcap-read], and
   [create and write a packet][pcap-write]. See also how to
-  [recover a malformed packet as raw data][pcap-raw-recovery].
+  [read and handle raw packets][pcap-read-raw].
 - pcapng: [parse][pcapng-parse], [read][pcapng-read], and
   [create and write a packet][pcapng-write]. See also how to
-  [recover a malformed block as raw data][pcapng-raw-recovery].
+  [read and handle raw blocks][pcapng-read-raw].
 - pcapng extensions: read and write a
   [custom block][pcapng-custom-block] or a
   [custom option][pcapng-custom-option].
   Both examples propagate conversion errors and distinguish payloads registered
   under a different PEN.
 
-Run an example from the repository root. Read and parse examples use bundled
-test captures, recovery examples generate one malformed record, and write
-examples create a uniquely named file under `target/`:
+Run an example from the repository root. Standard read and parse examples use
+bundled test captures, raw-reading examples generate one malformed record, and
+write examples create a uniquely named file under `target/`:
 
 ```bash
 cargo run --example pcap_read
 cargo run --example pcapng_parse
-cargo run --example pcap_raw_recovery
-cargo run --example pcapng_raw_recovery
+cargo run --example pcap_read_raw
+cargo run --example pcapng_read_raw
 ```
 
 ## Fuzzing
@@ -188,11 +191,11 @@ The test suite uses the pcapng files provided by [hadrielk's pcapng test generat
 [pcap-parse]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_parse.rs
 [pcap-read]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_read.rs
 [pcap-write]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_write.rs
-[pcap-raw-recovery]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_raw_recovery.rs
+[pcap-read-raw]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_read_raw.rs
 [pcapng-parse]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_parse.rs
 [pcapng-read]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_read.rs
 [pcapng-write]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_write.rs
-[pcapng-raw-recovery]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_raw_recovery.rs
+[pcapng-read-raw]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_read_raw.rs
 [pcapng-custom-block]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_custom_block.rs
 [pcapng-custom-option]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_custom_option.rs
 
@@ -201,14 +204,15 @@ The test suite uses the pcapng files provided by [hadrielk's pcapng test generat
 [`PcapParser`]: crate::pcap::PcapParser
 [`PcapReader`]: crate::pcap::PcapReader
 [`PcapReader::next_packet`]: crate::pcap::PcapReader::next_packet
-[`PcapReaderIterator`]: crate::pcap::PcapReaderIterator
+[`PcapReader::next_raw_packet`]: crate::pcap::PcapReader::next_raw_packet
+[`PcapPacketIterator`]: crate::pcap::PcapPacketIterator
 [`PcapWriter`]: crate::pcap::PcapWriter
 [`PcapNgParser`]: crate::pcapng::PcapNgParser
 [`PcapNgParser::next_raw_block`]: crate::pcapng::PcapNgParser::next_raw_block
 [`PcapNgReader`]: crate::pcapng::PcapNgReader
 [`PcapNgReader::next_block`]: crate::pcapng::PcapNgReader::next_block
 [`PcapNgReader::next_raw_block`]: crate::pcapng::PcapNgReader::next_raw_block
-[`PcapNgReaderIterator`]: crate::pcapng::PcapNgReaderIterator
+[`PcapNgPacketIterator`]: crate::pcapng::PcapNgPacketIterator
 [`PcapNgWriter`]: crate::pcapng::PcapNgWriter
 [`PcapNgState`]: crate::pcapng::PcapNgState
 [`InterfaceDescriptionBlock`]: crate::pcapng::blocks::interface_description::InterfaceDescriptionBlock
