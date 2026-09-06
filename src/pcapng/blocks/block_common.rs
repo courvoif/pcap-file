@@ -29,7 +29,7 @@ use super::unknown::UnknownBlock;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{
-    BlockContentParseError, BlockConversionError, PcapNgFormatError, PcapNgWriteError, RawBlockParseError,
+    BlockContentParseError, PcapNgFormatError, PcapNgWriteError, RawBlockConversionError, RawBlockParseError,
 };
 
 /// Section Header Block type code.
@@ -212,9 +212,9 @@ impl<'a> RawBlock<'a> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BlockConversionError`] containing this raw block and the
+    /// Returns a [`RawBlockConversionError`] containing this raw block and the
     /// content error if conversion fails.
-    pub fn try_into_block(self, state: &PcapNgState) -> Result<Block<'a>, BlockConversionError<'a>> {
+    pub fn try_into_block(self, state: &PcapNgState) -> Result<Block<'a>, RawBlockConversionError<'a>> {
         match state.section.endianness {
             crate::Endianness::Big => Block::try_from_raw_block::<BigEndian>(state, self),
             crate::Endianness::Little => Block::try_from_raw_block::<LittleEndian>(state, self),
@@ -226,12 +226,12 @@ impl<'a> RawBlock<'a> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BlockConversionError`] containing this raw block and the
+    /// Returns a [`RawBlockConversionError`] containing this raw block and the
     /// content error if conversion fails.
     pub fn try_into_block_with_byteorder<B: ByteOrder>(
         self,
         state: &PcapNgState,
-    ) -> Result<Block<'a>, BlockConversionError<'a>> {
+    ) -> Result<Block<'a>, RawBlockConversionError<'a>> {
         Block::try_from_raw_block::<B>(state, self)
     }
 }
@@ -268,8 +268,8 @@ impl<'a> Block<'a> {
     ///
     /// # Errors
     ///
-    /// Returns a [`BlockConversionError`] containing the original raw block and
-    /// the content error if it cannot be decoded or validated using the
+    /// Returns a [`RawBlockConversionError`] containing the original raw block
+    /// and the content error if it cannot be decoded or validated using the
     /// supplied byte order and state.
     ///
     /// If `raw_block` borrows its body, the returned [`Block`] will borrow from
@@ -280,7 +280,7 @@ impl<'a> Block<'a> {
     pub fn try_from_raw_block<B: ByteOrder>(
         state: &PcapNgState,
         raw_block: RawBlock<'a>,
-    ) -> Result<Block<'a>, BlockConversionError<'a>> {
+    ) -> Result<Block<'a>, RawBlockConversionError<'a>> {
         fn parse_body<'a, B: ByteOrder>(
             state: &PcapNgState,
             type_: u32,
@@ -323,7 +323,7 @@ impl<'a> Block<'a> {
 
         match raw_block.body {
             Cow::Borrowed(body) => {
-                parse_body::<B>(state, type_, initial_len, body).map_err(|source| BlockConversionError {
+                parse_body::<B>(state, type_, initial_len, body).map_err(|source| RawBlockConversionError {
                     block: RawBlock {
                         type_,
                         initial_len,
@@ -335,7 +335,7 @@ impl<'a> Block<'a> {
             }
             Cow::Owned(body) => match parse_body::<B>(state, type_, initial_len, &body) {
                 Ok(block) => Ok(block.into_owned()),
-                Err(source) => Err(BlockConversionError {
+                Err(source) => Err(RawBlockConversionError {
                     block: RawBlock {
                         type_,
                         initial_len,
