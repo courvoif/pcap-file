@@ -8,6 +8,8 @@
 pub mod blocks;
 pub mod errors;
 
+pub use blocks::Block;
+
 pub(crate) mod state;
 pub use state::PcapNgState;
 

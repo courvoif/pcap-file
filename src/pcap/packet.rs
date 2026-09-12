@@ -30,11 +30,11 @@ impl<'a> PcapPacket<'a> {
     ///
     /// # Errors
     ///
-    /// - Returns [`PcapValidationError::TimestampTooBig`] if the timestamp in seconds
-    ///   cannot be represented on a u32.
-    /// - Returns [`PcapValidationError::DataTooBig`] if the packet data is
+    /// - Returns [`PcapValidationError::TimestampTooLarge`] if the timestamp's
+    ///   whole seconds cannot be represented as a `u32`.
+    /// - Returns [`PcapValidationError::DataLengthTooLarge`] if the packet data is
     ///   larger than `u32::MAX` bytes.
-    /// - Returns [`PcapValidationError::OriginalLenTooSmall`] if `original_len` is
+    /// - Returns [`PcapValidationError::InvalidOriginalLength`] if `original_len` is
     ///   smaller than the packet data length.
     pub fn new(
         timestamp: Duration,
@@ -45,15 +45,15 @@ impl<'a> PcapPacket<'a> {
 
         // Validate inputs //
         if timestamp.as_secs() > u32::MAX as u64 {
-            return Err(PcapValidationError::TimestampTooBig(timestamp));
+            return Err(PcapValidationError::TimestampTooLarge(timestamp));
         }
 
         let Ok(incl_len): Result<u32, _> = data.len().try_into() else {
-            return Err(PcapValidationError::DataTooBig(data.len()));
+            return Err(PcapValidationError::DataLengthTooLarge(data.len()));
         };
 
         if incl_len > original_len {
-            return Err(PcapValidationError::OriginalLenTooSmall(original_len, incl_len));
+            return Err(PcapValidationError::InvalidOriginalLength(original_len, incl_len));
         }
 
         Ok(PcapPacket {
@@ -113,7 +113,7 @@ impl<'a> PcapPacket<'a> {
     pub fn try_from_raw_packet(
         raw: RawPcapPacket<'a>,
         ts_resolution: PcapTsResolution,
-        snap_len: u32,
+        snaplen: u32,
     ) -> Result<Self, PcapPacketConversionError<'a>> {
         // Convert and validate timestamps //
         let ts_sec = raw.ts_sec;
@@ -124,7 +124,7 @@ impl<'a> PcapPacket<'a> {
             if ts_usec >= 1_000_000 {
                 return Err(PcapPacketConversionError {
                     packet: raw,
-                    source: PcapValidationError::TsFracMicroTooBig(ts_usec),
+                    source: PcapValidationError::TsFracMicroTooLarge(ts_usec),
                 });
             }
 
@@ -136,7 +136,7 @@ impl<'a> PcapPacket<'a> {
             if ts_nsec >= 1_000_000_000 {
                 return Err(PcapPacketConversionError {
                     packet: raw,
-                    source: PcapValidationError::TsFracNanoTooBig(ts_nsec),
+                    source: PcapValidationError::TsFracNanoTooLarge(ts_nsec),
                 });
             }
 
@@ -146,30 +146,30 @@ impl<'a> PcapPacket<'a> {
         let timestamp = Duration::new(ts_sec as u64, ts_nsec);
 
         // Validate lengths //
-        if raw.incl_len > snap_len {
+        if raw.incl_len > snaplen {
             return Err(PcapPacketConversionError {
-                source: PcapValidationError::PacketTooBig(raw.incl_len, snap_len),
+                source: PcapValidationError::CapturedLengthExceedsSnaplen(raw.incl_len, snaplen),
                 packet: raw,
             });
         }
 
         let Ok(data_len): Result<u32, _> = raw.data.len().try_into() else {
             return Err(PcapPacketConversionError {
-                source: PcapValidationError::DataTooBig(raw.data.len()),
+                source: PcapValidationError::DataLengthTooLarge(raw.data.len()),
                 packet: raw,
             });
         };
 
         if raw.incl_len != data_len {
             return Err(PcapPacketConversionError {
-                source: PcapValidationError::IncludedLenMismatch(raw.incl_len, data_len),
+                source: PcapValidationError::CapturedLengthMismatch(raw.incl_len, data_len),
                 packet: raw,
             });
         }
 
         if data_len > raw.orig_len {
             return Err(PcapPacketConversionError {
-                source: PcapValidationError::OriginalLenTooSmall(raw.orig_len, data_len),
+                source: PcapValidationError::InvalidOriginalLength(raw.orig_len, data_len),
                 packet: raw,
             });
         }
@@ -311,9 +311,9 @@ impl<'a> RawPcapPacket<'a> {
     pub fn try_into_pcap_packet(
         self,
         ts_resolution: PcapTsResolution,
-        snap_len: u32,
+        snaplen: u32,
     ) -> Result<PcapPacket<'a>, PcapPacketConversionError<'a>> {
-        PcapPacket::try_from_raw_packet(self, ts_resolution, snap_len)
+        PcapPacket::try_from_raw_packet(self, ts_resolution, snaplen)
     }
 }
 
@@ -336,7 +336,10 @@ mod tests {
         // Typed conversion must not silently replace the raw included length
         // with the actual packet data length.
         let error = PcapPacket::try_from_raw_packet(raw_packet, PcapTsResolution::Microsecond, 65_535).unwrap_err();
-        assert!(matches!(error.source, PcapValidationError::IncludedLenMismatch(2, 4)));
+        assert!(matches!(
+            error.source,
+            PcapValidationError::CapturedLengthMismatch(2, 4)
+        ));
         assert_eq!(error.packet.incl_len, 2);
         assert_eq!(&*error.packet.data, &[1, 2, 3, 4]);
     }

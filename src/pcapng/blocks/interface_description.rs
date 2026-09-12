@@ -21,19 +21,20 @@ use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, Opti
 
 /* ----- InterfaceDescriptionBlock ----- */
 
-/// An Interface Description Block (IDB) is the container for information describing an interface
-/// on which packet data is captured.
+/// Interface Description Block (IDB).
+///
+/// Describes an interface on which packet data was captured.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct InterfaceDescriptionBlock<'a> {
-    /// A value that defines the link layer type of this interface.
+    /// Link-layer type of this interface.
     ///
     /// The list of Standardized Link Layer Type codes is available in the
     /// [tcpdump.org link-layer header types registry.](http://www.tcpdump.org/linktypes.html).
     pub linktype: DataLink,
 
-    /// Maximum number of octets captured from each packet.
+    /// Maximum number of bytes captured from each packet.
     ///
-    /// The portion of each packet that exceeds this value will not be stored in the file.
+    /// Packet data beyond this limit is not stored in the file.
     /// A value of zero indicates no limit.
     pub snaplen: u32,
 
@@ -76,7 +77,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         let datalink: u16 = u32::from(self.linktype).try_into().map_err(|_| {
             PcapNgWriteError::validation_error(
                 "InterfaceDescriptionBlock.linktype",
-                ContentValidationError::InvalidLinktype(self.linktype),
+                ContentValidationError::InvalidLinkLayerType(self.linktype),
             )
         })?;
 
@@ -104,7 +105,7 @@ impl<'a> InterfaceDescriptionBlock<'a> {
     }
 
     /// Returns the timestamp resolution of the interface.
-    /// If no ts_resolution is set, defaults to μs.
+    /// Defaults to microseconds when no timestamp-resolution option is present.
     pub fn ts_resolution(&self) -> InterfaceTsResolution {
         let mut ts_resol = InterfaceTsResolution::default();
 
@@ -132,52 +133,49 @@ impl<'a> InterfaceDescriptionBlock<'a> {
 
 /* ----- InterfaceDescriptionOption ----- */
 
-/// Interface Description Block options
+/// Interface Description Block (IDB) options.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceDescriptionOption<'a> {
-    /// The if_name option is a UTF-8 string containing the name of the device used to capture data.
+    /// Name of the device used to capture data.
     IfName(Cow<'a, str>),
 
-    /// The if_description option is a UTF-8 string containing the description of the device used to capture data.
+    /// Description of the device used to capture data.
     IfDescription(Cow<'a, str>),
 
-    /// The if_IPv4addr option is an IPv4 network address and corresponding netmask for the interface.
+    /// IPv4 network address and corresponding netmask for the interface.
     IfIpv4Addr(Cow<'a, [u8]>),
 
-    /// The if_IPv6addr option is an IPv6 network address and corresponding prefix length for the interface.
+    /// IPv6 network address and corresponding prefix length for the interface.
     IfIpv6Addr(Cow<'a, [u8]>),
 
-    /// The if_MACaddr option is the Interface Hardware MAC address (48 bits), if available.
+    /// Interface hardware MAC address, if available.
     IfMacAddr(Cow<'a, [u8]>),
 
-    /// The if_EUIaddr option is the Interface Hardware EUI address (64 bits), if available.
+    /// Interface hardware EUI address, if available.
     IfEuiAddr(u64),
 
-    /// The if_speed option is a 64-bit number for the Interface speed (in bits per second).
+    /// Interface speed in bits per second.
     IfSpeed(u64),
 
-    /// The if_tsresol option identifies the resolution of timestamps.
+    /// Timestamp resolution used by the interface.
     IfTsResol(InterfaceTsResolution),
 
-    /// The if_tzone option identifies the time zone for GMT support.
+    /// Time zone for GMT support.
     IfTzone(u32),
 
-    /// The if_filter option identifies the filter (e.g. "capture only TCP traffic") used to capture traffic.
+    /// Filter used to capture traffic.
     IfFilter(Cow<'a, [u8]>),
 
-    /// The if_os option is a UTF-8 string containing the name of the operating system
-    /// of the machine in which this interface is installed.
+    /// Operating system on which this interface is installed.
     IfOs(Cow<'a, str>),
 
-    /// The if_fcslen option is an 8-bit unsigned integer value that specifies
-    /// the length of the Frame Check Sequence (in bits) for this interface.
+    /// Length of the Frame Check Sequence, in bits, for this interface.
     IfFcsLen(u8),
 
-    /// The if_tsoffset option is a 64-bit integer value that specifies an offset (in seconds)
-    /// that must be added to the timestamp of each packet to obtain the absolute timestamp of a packet.
+    /// Offset, in seconds, added to packet timestamps from this interface.
     IfTsOffset(i64),
 
-    /// The if_hardware option is a UTF-8 string containing the description of the interface hardware.
+    /// Description of the interface hardware.
     IfHardware(Cow<'a, str>),
 
     /// A common option applicable to any block type.
@@ -367,7 +365,7 @@ static TS_RESOL_DEC_TO_DURATION: Lazy<Vec<u128>> = Lazy::new(|| (0..10).map(|i| 
 
 /// Timestamp resolution of an interface.
 ///
-/// Can be either binary (2^-resol)s or decimal (10^-resol)s.
+/// Uses either a binary (`2^-resolution`) or decimal (`10^-resolution`) scale.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct InterfaceTsResolution {
     /// Whether the resolution is binary or decimal.

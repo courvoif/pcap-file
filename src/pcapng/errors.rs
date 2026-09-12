@@ -6,7 +6,9 @@ use thiserror::Error;
 
 use crate::{
     DataLink,
-    pcapng::blocks::{block_common::RawBlock, block_name, interface_description::InterfaceTsResolution},
+    pcapng::blocks::{
+        block_common::RawBlock, block_name, custom::CustomError, interface_description::InterfaceTsResolution,
+    },
 };
 
 /* ----- PcapError ----- */
@@ -280,9 +282,9 @@ pub enum ContentValidationError {
     /// The timestamp resolution value is invalid.
     #[error("Invalid timestamp resolution: {0:#X} (binary: {1}, resolution: {2})")]
     InvalidTsResolution(u8, bool, u8),
-    /// The link-layer type exceeds `u16::MAX`.
+    /// The link-layer type cannot be represented as a `u16`.
     #[error("Invalid link-layer type: {0:?}")]
-    InvalidLinktype(DataLink),
+    InvalidLinkLayerType(DataLink),
 
     /// No interface in the current section state.
     #[error("Section does not contain an interface")]
@@ -321,34 +323,34 @@ pub enum ContentValidationError {
     /// The original length of the packet on the wire is smaller than its
     /// captured length.
     #[error("Original length is smaller than captured length: {0}B on wire, {1}B captured")]
-    InvalidOriginalLen(u32, usize),
+    InvalidOriginalLength(u32, usize),
 
     /// The captured length of the packet does not match the expected length.
     #[error("Invalid captured length: expected {expected}B, got {actual}B")]
-    InvalidCapturedLen {
-        /// Expected captured length
+    CapturedLengthMismatch {
+        /// Expected captured length.
         expected: usize,
-        /// Actual captured length
+        /// Actual captured length.
         actual: usize,
     },
 
     /// The Name Resolution record entry size is invalid.
     #[error("Invalid record size: expected {expected}B, got {actual}B")]
     RecordWrongSize {
-        /// Expected size
+        /// Expected size.
         expected: usize,
-        /// Actual size
+        /// Actual size.
         actual: usize,
     },
     /// The Name Resolution record entry is smaller than its minimum valid size.
     #[error("Record is too small: need at least {min}B, got {actual}B")]
     RecordWrongMinSize {
-        /// Expected size
+        /// Minimum valid size.
         min: usize,
-        /// Actual size
+        /// Actual size.
         actual: usize,
     },
-    /// The Name Resolution record entry is too big to be written
+    /// The Name Resolution record entry is too large to be written.
     #[error("Record length exceeds u16::MAX: {0}B")]
     RecordTooBig(usize),
     /// A record name is not valid UTF-8.
@@ -359,8 +361,8 @@ pub enum ContentValidationError {
     RecordNamesEmpty,
 
     /// Error converting a custom block payload.
-    #[error("Custom block conversion failed for PEN {0}: {1}")]
-    CustomBlockConversionError(u32, Box<dyn std::error::Error + Sync + Send>),
+    #[error(transparent)]
+    CustomBlockConversionError(#[from] CustomError),
 
     /// The content of a block is too big to fit on a block.
     #[error("Block content length exceeds u32::MAX: {0}B")]
@@ -405,9 +407,9 @@ pub enum OptionEntryError {
     /// The size of the option entry is not correct.
     #[error("Invalid option entry size: expected {expected}B, got {actual}B")]
     WrongSize {
-        /// Expected size
+        /// Expected size.
         expected: usize,
-        /// Actual size
+        /// Actual size.
         actual: usize,
     },
     /// The option payload is not valid UTF-8.

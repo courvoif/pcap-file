@@ -14,15 +14,16 @@ use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
 
-/// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
+/// Simple Packet Block (SPB).
 ///
-/// Its presence is optional.
+/// Stores captured packet data for the first interface in the current section.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SimplePacketBlock<'a> {
     /// Original length of the packet on the wire.
+    /// Must be greater than or equal to `data.len()`.
     pub original_len: u32,
 
-    /// The data coming from the network, including link-layer headers.
+    /// Captured packet data, including link-layer headers.
     pub data: Cow<'a, [u8]>,
 }
 
@@ -106,7 +107,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         if (self.original_len as usize) < self.data.len() {
             return Err(PcapNgWriteError::validation_error(
                 "SimplePacketBlock.original_len",
-                ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+                ContentValidationError::InvalidOriginalLength(self.original_len, self.data.len()),
             ));
         }
 
@@ -127,7 +128,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         if self.data.len() != expected_len {
             return Err(PcapNgWriteError::validation_error(
                 "SimplePacketBlock.data",
-                ContentValidationError::InvalidCapturedLen {
+                ContentValidationError::CapturedLengthMismatch {
                     expected: expected_len,
                     actual: self.data.len(),
                 },
@@ -230,7 +231,7 @@ mod tests {
                 source,
             } if matches!(
                 source.as_ref(),
-                ContentValidationError::InvalidCapturedLen { expected: 4, actual: 2 }
+                ContentValidationError::CapturedLengthMismatch { expected: 4, actual: 2 }
             )
         ));
     }
@@ -262,7 +263,7 @@ mod tests {
                 source,
             } if matches!(
                 source.as_ref(),
-                ContentValidationError::InvalidCapturedLen { expected: 2, actual: 3 }
+                ContentValidationError::CapturedLengthMismatch { expected: 2, actual: 3 }
             )
         ));
     }

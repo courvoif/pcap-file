@@ -290,13 +290,13 @@ pub trait CustomOptionPayload<'a> {
 
 /* ----- Custom Error ----- */
 
-/// Error in custom conversion
+/// Error produced while converting a custom block or option payload.
 #[derive(Debug, Error)]
 #[error("Error in custom conversion for PEN {pen:#X}")]
 pub struct CustomError {
     /// PEN of the custom block or option.
     pub pen: u32,
-    /// Source of the error.
+    /// Error that caused the conversion to fail.
     #[source]
     pub src: Box<dyn Error + Sync + Send + 'static>,
 }
@@ -304,6 +304,8 @@ pub struct CustomError {
 /* ----- struct CustomBlock ----- */
 
 /// Custom Block.
+///
+/// Stores vendor-defined data identified by a Private Enterprise Number (PEN).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CustomBlock<'a, const COPIABLE: bool> {
     /// Private Enterprise Number of the entity which defined this block.
@@ -426,6 +428,8 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
 /* ----- struct CustomBinaryOption ----- */
 
 /// Custom binary option.
+///
+/// Stores vendor-defined binary data identified by a Private Enterprise Number (PEN).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
     /// Option Private Enterprise Number (PEN).
@@ -522,6 +526,8 @@ impl<'a> CustomBinaryOption<'a, false> {
 /* ----- struct CustomUtf8Option ----- */
 
 /// Custom UTF-8 string option.
+///
+/// Stores vendor-defined UTF-8 data identified by a Private Enterprise Number (PEN).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
     /// Option Private Enterprise Number (PEN).

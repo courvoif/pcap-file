@@ -42,7 +42,7 @@ fn main() -> Result<()> {
         .context("failed to encode the custom block")?;
 
     writer
-        .write_pcapng_block(block)
+        .write_typed_block(block)
         .context("failed to write the custom block")?;
 
     writer

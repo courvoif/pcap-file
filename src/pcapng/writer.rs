@@ -195,10 +195,10 @@ impl<W: Write> PcapNgWriter<W> {
     /// let file = File::create("out.pcapng").expect("Error creating file");
     /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
     ///
-    /// pcap_ng_writer.write_pcapng_block(interface).unwrap();
-    /// pcap_ng_writer.write_pcapng_block(packet).unwrap();
+    /// pcap_ng_writer.write_typed_block(interface).unwrap();
+    /// pcap_ng_writer.write_typed_block(packet).unwrap();
     /// ```
-    pub fn write_pcapng_block<'a, B: PcapNgBlock<'a>>(&mut self, block: B) -> Result<usize, PcapNgWriteError> {
+    pub fn write_typed_block<'a, B: PcapNgBlock<'a>>(&mut self, block: B) -> Result<usize, PcapNgWriteError> {
         self.write_block(&block.into_block())
     }
 

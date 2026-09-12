@@ -82,25 +82,25 @@ pub enum PcapValidationError {
     InvalidMagicNumber(u32),
     /// The fractional timestamp part is too large for microsecond resolution.
     #[error("Fractional timestamp exceeds microsecond range: {0} >= 1_000_000 us")]
-    TsFracMicroTooBig(u32),
+    TsFracMicroTooLarge(u32),
     /// The fractional timestamp part is too large for nanosecond resolution.
     #[error("Fractional timestamp exceeds nanosecond range: {0} >= 1_000_000_000 ns")]
-    TsFracNanoTooBig(u32),
+    TsFracNanoTooLarge(u32),
     /// The timestamp is too large to be represented in a 32-bit seconds field.
     #[error("Timestamp exceeds the 32-bit seconds range: {0:?}")]
-    TimestampTooBig(Duration),
+    TimestampTooLarge(Duration),
     /// The captured packet length does not match the packet data length.
     #[error("Captured length does not match packet data length: {0} != {1}")]
-    IncludedLenMismatch(u32, u32),
+    CapturedLengthMismatch(u32, u32),
     /// The original packet length is smaller than the captured packet length.
     #[error("Original length is smaller than captured length: {0} < {1}")]
-    OriginalLenTooSmall(u32, u32),
+    InvalidOriginalLength(u32, u32),
     /// The packet data length is larger than `u32::MAX`.
     #[error("Packet data length exceeds u32::MAX: {0}")]
-    DataTooBig(usize),
+    DataLengthTooLarge(usize),
     /// The packet data length is larger than the file snaplen.
     #[error("Packet data length exceeds snaplen: {0} > {1}")]
-    PacketTooBig(u32, u32),
+    CapturedLengthExceedsSnaplen(u32, u32),
 }
 
 /* ----- PcapPacketConversionError ----- */

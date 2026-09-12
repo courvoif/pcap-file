@@ -14,13 +14,15 @@ use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
-/// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
+/// Interface Statistics Block (ISB).
+///
+/// Contains capture statistics for an interface.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct InterfaceStatisticsBlock<'a> {
-    /// Specifies the interface these statistics refers to.
+    /// Interface to which these statistics refer.
     ///
-    /// The correct interface will be the one whose Interface Description Block (within the current Section of the file)
-    /// is identified by same number of this field.
+    /// This value indexes an Interface Description Block in the current section.
+    /// When writing, that interface must already be present in the [`PcapNgState`].
     pub interface_id: u32,
 
     /// Time elapsed since 1970-01-01 00:00:00 UTC to which these statistics refer.
@@ -83,37 +85,28 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
     }
 }
 
-/// Interface Statistics Block options
+/// Interface Statistics Block (ISB) options.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceStatisticsOption<'a> {
-    /// The isb_starttime option specifies the time the capture started.
-    ///
-    /// The time is relative to 1970-01-01 00:00:00 UTC.
+    /// Time at which the capture started, relative to 1970-01-01 00:00:00 UTC.
     IsbStartTime(Duration),
 
-    /// The isb_endtime option specifies the time the capture ended.
-    ///
-    /// The time is relative to 1970-01-01 00:00:00 UTC.
+    /// Time at which the capture ended, relative to 1970-01-01 00:00:00 UTC.
     IsbEndTime(Duration),
 
-    /// The isb_ifrecv option specifies the 64-bit unsigned integer number of packets received from the physical interface
-    /// starting from the beginning of the capture.
+    /// Number of packets received from the physical interface.
     IsbIfRecv(u64),
 
-    /// The isb_ifdrop option specifies the 64-bit unsigned integer number of packets dropped by the interface
-    /// due to lack of resources starting from the beginning of the capture.
+    /// Number of packets dropped by the interface because of insufficient resources.
     IsbIfDrop(u64),
 
-    /// The isb_filteraccept option specifies the 64-bit unsigned integer number of packets accepted
-    /// by filter starting from the beginning of the capture.
+    /// Number of packets accepted by the filter.
     IsbFilterAccept(u64),
 
-    /// The isb_osdrop option specifies the 64-bit unsigned integer number of packets dropped
-    /// by the operating system starting from the beginning of the capture.
+    /// Number of packets dropped by the operating system.
     IsbOsDrop(u64),
 
-    /// The isb_usrdeliv option specifies the 64-bit unsigned integer number of packets delivered
-    /// to the user starting from the beginning of the capture.
+    /// Number of packets delivered to the user.
     IsbUsrDeliv(u64),
 
     /// A common option applicable to any block type.

@@ -29,7 +29,7 @@ Add it to your `Cargo.toml`:
 pcap-file = "3.0.0-rc.3"
 ```
 
-## pcap
+## Pcap
 
 ### PcapReader
 
@@ -73,7 +73,7 @@ for pkt in pcap_reader {
 }
 ```
 
-## pcapng
+## Pcapng
 
 ### PcapNgReader
 

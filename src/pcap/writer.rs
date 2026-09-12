@@ -116,7 +116,7 @@ impl<W: Write> PcapWriter<W> {
         // Check that the included length of the packet is not bigger than the snaplen of the file
         if packet.len() > self.snaplen as usize {
             let packet_len = u32::try_from(packet.len()).expect("PcapPacket length is validated during construction");
-            return Err(PcapValidationError::PacketTooBig(packet_len, self.snaplen).into());
+            return Err(PcapValidationError::CapturedLengthExceedsSnaplen(packet_len, self.snaplen).into());
         }
 
         let raw_packet = packet.as_raw_packet(self.ts_resolution);
@@ -144,8 +144,7 @@ impl<W: Write> PcapWriter<W> {
         self.endianness
     }
 
-    /// Returns the snaplen used by the writer, i.e. an unsigned value indicating the maximum number of octets captured
-    /// from each packet.
+    /// Returns the maximum number of bytes captured from each packet.
     pub fn snaplen(&self) -> u32 {
         self.snaplen
     }

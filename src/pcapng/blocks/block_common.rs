@@ -65,7 +65,9 @@ pub const CUSTOM_BLOCK_NON_COPIABLE: u32 = 0x40000BAD;
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //  |                      Block Total Length                       |
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-/// Raw pcapng block with unparsed body bytes.
+/// Raw pcapng block.
+///
+/// Stores a block header and its unparsed body bytes.
 #[derive(Clone, Debug)]
 pub struct RawBlock<'a> {
     /// Numeric block type.
@@ -129,7 +131,7 @@ impl<'a> RawBlock<'a> {
             if slice.len() < initial_len as usize - 8 {
                 return Err(RawBlockParseError::IncompleteBuffer(
                     initial_len as usize - 8,
-                    slice.len() + 8,
+                    slice.len(),
                 ));
             }
 

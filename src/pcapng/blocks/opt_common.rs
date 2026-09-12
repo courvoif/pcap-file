@@ -24,16 +24,16 @@ pub const CUSTOM_BINARY_OPTION_COPIABLE: u16 = 0x0BAD;
 /// Non-copiable custom binary option code.
 pub const CUSTOM_BINARY_OPTION_NON_COPIABLE: u16 = 0x4BAD;
 
-/// Common options applicable to all block types.
+/// Common pcapng block options.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum CommonOption<'a> {
     /// Comment.
     Comment(Cow<'a, str>),
 
-    /// Custom option containing copiable binary octets in the Custom Data portion.
+    /// Custom option containing copiable bytes in the Custom Data portion.
     CustomBinaryCopiable(CustomBinaryOption<'a, true>),
 
-    /// Custom option containing non-copiable binary octets in the Custom Data portion.
+    /// Custom option containing non-copiable bytes in the Custom Data portion.
     CustomBinaryNonCopiable(CustomBinaryOption<'a, false>),
 
     /// Custom option containing a copiable UTF-8 string in the Custom Data portion.
@@ -194,7 +194,9 @@ pub(crate) trait PcapNgOption<'a> {
     }
 }
 
-/// Unknown options
+/// Unknown option.
+///
+/// Stores an option whose code is not recognized.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct UnknownOption<'a> {
     /// Option code

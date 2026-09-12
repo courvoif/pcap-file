@@ -14,7 +14,9 @@ use crate::Endianness;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
 
-/// Section Header Block: it defines the most important characteristics of the capture file.
+/// Section Header Block (SHB).
+///
+/// Defines the characteristics of a pcapng section.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SectionHeaderBlock<'a> {
     /// Endianness of the section.
@@ -28,10 +30,10 @@ pub struct SectionHeaderBlock<'a> {
     /// Current value is 0.
     pub minor_version: u16,
 
-    /// Length in bytes of the following section excluding this block.
+    /// Length in bytes of the following section, excluding this block.
     ///
     /// This block can be used to skip the section for faster navigation in
-    /// large files. Length of -1i64 means that the length is unspecified.
+    /// large files. A value of `-1` means that the length is unspecified.
     pub section_length: i64,
 
     /// Block options.
@@ -142,16 +144,16 @@ impl Default for SectionHeaderBlock<'static> {
     }
 }
 
-/// Section Header Block options
+/// Section Header Block (SHB) options.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum SectionHeaderOption<'a> {
-    /// Description of the hardware used to create this section
+    /// Description of the hardware used to create this section.
     Hardware(Cow<'a, str>),
 
-    /// Name of the operating system used to create this section
+    /// Name of the operating system used to create this section.
     OS(Cow<'a, str>),
 
-    /// Name of the application used to create this section
+    /// Name of the application used to create this section.
     UserApplication(Cow<'a, str>),
 
     /// A common option applicable to any block type.

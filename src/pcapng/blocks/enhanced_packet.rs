@@ -15,14 +15,14 @@ use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
-/// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
+/// Enhanced Packet Block (EPB).
+///
+/// Stores captured packet data together with its interface and timestamp.
 #[derive(Clone, Debug, Default, IntoOwned, Eq, PartialEq)]
 pub struct EnhancedPacketBlock<'a> {
-    /// It specifies the interface this packet comes from.
+    /// Interface on which this packet was captured.
     ///
-    /// The correct interface will be the one whose Interface Description Block
-    /// (within the current Section of the file) is identified by the same number
-    /// of this field.
+    /// This value indexes an Interface Description Block in the current section.
     /// When writing, that interface must already be present in the [`PcapNgState`].
     pub interface_id: u32,
 
@@ -30,10 +30,10 @@ pub struct EnhancedPacketBlock<'a> {
     pub timestamp: Duration,
 
     /// Original length of the packet on the wire.
-    /// Must be >= data.len().
+    /// Must be greater than or equal to `data.len()`.
     pub original_len: u32,
 
-    /// The data coming from the network, including link-layer headers.
+    /// Captured packet data, including link-layer headers.
     pub data: Cow<'a, [u8]>,
 
     /// Block options.
@@ -92,7 +92,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         let original_len = slice.read_u32::<B>().expect("slice length checked above");
 
         if original_len < captured_len {
-            return Err(ContentValidationError::InvalidOriginalLen(original_len, captured_len as usize).into());
+            return Err(ContentValidationError::InvalidOriginalLength(original_len, captured_len as usize).into());
         }
 
         let pad_len = (4 - (captured_len as usize % 4)) % 4;
@@ -132,7 +132,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         if (self.original_len as usize) < self.data.len() {
             return Err(PcapNgWriteError::validation_error(
                 "EnhancedPacketBlock.original_len",
-                ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+                ContentValidationError::InvalidOriginalLength(self.original_len, self.data.len()),
             ));
         }
 
@@ -163,7 +163,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 
 /* ----- */
 
-/// Enhanced Packet Block options
+/// Enhanced Packet Block (EPB) options.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum EnhancedPacketOption<'a> {
     /// 32-bit flags word containing link-layer information.

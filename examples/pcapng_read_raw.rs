@@ -48,7 +48,7 @@ fn malformed_pcapng() -> Result<Vec<u8>> {
         .context("failed to write the generated pcapng section header")?;
 
     writer
-        .write_pcapng_block(interface)
+        .write_typed_block(interface)
         .context("failed to write the generated interface description")?;
 
     invalid_packet

@@ -15,12 +15,12 @@ fn main() -> Result<()> {
     // Interface IDs are zero-based in the order Interface Description Blocks
     // are written. Therefore this interface has ID 0.
     writer
-        .write_pcapng_block(InterfaceDescriptionBlock::new(DataLink::ETHERNET, 65_535))
+        .write_typed_block(InterfaceDescriptionBlock::new(DataLink::ETHERNET, 65_535))
         .context("failed to write the interface description")?;
 
     let data = [0_u8; 60];
     writer
-        .write_pcapng_block(EnhancedPacketBlock {
+        .write_typed_block(EnhancedPacketBlock {
             interface_id: 0,
             timestamp: Duration::from_secs(1_700_000_000),
             original_len: data.len() as u32,

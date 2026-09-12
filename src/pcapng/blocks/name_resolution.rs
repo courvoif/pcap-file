@@ -14,8 +14,9 @@ use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
 
-/// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
-/// (present in the captured packets) and their corresponding canonical names and it is optional.
+/// Name Resolution Block (NRB).
+///
+/// Associates numeric addresses from captured packets with canonical names.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct NameResolutionBlock<'a> {
     /// Name-resolution records.
@@ -66,7 +67,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
     }
 }
 
-/// Resolution block record types
+/// Record types stored in a Name Resolution Block.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum Record<'a> {
     /// End of the records
@@ -361,16 +362,16 @@ impl<'a> UnknownRecord<'a> {
     }
 }
 
-/// Name Resolution Block options
+/// Name Resolution Block (NRB) options.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum NameResolutionOption<'a> {
-    /// The ns_dnsname option is a UTF-8 string containing the name of the machine (DNS server) used to perform the name resolution.
+    /// Name of the DNS server used to perform name resolution.
     NsDnsName(Cow<'a, str>),
 
-    /// The ns_dnsIP4addr option specifies the IPv4 address of the DNS server.
+    /// IPv4 address of the DNS server.
     NsDnsIpv4Addr(Cow<'a, [u8]>),
 
-    /// The ns_dnsIP6addr option specifies the IPv6 address of the DNS server.
+    /// IPv6 address of the DNS server.
     NsDnsIpv6Addr(Cow<'a, [u8]>),
 
     /// A common option applicable to any block type.

@@ -15,26 +15,28 @@ use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
 
-/// The Packet Block is obsolete, and MUST NOT be used in new files.
-/// Use the Enhanced Packet Block or Simple Packet Block instead.
+/// Packet Block (PB).
+///
+/// Stores captured packet data using the obsolete Packet Block format. New
+/// files should use an Enhanced Packet Block or Simple Packet Block.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct PacketBlock<'a> {
-    /// It specifies the interface this packet comes from.
+    /// Interface on which this packet was captured.
     pub interface_id: u16,
 
     /// Local drop counter.
     ///
-    /// It specifies the number of packets lost (by the interface and the operating system)
-    /// between this packet and the preceding one.
+    /// Number of packets lost between this packet and the preceding packet.
     pub drop_count: u16,
 
     /// Time elapsed since 1970-01-01 00:00:00 UTC.
     pub timestamp: Duration,
 
     /// Original length of the packet on the wire.
+    /// Must be greater than or equal to `data.len()`.
     pub original_len: u32,
 
-    /// The data coming from the network, including link-layer headers.
+    /// Captured packet data, including link-layer headers.
     pub data: Cow<'a, [u8]>,
 
     /// Block options.
@@ -89,7 +91,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let original_len = slice.read_u32::<B>().unwrap();
 
         if original_len < captured_len {
-            return Err(ContentValidationError::InvalidOriginalLen(original_len, captured_len as usize).into());
+            return Err(ContentValidationError::InvalidOriginalLength(original_len, captured_len as usize).into());
         }
 
         let pad_len = (4 - (captured_len as usize % 4)) % 4;
@@ -130,7 +132,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         if (self.original_len as usize) < self.data.len() {
             return Err(PcapNgWriteError::validation_error(
                 "PacketBlock.original_len",
-                ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+                ContentValidationError::InvalidOriginalLength(self.original_len, self.data.len()),
             ));
         }
 
@@ -160,7 +162,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     }
 }
 
-/// Packet Block options
+/// Packet Block (PB) options.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum PacketOption<'a> {
     /// 32-bit flags word containing link-layer information.

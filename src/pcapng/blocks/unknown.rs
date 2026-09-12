@@ -12,14 +12,16 @@ use crate::pcapng::{
     errors::{BlockContentParseError, PcapNgWriteError},
 };
 
-/// Unknown block
+/// Unknown Block.
+///
+/// Stores a pcapng block whose type is not recognized.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct UnknownBlock<'a> {
-    /// Block type
+    /// Numeric block type.
     pub type_: u32,
-    /// Block length
+    /// Total block length.
     pub length: u32,
-    /// Block value
+    /// Unparsed block body.
     pub value: Cow<'a, [u8]>,
 }
 

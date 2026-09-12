@@ -245,7 +245,7 @@ fn typed_reader_returns_validation_error() {
     let typed_error = reader.next_packet().unwrap().unwrap_err();
     assert!(matches!(
         typed_error,
-        pcap_file::pcap::errors::PcapReadError::Validation(PcapValidationError::OriginalLenTooSmall(2, 4))
+        pcap_file::pcap::errors::PcapReadError::Validation(PcapValidationError::InvalidOriginalLength(2, 4))
     ));
 }
 
@@ -262,7 +262,7 @@ fn raw_reader_handles_malformed_typed_content() {
     let error = raw_packet
         .try_into_pcap_packet(header.ts_resolution, header.snaplen)
         .unwrap_err();
-    assert!(matches!(error.source, PcapValidationError::OriginalLenTooSmall(2, 4)));
+    assert!(matches!(error.source, PcapValidationError::InvalidOriginalLength(2, 4)));
     assert_eq!(error.packet.incl_len, 4);
     assert_eq!(error.packet.orig_len, 2);
     assert_eq!(&*error.packet.data, &[1, 2, 3, 4]);

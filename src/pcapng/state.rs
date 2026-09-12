@@ -9,12 +9,6 @@ use super::blocks::{INTERFACE_DESCRIPTION_BLOCK, SECTION_HEADER_BLOCK};
 use crate::Endianness;
 use crate::pcapng::errors::{ContentValidationError, StateUpdateError};
 
-#[cfg(doc)]
-use {
-    super::blocks::interface_description::InterfaceDescriptionOption,
-    crate::pcapng::{PcapNgReader, PcapNgWriter},
-};
-
 /// State maintained while reading or writing a pcapng stream.
 ///
 /// This state is necessary because the encoding of blocks depends on
@@ -22,20 +16,23 @@ use {
 /// [`SectionHeaderBlock`] and the [`InterfaceTsResolution`] of each
 /// [`InterfaceDescriptionBlock`].
 ///
-/// Normally this state is maintained internally by a [`PcapNgReader`] or
-/// [`PcapNgWriter`], but it's also possible to create a new [`PcapNgState`]
-/// with [`PcapNgState::default`], and then update it by calling
+/// Normally, a [`PcapNgParser`], [`PcapNgReader`], or [`PcapNgWriter`]
+/// maintains this state internally. It can also be created with
+/// [`PcapNgState::default`] and updated with
 /// [`PcapNgState::update_from_block`]. For raw blocks, call
-/// [`PcapNgState::decode_block_if_needed`] first, then update the state with
-/// the decoded block when one is returned.
+/// [`PcapNgState::decode_block_if_needed`] first, then update the state if a
+/// decoded block is returned.
 ///
+/// [`PcapNgParser`]: crate::pcapng::PcapNgParser
+/// [`PcapNgReader`]: crate::pcapng::PcapNgReader
+/// [`PcapNgWriter`]: crate::pcapng::PcapNgWriter
 #[derive(Debug, Default)]
 pub struct PcapNgState {
-    /// Current section of the pcapng
+    /// Current section of the pcapng stream.
     pub(crate) section: SectionHeaderBlock<'static>,
-    /// List of the interfaces of the current section of the pcapng
+    /// Interfaces defined in the current section.
     pub(crate) interfaces: Vec<InterfaceDescriptionBlock<'static>>,
-    /// Timestamp resolutions and offsets (in seconds) corresponding to the interfaces
+    /// Timestamp resolutions and offsets, in seconds, for the interfaces.
     pub(crate) ts_parameters: Vec<(InterfaceTsResolution, i64)>,
 }
 
