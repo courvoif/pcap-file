@@ -12,13 +12,13 @@ pub(crate) mod state;
 pub use state::PcapNgState;
 
 pub(crate) mod parser;
-pub use parser::PcapNgParser;
+pub use parser::*;
 
 pub(crate) mod reader;
-pub use reader::{PcapNgPacketIterator, PcapNgReader};
+pub use reader::*;
 
 pub(crate) mod packet;
-pub use packet::{PcapNgPacket, PcapNgPacketOrBlock};
+pub use packet::*;
 
 pub(crate) mod writer;
-pub use writer::PcapNgWriter;
+pub use writer::*;

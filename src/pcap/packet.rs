@@ -73,7 +73,7 @@ impl<'a> PcapPacket<'a> {
         self.original_len
     }
 
-    /// Returns the length of the packet.
+    /// Returns the captured packet data length.
     pub fn len(&self) -> usize {
         self.data.len()
     }

@@ -15,14 +15,14 @@ use crate::pcapng::errors::{OptionEntryError, OptionParseError, PcapNgWriteError
 
 /// Comment option code.
 pub const COMMENT: u16 = 0x0001;
-/// Copiable custom UTF-8 option code.
-pub const CUSTOM_UTF8_OPTION_COPIABLE: u16 = 0x0BAC;
-/// Non-copiable custom UTF-8 option code.
-pub const CUSTOM_UTF8_OPTION_NON_COPIABLE: u16 = 0x4BAC;
-/// Copiable custom binary option code.
-pub const CUSTOM_BINARY_OPTION_COPIABLE: u16 = 0x0BAD;
-/// Non-copiable custom binary option code.
-pub const CUSTOM_BINARY_OPTION_NON_COPIABLE: u16 = 0x4BAD;
+/// Copyable custom UTF-8 option code.
+pub const CUSTOM_UTF8_OPTION_COPYABLE: u16 = 0x0BAC;
+/// Non-copyable custom UTF-8 option code.
+pub const CUSTOM_UTF8_OPTION_NON_COPYABLE: u16 = 0x4BAC;
+/// Copyable custom binary option code.
+pub const CUSTOM_BINARY_OPTION_COPYABLE: u16 = 0x0BAD;
+/// Non-copyable custom binary option code.
+pub const CUSTOM_BINARY_OPTION_NON_COPYABLE: u16 = 0x4BAD;
 
 /// Common options applicable to all block types.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -30,17 +30,17 @@ pub enum CommonOption<'a> {
     /// Comment.
     Comment(Cow<'a, str>),
 
-    /// Custom option containing copiable binary octets in the Custom Data portion.
-    CustomBinaryCopiable(CustomBinaryOption<'a, true>),
+    /// Custom option containing copyable binary octets in the Custom Data portion.
+    CustomBinaryCopyable(CustomBinaryOption<'a, true>),
 
-    /// Custom option containing non-copiable binary octets in the Custom Data portion.
-    CustomBinaryNonCopiable(CustomBinaryOption<'a, false>),
+    /// Custom option containing non-copyable binary octets in the Custom Data portion.
+    CustomBinaryNonCopyable(CustomBinaryOption<'a, false>),
 
-    /// Custom option containing a copiable UTF-8 string in the Custom Data portion.
-    CustomUtf8Copiable(CustomUtf8Option<'a, true>),
+    /// Custom option containing a copyable UTF-8 string in the Custom Data portion.
+    CustomUtf8Copyable(CustomUtf8Option<'a, true>),
 
-    /// Custom option containing a non-copiable UTF-8 string in the Custom Data portion.
-    CustomUtf8NonCopiable(CustomUtf8Option<'a, false>),
+    /// Custom option containing a non-copyable UTF-8 string in the Custom Data portion.
+    CustomUtf8NonCopyable(CustomUtf8Option<'a, false>),
 
     /// Unknown option.
     Unknown(UnknownOption<'a>),
@@ -50,10 +50,10 @@ impl<'a> CommonOption<'a> {
     pub(crate) fn code(&self) -> u16 {
         match self {
             CommonOption::Comment(_) => COMMENT,
-            CommonOption::CustomBinaryCopiable(_) => CUSTOM_BINARY_OPTION_COPIABLE,
-            CommonOption::CustomBinaryNonCopiable(_) => CUSTOM_BINARY_OPTION_NON_COPIABLE,
-            CommonOption::CustomUtf8Copiable(_) => CUSTOM_UTF8_OPTION_COPIABLE,
-            CommonOption::CustomUtf8NonCopiable(_) => CUSTOM_UTF8_OPTION_NON_COPIABLE,
+            CommonOption::CustomBinaryCopyable(_) => CUSTOM_BINARY_OPTION_COPYABLE,
+            CommonOption::CustomBinaryNonCopyable(_) => CUSTOM_BINARY_OPTION_NON_COPYABLE,
+            CommonOption::CustomUtf8Copyable(_) => CUSTOM_UTF8_OPTION_COPYABLE,
+            CommonOption::CustomUtf8NonCopyable(_) => CUSTOM_UTF8_OPTION_NON_COPYABLE,
             CommonOption::Unknown(a) => a.code,
         }
     }
@@ -61,15 +61,15 @@ impl<'a> CommonOption<'a> {
     pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, OptionEntryError> {
         Ok(match code {
             COMMENT => CommonOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
-            CUSTOM_UTF8_OPTION_COPIABLE => CommonOption::CustomUtf8Copiable(CustomUtf8Option::from_slice::<B>(slice)?),
-            CUSTOM_UTF8_OPTION_NON_COPIABLE => {
-                CommonOption::CustomUtf8NonCopiable(CustomUtf8Option::from_slice::<B>(slice)?)
+            CUSTOM_UTF8_OPTION_COPYABLE => CommonOption::CustomUtf8Copyable(CustomUtf8Option::from_slice::<B>(slice)?),
+            CUSTOM_UTF8_OPTION_NON_COPYABLE => {
+                CommonOption::CustomUtf8NonCopyable(CustomUtf8Option::from_slice::<B>(slice)?)
             }
-            CUSTOM_BINARY_OPTION_COPIABLE => {
-                CommonOption::CustomBinaryCopiable(CustomBinaryOption::from_slice::<B>(slice)?)
+            CUSTOM_BINARY_OPTION_COPYABLE => {
+                CommonOption::CustomBinaryCopyable(CustomBinaryOption::from_slice::<B>(slice)?)
             }
-            CUSTOM_BINARY_OPTION_NON_COPIABLE => {
-                CommonOption::CustomBinaryNonCopiable(CustomBinaryOption::from_slice::<B>(slice)?)
+            CUSTOM_BINARY_OPTION_NON_COPYABLE => {
+                CommonOption::CustomBinaryNonCopyable(CustomBinaryOption::from_slice::<B>(slice)?)
             }
             _ => CommonOption::Unknown(UnknownOption::new(code, slice)),
         })
@@ -78,10 +78,10 @@ impl<'a> CommonOption<'a> {
     pub(crate) fn code_name(code: u16) -> &'static str {
         match code {
             COMMENT => "Comment",
-            CUSTOM_UTF8_OPTION_COPIABLE => "CustomUtf8Copiable",
-            CUSTOM_UTF8_OPTION_NON_COPIABLE => "CustomUtf8NonCopiable",
-            CUSTOM_BINARY_OPTION_COPIABLE => "CustomBinaryCopiable",
-            CUSTOM_BINARY_OPTION_NON_COPIABLE => "CustomBinaryNonCopiable",
+            CUSTOM_UTF8_OPTION_COPYABLE => "CustomUtf8Copyable",
+            CUSTOM_UTF8_OPTION_NON_COPYABLE => "CustomUtf8NonCopyable",
+            CUSTOM_BINARY_OPTION_COPYABLE => "CustomBinaryCopyable",
+            CUSTOM_BINARY_OPTION_NON_COPYABLE => "CustomBinaryNonCopyable",
             _ => "Unknown",
         }
     }
@@ -286,28 +286,28 @@ impl<'a> WriteOpt for CommonOption<'a> {
             CommonOption::Comment(a) => {
                 write_opt_with_header_and_pad::<B, _>(writer, code, a.len(), |w| w.write_all(a.as_bytes()))
             }
-            CommonOption::CustomBinaryCopiable(a) => {
+            CommonOption::CustomBinaryCopyable(a) => {
                 write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
                     w.write_u32::<B>(a.pen)?;
                     w.write_all(&a.value)?;
                     Ok(())
                 })
             }
-            CommonOption::CustomBinaryNonCopiable(a) => {
+            CommonOption::CustomBinaryNonCopyable(a) => {
                 write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
                     w.write_u32::<B>(a.pen)?;
                     w.write_all(&a.value)?;
                     Ok(())
                 })
             }
-            CommonOption::CustomUtf8Copiable(a) => {
+            CommonOption::CustomUtf8Copyable(a) => {
                 write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
                     w.write_u32::<B>(a.pen)?;
                     w.write_all(a.value.as_bytes())?;
                     Ok(())
                 })
             }
-            CommonOption::CustomUtf8NonCopiable(a) => {
+            CommonOption::CustomUtf8NonCopyable(a) => {
                 write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
                     w.write_u32::<B>(a.pen)?;
                     w.write_all(a.value.as_bytes())?;

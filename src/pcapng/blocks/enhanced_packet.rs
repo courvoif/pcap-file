@@ -29,7 +29,7 @@ pub struct EnhancedPacketBlock<'a> {
     /// Time elapsed since 1970-01-01 00:00:00 UTC.
     pub timestamp: Duration,
 
-    /// Actual length of the packet when it was transmitted on the network.
+    /// Original length of the packet on the wire.
     /// Must be >= data.len().
     pub original_len: u32,
 

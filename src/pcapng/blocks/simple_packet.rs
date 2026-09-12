@@ -19,7 +19,7 @@ use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
 /// Its presence is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SimplePacketBlock<'a> {
-    /// Actual length of the packet when it was transmitted on the network.
+    /// Original length of the packet on the wire.
     pub original_len: u32,
 
     /// The data coming from the network, including link-layer headers.

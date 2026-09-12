@@ -3,7 +3,7 @@ use std::io::{self, BufWriter, Write};
 
 use anyhow::{Context, Result, anyhow};
 use byteorder_slice::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
-use pcap_file::pcapng::blocks::custom::{CustomOptionPayload, CustomPayloadCopiable};
+use pcap_file::pcapng::blocks::custom::{CustomOptionPayload, CustomPayloadCopyable};
 use pcap_file::pcapng::blocks::opt_common::CommonOption;
 use pcap_file::pcapng::blocks::section_header::{SectionHeaderBlock, SectionHeaderOption};
 use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
@@ -11,7 +11,7 @@ use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 #[derive(Clone, Debug)]
 struct CaptureId(u64);
 
-impl CustomPayloadCopiable<'_> for CaptureId {
+impl CustomPayloadCopyable<'_> for CaptureId {
     // Obtain a real Private Enterprise Number before publishing a format.
     const PEN: u32 = 70_000;
     type FromSliceError = io::Error;
@@ -35,7 +35,7 @@ fn main() -> Result<()> {
     let path = "target/pcapng-custom-option-example.pcapng";
 
     let custom = CaptureId(1234)
-        .into_custom_binary_option_copiable()
+        .into_custom_binary_option_copyable()
         .context("failed to encode the custom option")?
         .into_common_option();
 
@@ -59,7 +59,7 @@ fn main() -> Result<()> {
     let reader = PcapNgReader::new(input).context("failed to read the section header")?;
 
     for option in &reader.state().section().options {
-        if let SectionHeaderOption::Common(CommonOption::CustomBinaryCopiable(option)) = option {
+        if let SectionHeaderOption::Common(CommonOption::CustomBinaryCopyable(option)) = option {
             let capture_id = option
                 .interpret::<CaptureId>()
                 .context("failed to decode the custom option")?

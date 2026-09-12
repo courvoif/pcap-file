@@ -31,7 +31,7 @@ pub struct PacketBlock<'a> {
     /// Time elapsed since 1970-01-01 00:00:00 UTC.
     pub timestamp: Duration,
 
-    /// Actual length of the packet when it was transmitted on the network.
+    /// Original length of the packet on the wire.
     pub original_len: u32,
 
     /// The data coming from the network, including link-layer headers.

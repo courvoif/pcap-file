@@ -199,8 +199,6 @@ impl PcapNgState {
 
 #[cfg(test)]
 mod tests {
-    //! Tests for timestamp conversion and pcapng state behavior.
-
     use super::*;
 
     #[test]

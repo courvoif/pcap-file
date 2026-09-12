@@ -5,8 +5,8 @@
 //! provide the corresponding custom option representations.
 //!
 //! Implement [`CustomBlockPayload`] or [`CustomOptionPayload`] together with
-//! [`CustomPayloadCopiable`] for self-contained payloads. Use
-//! [`CustomPayloadNonCopiable`] when encoding or decoding requires application
+//! [`CustomPayloadCopyable`] for self-contained payloads. Use
+//! [`CustomPayloadNonCopyable`] when encoding or decoding requires application
 //! state.
 
 use std::borrow::Cow;
@@ -25,18 +25,18 @@ use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
 
 /* ----- traits for Custom Payload ----- */
 
-/// Common interface for copiable custom block and custom option payloads.
+/// Common interface for copyable custom block and custom option payloads.
 ///
 /// # Examples
 ///
 /// ```
 /// use std::convert::Infallible;
 /// use std::io::Write;
-/// use pcap_file::pcapng::blocks::custom::CustomPayloadCopiable;
+/// use pcap_file::pcapng::blocks::custom::CustomPayloadCopyable;
 ///
 /// struct Payload(u8);
 ///
-/// impl CustomPayloadCopiable<'_> for Payload {
+/// impl CustomPayloadCopyable<'_> for Payload {
 ///     const PEN: u32 = 70_000;
 ///     type FromSliceError = Infallible;
 ///     type WriteToError = std::io::Error;
@@ -50,14 +50,14 @@ use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
 ///     }
 /// }
 /// ```
-pub trait CustomPayloadCopiable<'a> {
+pub trait CustomPayloadCopyable<'a> {
     /// Private Enterprise Number of the entity which defined this payload format.
     const PEN: u32;
 
-    /// Error returned by [`CustomPayloadCopiable::from_slice()`].
+    /// Error returned by [`CustomPayloadCopyable::from_slice()`].
     type FromSliceError: Error + Sync + Send + 'static;
 
-    /// Error returned by [`CustomPayloadCopiable::write_to()`].
+    /// Error returned by [`CustomPayloadCopyable::write_to()`].
     type WriteToError: Error + Sync + Send + 'static;
 
     /// Tries to parse this payload from a byte slice.
@@ -83,7 +83,7 @@ pub trait CustomPayloadCopiable<'a> {
     ///
     /// # Errors
     ///
-    /// - Returns [`CustomError`] if [`CustomPayloadCopiable::write_to`] fails.
+    /// - Returns [`CustomError`] if [`CustomPayloadCopyable::write_to`] fails.
     fn to_bytes(&self) -> Result<Vec<u8>, CustomError>
     where
         Self: Sized,
@@ -97,18 +97,18 @@ pub trait CustomPayloadCopiable<'a> {
     }
 }
 
-/// Common interface for non-copiable custom block and custom option payloads.
+/// Common interface for non-copyable custom block and custom option payloads.
 ///
 /// # Examples
 ///
 /// ```
 /// use std::convert::Infallible;
 /// use std::io::Write;
-/// use pcap_file::pcapng::blocks::custom::CustomPayloadNonCopiable;
+/// use pcap_file::pcapng::blocks::custom::CustomPayloadNonCopyable;
 ///
 /// struct Payload(u8);
 ///
-/// impl CustomPayloadNonCopiable<'_> for Payload {
+/// impl CustomPayloadNonCopyable<'_> for Payload {
 ///     const PEN: u32 = 70_000;
 ///     type State = u8;
 ///     type FromSliceError = Infallible;
@@ -123,17 +123,17 @@ pub trait CustomPayloadCopiable<'a> {
 ///     }
 /// }
 /// ```
-pub trait CustomPayloadNonCopiable<'a> {
+pub trait CustomPayloadNonCopyable<'a> {
     /// Private Enterprise Number of the entity which defined this payload format.
     const PEN: u32;
 
     /// State that may be required to parse/write the payload.
     type State;
 
-    /// Error returned by [`CustomPayloadNonCopiable::from_slice()`].
+    /// Error returned by [`CustomPayloadNonCopyable::from_slice()`].
     type FromSliceError: Error + Sync + Send + 'static;
 
-    /// Error returned by [`CustomPayloadNonCopiable::write_to()`].
+    /// Error returned by [`CustomPayloadNonCopyable::write_to()`].
     type WriteToError: Error + Sync + Send + 'static;
 
     /// Tries to parse this payload from a byte slice.
@@ -159,7 +159,7 @@ pub trait CustomPayloadNonCopiable<'a> {
     ///
     /// # Errors
     ///
-    /// - Returns [`CustomError`] if [`CustomPayloadNonCopiable::write_to`] fails.
+    /// - Returns [`CustomError`] if [`CustomPayloadNonCopyable::write_to`] fails.
     fn to_bytes(&self, state: &Self::State) -> Result<Vec<u8>, CustomError>
     where
         Self: Sized,
@@ -176,7 +176,7 @@ pub trait CustomPayloadNonCopiable<'a> {
 /// Marker trait for payload types used in custom blocks.
 ///
 /// # Important
-/// Implementors must also implement [`CustomPayloadCopiable`] or [`CustomPayloadNonCopiable`].
+/// Implementors must also implement [`CustomPayloadCopyable`] or [`CustomPayloadNonCopyable`].
 ///
 /// # Examples
 ///
@@ -188,18 +188,18 @@ pub trait CustomPayloadNonCopiable<'a> {
 /// impl CustomBlockPayload<'_> for Payload {}
 /// ```
 pub trait CustomBlockPayload<'a> {
-    /// Convert this payload into a copiable [`CustomBlock`].
+    /// Convert this payload into a copyable [`CustomBlock`].
     ///
     /// # Important
     /// Do not override.
     ///
     /// # Errors
     ///
-    /// - Returns any error produced by [`CustomPayloadCopiable::to_bytes`].
-    fn into_custom_block_copiable(self) -> Result<CustomBlock<'a, true>, CustomError>
+    /// - Returns any error produced by [`CustomPayloadCopyable::to_bytes`].
+    fn into_custom_block_copyable(self) -> Result<CustomBlock<'a, true>, CustomError>
     where
         Self: Sized,
-        Self: CustomPayloadCopiable<'a>,
+        Self: CustomPayloadCopyable<'a>,
     {
         let data = self.to_bytes()?;
         Ok(CustomBlock {
@@ -208,18 +208,18 @@ pub trait CustomBlockPayload<'a> {
         })
     }
 
-    /// Convert this payload into a non-copiable [`CustomBlock`].
+    /// Convert this payload into a non-copyable [`CustomBlock`].
     ///
     /// # Important
     /// Do not override.
     ///
     /// # Errors
     ///
-    /// - Returns any error produced by [`CustomPayloadNonCopiable::to_bytes`].
-    fn into_custom_block_non_copiable(self, state: &Self::State) -> Result<CustomBlock<'a, false>, CustomError>
+    /// - Returns any error produced by [`CustomPayloadNonCopyable::to_bytes`].
+    fn into_custom_block_non_copyable(self, state: &Self::State) -> Result<CustomBlock<'a, false>, CustomError>
     where
         Self: Sized,
-        Self: CustomPayloadNonCopiable<'a>,
+        Self: CustomPayloadNonCopyable<'a>,
     {
         let data = self.to_bytes(state)?;
         Ok(CustomBlock {
@@ -232,7 +232,7 @@ pub trait CustomBlockPayload<'a> {
 /// Marker trait for payload types used in custom options.
 ///
 /// # Important
-/// Implementors must also implement [`CustomPayloadCopiable`] or [`CustomPayloadNonCopiable`].
+/// Implementors must also implement [`CustomPayloadCopyable`] or [`CustomPayloadNonCopyable`].
 ///
 /// # Examples
 ///
@@ -244,18 +244,18 @@ pub trait CustomBlockPayload<'a> {
 /// impl CustomOptionPayload<'_> for Payload {}
 /// ```
 pub trait CustomOptionPayload<'a> {
-    /// Convert this payload into a copiable [`CustomBinaryOption`].
+    /// Convert this payload into a copyable [`CustomBinaryOption`].
     ///
     /// # Important
     /// Do not override.
     ///
     /// # Errors
     ///
-    /// - Returns any error produced by [`CustomPayloadCopiable::to_bytes`].
-    fn into_custom_binary_option_copiable(self) -> Result<CustomBinaryOption<'a, true>, CustomError>
+    /// - Returns any error produced by [`CustomPayloadCopyable::to_bytes`].
+    fn into_custom_binary_option_copyable(self) -> Result<CustomBinaryOption<'a, true>, CustomError>
     where
         Self: Sized,
-        Self: CustomPayloadCopiable<'a>,
+        Self: CustomPayloadCopyable<'a>,
     {
         let data = self.to_bytes()?;
         Ok(CustomBinaryOption {
@@ -264,21 +264,21 @@ pub trait CustomOptionPayload<'a> {
         })
     }
 
-    /// Convert this payload into a non-copiable [`CustomBinaryOption`].
+    /// Convert this payload into a non-copyable [`CustomBinaryOption`].
     ///
     /// # Important
     /// Do not override.
     ///
     /// # Errors
     ///
-    /// - Returns any error produced by [`CustomPayloadNonCopiable::to_bytes`].
-    fn into_custom_binary_option_non_copiable(
+    /// - Returns any error produced by [`CustomPayloadNonCopyable::to_bytes`].
+    fn into_custom_binary_option_non_copyable(
         self,
         state: &Self::State,
     ) -> Result<CustomBinaryOption<'a, false>, CustomError>
     where
         Self: Sized,
-        Self: CustomPayloadNonCopiable<'a>,
+        Self: CustomPayloadNonCopyable<'a>,
     {
         let data = self.to_bytes(state)?;
         Ok(CustomBinaryOption {
@@ -305,19 +305,19 @@ pub struct CustomError {
 
 /// Custom Block.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CustomBlock<'a, const COPIABLE: bool> {
+pub struct CustomBlock<'a, const COPYABLE: bool> {
     /// Private Enterprise Number of the entity which defined this block.
     pub pen: u32,
     /// Payload of this block.
     pub payload: Cow<'a, [u8]>,
 }
 
-impl<'a, const COPIABLE: bool> CustomBlock<'a, COPIABLE> {
+impl<'a, const COPYABLE: bool> CustomBlock<'a, COPYABLE> {
     // The into_owned method must be implemented manually,
     // since derive_into_owned can't handle the const generic.
 
     /// Returns a version of self with all fields converted to owning versions.
-    pub fn into_owned(self) -> CustomBlock<'static, COPIABLE> {
+    pub fn into_owned(self) -> CustomBlock<'static, COPYABLE> {
         CustomBlock {
             pen: self.pen,
             payload: Cow::Owned(self.payload.into_owned()),
@@ -326,14 +326,14 @@ impl<'a, const COPIABLE: bool> CustomBlock<'a, COPIABLE> {
 }
 
 impl<'a> CustomBlock<'a, true> {
-    /// Converts this block's payload into a copiable custom payload type.
+    /// Converts this block's payload into a copyable custom payload type.
     ///
     /// # Errors
     ///
     /// - Returns an error if the payload cannot be decoded as `T`.
     pub fn interpret<T>(&'a self) -> Result<Option<T>, CustomError>
     where
-        T: CustomPayloadCopiable<'a> + CustomBlockPayload<'a>,
+        T: CustomPayloadCopyable<'a> + CustomBlockPayload<'a>,
     {
         if self.pen != T::PEN {
             return Ok(None);
@@ -347,14 +347,14 @@ impl<'a> CustomBlock<'a, true> {
 }
 
 impl<'a> CustomBlock<'a, false> {
-    /// Converts this block's payload into a non-copiable custom payload type.
+    /// Converts this block's payload into a non-copyable custom payload type.
     ///
     /// # Errors
     ///
     /// - Returns an error if the payload cannot be decoded as `T` using `state`.
     pub fn interpret<T>(&'a self, state: &T::State) -> Result<Option<T>, CustomError>
     where
-        T: CustomPayloadNonCopiable<'a> + CustomBlockPayload<'a>,
+        T: CustomPayloadNonCopyable<'a> + CustomBlockPayload<'a>,
     {
         if self.pen != T::PEN {
             return Ok(None);
@@ -367,7 +367,7 @@ impl<'a> CustomBlock<'a, false> {
     }
 }
 
-impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
+impl<'a, const COPYABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPYABLE> {
     fn from_slice<B: ByteOrder>(
         _state: &PcapNgState,
         mut slice: &'a [u8],
@@ -403,13 +403,13 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
     }
 
     fn into_block(self) -> Block<'a> {
-        if COPIABLE {
-            Block::CustomCopiable(CustomBlock {
+        if COPYABLE {
+            Block::CustomCopyable(CustomBlock {
                 pen: self.pen,
                 payload: self.payload,
             })
         } else {
-            Block::CustomNonCopiable(CustomBlock {
+            Block::CustomNonCopyable(CustomBlock {
                 pen: self.pen,
                 payload: self.payload,
             })
@@ -421,14 +421,14 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
 
 /// Custom binary option.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
+pub struct CustomBinaryOption<'a, const COPYABLE: bool> {
     /// Option Private Enterprise Number (PEN).
     pub pen: u32,
     /// Option value.
     pub value: Cow<'a, [u8]>,
 }
 
-impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
+impl<'a, const COPYABLE: bool> CustomBinaryOption<'a, COPYABLE> {
     /// Parses a [`CustomBinaryOption`] from a byte slice.
     ///
     /// # Errors
@@ -447,7 +447,7 @@ impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
     }
 
     /// Returns a version of self with all fields converted to owning versions.
-    pub fn into_owned(self) -> CustomBinaryOption<'static, COPIABLE> {
+    pub fn into_owned(self) -> CustomBinaryOption<'static, COPYABLE> {
         CustomBinaryOption {
             pen: self.pen,
             value: Cow::Owned(self.value.into_owned()),
@@ -456,14 +456,14 @@ impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
 }
 
 impl<'a> CustomBinaryOption<'a, true> {
-    /// Converts this option's value into a copiable custom payload type.
+    /// Converts this option's value into a copyable custom payload type.
     ///
     /// # Errors
     ///
     /// - Returns an error if the value cannot be decoded as `T`.
     pub fn interpret<T>(&'a self) -> Result<Option<T>, CustomError>
     where
-        T: CustomPayloadCopiable<'a> + CustomOptionPayload<'a>,
+        T: CustomPayloadCopyable<'a> + CustomOptionPayload<'a>,
     {
         if self.pen != T::PEN {
             return Ok(None);
@@ -477,19 +477,19 @@ impl<'a> CustomBinaryOption<'a, true> {
 
     /// Converts this option into a [`CommonOption`].
     pub fn into_common_option(self) -> CommonOption<'a> {
-        CommonOption::CustomBinaryCopiable(self)
+        CommonOption::CustomBinaryCopyable(self)
     }
 }
 
 impl<'a> CustomBinaryOption<'a, false> {
-    /// Converts this option's value into a non-copiable custom payload type.
+    /// Converts this option's value into a non-copyable custom payload type.
     ///
     /// # Errors
     ///
     /// - Returns an error if the value cannot be decoded as `T` using `state`.
     pub fn interpret<T>(&'a self, state: &T::State) -> Result<Option<T>, CustomError>
     where
-        T: CustomPayloadNonCopiable<'a> + CustomOptionPayload<'a>,
+        T: CustomPayloadNonCopyable<'a> + CustomOptionPayload<'a>,
     {
         if self.pen != T::PEN {
             return Ok(None);
@@ -503,7 +503,7 @@ impl<'a> CustomBinaryOption<'a, false> {
 
     /// Converts this option into a [`CommonOption`].
     pub fn into_common_option(self) -> CommonOption<'a> {
-        CommonOption::CustomBinaryNonCopiable(self)
+        CommonOption::CustomBinaryNonCopyable(self)
     }
 }
 
@@ -511,14 +511,14 @@ impl<'a> CustomBinaryOption<'a, false> {
 
 /// Custom UTF-8 string option.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
+pub struct CustomUtf8Option<'a, const COPYABLE: bool> {
     /// Option Private Enterprise Number (PEN).
     pub pen: u32,
     /// Option value.
     pub value: Cow<'a, str>,
 }
 
-impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
+impl<'a, const COPYABLE: bool> CustomUtf8Option<'a, COPYABLE> {
     /// Parses a [`CustomUtf8Option`] from a byte slice.
     ///
     /// # Errors
@@ -538,7 +538,7 @@ impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
     }
 
     /// Returns a version of self with all fields converted to owning versions.
-    pub fn into_owned(self) -> CustomUtf8Option<'static, COPIABLE> {
+    pub fn into_owned(self) -> CustomUtf8Option<'static, COPYABLE> {
         CustomUtf8Option {
             pen: self.pen,
             value: Cow::Owned(self.value.into_owned()),
