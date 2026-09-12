@@ -1,3 +1,5 @@
+//! Errors produced when parsing, reading, writing, or validating pcap data.
+
 use std::time::Duration;
 
 use thiserror::Error;

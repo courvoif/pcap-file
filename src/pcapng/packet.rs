@@ -1,3 +1,5 @@
+//! Unified packet types for pcapng packet blocks.
+
 use std::borrow::Cow;
 use std::time::Duration;
 
@@ -122,6 +124,8 @@ impl<'a> From<PacketBlock<'a>> for PcapNgPacket<'a> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for unified pcapng packet classification and accessors.
+
     use std::borrow::Cow;
     use std::time::Duration;
 

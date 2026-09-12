@@ -1,3 +1,5 @@
+//! Pcap global-header parsing and writing.
+
 use std::io::Write;
 
 use byteorder_slice::byteorder::WriteBytesExt;

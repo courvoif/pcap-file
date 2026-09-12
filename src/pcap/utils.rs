@@ -1,3 +1,5 @@
+//! Utility types for the pcap format.
+
 /// Timestamp resolution used by a pcap file.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum PcapTsResolution {

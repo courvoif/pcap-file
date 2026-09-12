@@ -1,3 +1,5 @@
+//! Slice-based pcapng parsing with section and interface state tracking.
+
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
 use super::PcapNgState;

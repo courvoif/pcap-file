@@ -1,3 +1,5 @@
+//! Buffered pcap stream reading and packet iteration.
+
 use std::io::Read;
 
 use super::{PcapParser, RawPcapPacket};

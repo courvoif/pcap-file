@@ -1,3 +1,5 @@
+//! Buffered pcapng stream reading and packet iteration.
+
 use std::io::Read;
 
 use super::blocks::block_common::{Block, RawBlock};

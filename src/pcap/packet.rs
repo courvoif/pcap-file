@@ -1,3 +1,5 @@
+//! Typed and raw pcap packet representations.
+
 use std::borrow::Cow;
 use std::io::Write;
 use std::time::Duration;
@@ -317,6 +319,8 @@ impl<'a> RawPcapPacket<'a> {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for raw-to-typed pcap packet conversion.
+
     use super::*;
 
     #[test]

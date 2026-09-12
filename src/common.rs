@@ -1,3 +1,5 @@
+//! Types shared by the pcap and pcapng formats.
+
 use byteorder_slice::ByteOrder;
 
 /// Byte order used to encode pcap and pcapng fields.

@@ -1,3 +1,5 @@
+//! Internal buffered-reader support shared by pcap and pcapng readers.
+
 use std::io::{Error, ErrorKind, Read};
 
 use crate::{
@@ -210,6 +212,8 @@ impl ReadBufferParseError for PcapNgParseError {
 
 #[cfg(test)]
 mod test {
+    //! Tests for buffered parsing and retry behavior.
+
     use std::io::{Error, ErrorKind, Read};
 
     use byteorder_slice::option::ReadSlice;

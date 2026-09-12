@@ -1,3 +1,5 @@
+//! Stateful pcapng stream writing.
+
 use std::io::Write;
 
 use byteorder_slice::{BigEndian, LittleEndian};

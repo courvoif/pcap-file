@@ -1,3 +1,5 @@
+//! State used while processing pcapng streams.
+
 use std::time::Duration;
 
 use super::blocks::block_common::{Block, RawBlock};
@@ -197,6 +199,8 @@ impl PcapNgState {
 
 #[cfg(test)]
 mod tests {
+    //! Tests for timestamp conversion and pcapng state behavior.
+
     use super::*;
 
     #[test]

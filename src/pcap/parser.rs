@@ -1,3 +1,5 @@
+//! Slice-based pcap parsing.
+
 use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::RawPcapPacket;
