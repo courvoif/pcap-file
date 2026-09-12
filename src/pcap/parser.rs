@@ -55,7 +55,7 @@ impl PcapParser {
     /// # Errors
     ///
     /// - Returns any error produced by [`PcapHeader::from_slice`].
-    pub fn new(slice: &[u8]) -> Result<(&[u8], PcapParser), PcapParseError> {
+    pub fn new(slice: &[u8]) -> Result<(&[u8], Self), PcapParseError> {
         let (slice, header) = PcapHeader::from_slice(slice)?;
         let parser = PcapParser { header };
         Ok((slice, parser))

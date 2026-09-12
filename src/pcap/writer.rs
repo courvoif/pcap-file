@@ -61,7 +61,7 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// # Errors
     /// - Returns any error produced by [`Self::with_header`].
-    pub fn new(writer: W) -> Result<PcapWriter<W>, PcapWriteError> {
+    pub fn new(writer: W) -> Result<Self, PcapWriteError> {
         let header = PcapHeader {
             endianness: Endianness::native(),
             ..Default::default()
@@ -76,7 +76,7 @@ impl<W: Write> PcapWriter<W> {
     ///
     /// # Errors
     /// - Returns any error produced by [`PcapHeader::write_to`].
-    pub fn with_header(mut writer: W, header: PcapHeader) -> Result<PcapWriter<W>, PcapWriteError> {
+    pub fn with_header(mut writer: W, header: PcapHeader) -> Result<Self, PcapWriteError> {
         header.write_to(&mut writer)?;
 
         Ok(PcapWriter {

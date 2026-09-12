@@ -1,11 +1,11 @@
 # pcap-file
 
-Provides parsers, readers, and writers for pcap and pcapng files.
+Provides parsers, readers, and writers for Pcap and PcapNg files.
 
-For pcap files, see the [`pcap`] module, especially [`PcapParser`],
+For Pcap files, see the [`pcap`] module, especially [`PcapParser`],
 [`PcapReader`], [`PcapPacketIterator`] and [`PcapWriter`].
 
-For pcapng files, see the [`pcapng`] module, especially [`PcapNgParser`],
+For PcapNg files, see the [`pcapng`] module, especially [`PcapNgParser`],
 [`PcapNgReader`], [`PcapNgPacketIterator`] and [`PcapNgWriter`].
 
 Format-specific error types are available in [`pcap::errors`] and
@@ -73,7 +73,7 @@ for pkt in pcap_reader {
 }
 ```
 
-## Pcapng
+## PcapNg
 
 ### PcapNgReader
 
@@ -127,8 +127,8 @@ while let Some(block) = pcapng_reader.next_block() {
 }
 ```
 
-Packet blocks in pcapng refer to interface blocks by index. When creating a
-pcapng file from scratch, write an [`InterfaceDescriptionBlock`] before any
+Packet blocks in PcapNg refer to interface blocks by index. When creating a
+PcapNg file from scratch, write an [`InterfaceDescriptionBlock`] before any
 packet block that uses that interface.
 
 ## Examples
@@ -138,10 +138,10 @@ Runnable examples are available in the [examples on GitHub][examples]:
 - Pcap: [parse][pcap-parse], [read][pcap-read], and
   [create and write a packet][pcap-write]. See also how to
   [read and handle raw packets][pcap-read-raw].
-- pcapng: [parse][pcapng-parse], [read][pcapng-read], and
+- PcapNg: [parse][pcapng-parse], [read][pcapng-read], and
   [create and write a packet][pcapng-write]. See also how to
   [read and handle raw blocks][pcapng-read-raw].
-- pcapng extensions: read and write a
+- PcapNg extensions: read and write a
   [custom block][pcapng-custom-block] or a
   [custom option][pcapng-custom-option].
   Both examples propagate conversion errors and distinguish payloads registered
@@ -191,7 +191,7 @@ Licensed under MIT.
 
 ## Disclaimer
 
-The test suite uses the pcapng files provided by [hadrielk's pcapng test generator](https://github.com/hadrielk/pcapng-test-generator).
+The test suite uses the PcapNg files provided by [hadrielk's PcapNg test generator](https://github.com/hadrielk/pcapng-test-generator).
 
 [examples]: https://github.com/courvoif/pcap-file/tree/master/examples
 [pcap-parse]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_parse.rs

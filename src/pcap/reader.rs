@@ -47,7 +47,7 @@ impl<R: Read> PcapReader<R> {
     /// - Returns [`PcapReadError::Io`] if the underlying reader cannot be read.
     /// - Returns [`PcapReadError::Validation`] if the input does not start with
     ///   a valid pcap header.
-    pub fn new(reader: R) -> Result<PcapReader<R>, PcapReadError> {
+    pub fn new(reader: R) -> Result<Self, PcapReadError> {
         let mut reader = ReadBuffer::new(reader);
         let parser = reader.parse_with(PcapParser::new)?;
 
@@ -64,7 +64,7 @@ impl<R: Read> PcapReader<R> {
     /// - Returns [`PcapReadError::Io`] if the underlying reader cannot be read.
     /// - Returns [`PcapReadError::Validation`] if the input does not start with
     ///   a valid pcap header.
-    pub fn with_capacity(reader: R, capacity: usize) -> Result<PcapReader<R>, PcapReadError> {
+    pub fn with_capacity(reader: R, capacity: usize) -> Result<Self, PcapReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
         let parser = reader.parse_with(PcapParser::new)?;
 

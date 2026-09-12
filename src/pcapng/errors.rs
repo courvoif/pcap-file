@@ -240,6 +240,13 @@ impl From<RawBlockConversionError<'_>> for BlockConversionError {
 /// Errors that can occur while parsing the content of a block.
 #[derive(Debug, Error)]
 pub enum BlockContentParseError {
+    /// An unknown block cannot be parsed through [`PcapNgBlock`](crate::pcapng::blocks::PcapNgBlock).
+    ///
+    /// Unknown block bodies have no format known to this crate and must be
+    /// handled as raw bytes instead.
+    #[error("Unknown block content cannot be parsed as a typed block")]
+    UnknownBlock,
+
     /// The block is too short.
     #[error("Block content is too small: need {needed}B, got {actual}B")]
     BlockContentTooSmall {
@@ -367,6 +374,15 @@ pub enum ContentValidationError {
     /// The content of a block is too big to fit on a block.
     #[error("Block content length exceeds u32::MAX: {0}B")]
     BlockContentTooBig(u64),
+
+    /// An unknown block's total length does not match its value length.
+    #[error("Unknown block length does not match its value: expected {expected}B, got {actual}B")]
+    UnknownBlockLengthMismatch {
+        /// Expected total block length based on the value.
+        expected: usize,
+        /// Stored total block length.
+        actual: u32,
+    },
 
     /// The content of a pcapng option is too large to be written.
     #[error("Option content length exceeds u16::MAX: {0}B")]
