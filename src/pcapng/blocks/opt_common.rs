@@ -220,7 +220,7 @@ pub(crate) trait WriteOpt {
 }
 
 /// Writes an option with its header and padding.
-fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
+pub(crate) fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
     writer: &mut W,
     code: u16,
     len: usize,
@@ -243,6 +243,12 @@ fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
 impl<'a> WriteOpt for Cow<'a, [u8]> {
     fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         write_opt_with_header_and_pad::<B, _>(writer, code, self.len(), |w| w.write_all(self))
+    }
+}
+
+impl<const N: usize> WriteOpt for [u8; N] {
+    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        write_opt_with_header_and_pad::<B, _>(writer, code, N, |w| w.write_all(self))
     }
 }
 
