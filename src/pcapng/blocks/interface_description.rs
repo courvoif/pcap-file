@@ -132,7 +132,7 @@ impl<'a> InterfaceDescriptionBlock<'a> {
 
 /* ----- InterfaceDescriptionOption ----- */
 
-/// The Interface Description Block (IDB) options
+/// Interface Description Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceDescriptionOption<'a> {
     /// The if_name option is a UTF-8 string containing the name of the device used to capture data.
@@ -151,7 +151,7 @@ pub enum InterfaceDescriptionOption<'a> {
     IfMacAddr(Cow<'a, [u8]>),
 
     /// The if_EUIaddr option is the Interface Hardware EUI address (64 bits), if available.
-    IfEuIAddr(u64),
+    IfEuiAddr(u64),
 
     /// The if_speed option is a 64-bit number for the Interface speed (in bits per second).
     IfSpeed(u64),
@@ -190,7 +190,7 @@ impl InterfaceDescriptionOption<'_> {
     const IF_IPV4_ADDR: u16 = 4;
     const IF_IPV6_ADDR: u16 = 5;
     const IF_MAC_ADDR: u16 = 6;
-    const IF_EU_ADDR: u16 = 7;
+    const IF_EUI_ADDR: u16 = 7;
     const IF_SPEED: u16 = 8;
     const IF_TS_RESOL: u16 = 9;
     const IF_T_ZONE: u16 = 10;
@@ -240,14 +240,14 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
                 }
                 InterfaceDescriptionOption::IfMacAddr(Cow::Borrowed(slice))
             }
-            Self::IF_EU_ADDR => {
+            Self::IF_EUI_ADDR => {
                 if slice.len() != 8 {
                     return Err(OptionEntryError::WrongSize {
                         expected: 8,
                         actual: slice.len(),
                     });
                 }
-                InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>().unwrap())
+                InterfaceDescriptionOption::IfEuiAddr(slice.read_u64::<B>().unwrap())
             }
             Self::IF_SPEED => {
                 if slice.len() != 8 {
@@ -327,7 +327,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::IfIpv4Addr(a) => a.write_opt::<B, W>(Self::IF_IPV4_ADDR, writer),
             InterfaceDescriptionOption::IfIpv6Addr(a) => a.write_opt::<B, W>(Self::IF_IPV6_ADDR, writer),
             InterfaceDescriptionOption::IfMacAddr(a) => a.write_opt::<B, W>(Self::IF_MAC_ADDR, writer),
-            InterfaceDescriptionOption::IfEuIAddr(a) => a.write_opt::<B, W>(Self::IF_EU_ADDR, writer),
+            InterfaceDescriptionOption::IfEuiAddr(a) => a.write_opt::<B, W>(Self::IF_EUI_ADDR, writer),
             InterfaceDescriptionOption::IfSpeed(a) => a.write_opt::<B, W>(Self::IF_SPEED, writer),
             InterfaceDescriptionOption::IfTsResol(a) => a.to_u8().write_opt::<B, W>(Self::IF_TS_RESOL, writer),
             InterfaceDescriptionOption::IfTzone(a) => a.write_opt::<B, W>(Self::IF_T_ZONE, writer),
@@ -347,7 +347,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             Self::IF_IPV4_ADDR => "IfIpv4Addr",
             Self::IF_IPV6_ADDR => "IfIpv6Addr",
             Self::IF_MAC_ADDR => "IfMacAddr",
-            Self::IF_EU_ADDR => "IfEuIAddr",
+            Self::IF_EUI_ADDR => "IfEuiAddr",
             Self::IF_SPEED => "IfSpeed",
             Self::IF_TS_RESOL => "IfTsResol",
             Self::IF_T_ZONE => "IfTzone",
@@ -382,17 +382,17 @@ impl InterfaceTsResolution {
         is_bin: false,
         resol: 0,
     };
-    /// Milli-second resolution
+    /// Millisecond resolution
     pub const MILLI: Self = InterfaceTsResolution {
         is_bin: false,
         resol: 3,
     };
-    /// Micro-second resolution
+    /// Microsecond resolution
     pub const MICRO: Self = InterfaceTsResolution {
         is_bin: false,
         resol: 6,
     };
-    /// Nano-second resolution
+    /// Nanosecond resolution
     pub const NANO: Self = InterfaceTsResolution {
         is_bin: false,
         resol: 9,
@@ -491,7 +491,7 @@ impl InterfaceTsResolution {
 }
 
 impl Default for InterfaceTsResolution {
-    /// Default to micro-seconds resolution
+    /// Defaults to microsecond resolution
     fn default() -> Self {
         Self::MICRO
     }

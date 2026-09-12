@@ -361,7 +361,7 @@ impl<'a> UnknownRecord<'a> {
     }
 }
 
-/// Name Resolution Block (NRB) options.
+/// Name Resolution Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum NameResolutionOption<'a> {
     /// The ns_dnsname option is a UTF-8 string containing the name of the machine (DNS server) used to perform the name resolution.

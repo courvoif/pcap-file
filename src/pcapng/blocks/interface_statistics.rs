@@ -83,7 +83,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
     }
 }
 
-/// The Interface Statistics Block options
+/// Interface Statistics Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceStatisticsOption<'a> {
     /// The isb_starttime option specifies the time the capture started.

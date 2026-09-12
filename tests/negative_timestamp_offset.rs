@@ -3,12 +3,12 @@ use std::time::Duration;
 
 use byteorder_slice::BigEndian;
 use pcap_file::DataLink;
-use pcap_file::pcapng::blocks::PcapNgBlock;
 use pcap_file::pcapng::blocks::block_common::{ENHANCED_PACKET_BLOCK, RawBlock};
 use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
 use pcap_file::pcapng::blocks::interface_description::{
     InterfaceDescriptionBlock, InterfaceDescriptionOption, InterfaceTsResolution,
 };
+use pcap_file::pcapng::blocks::{Block, PcapNgBlock};
 use pcap_file::pcapng::errors::{BlockContentParseError, ContentValidationError, PcapNgReadError, PcapNgWriteError};
 use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 
@@ -70,7 +70,8 @@ fn negative_offset_roundtrip_accepts_timestamp_at_unix_epoch() {
     reader.next_block().unwrap().unwrap();
     let (block, _) = reader.next_block().unwrap().unwrap();
 
-    assert_eq!(block.as_enhanced_packet().unwrap().timestamp, Duration::ZERO);
+    let Block::EnhancedPacket(packet) = block else { panic!() };
+    assert_eq!(packet.timestamp, Duration::ZERO);
 }
 
 #[test]

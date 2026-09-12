@@ -15,7 +15,7 @@ use crate::pcap::errors::{PcapPacketConversionError, PcapParseError, PcapValidat
 /// A valid pcap packet.
 ///
 /// The packet data can be owned or borrowed.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PcapPacket<'a> {
     /// Time elapsed since the Unix epoch.
     timestamp: Duration,
@@ -234,7 +234,7 @@ impl<'a> PcapPacket<'a> {
 /// Raw pcap packet header and packet data.
 ///
 /// Header fields are not validated, and the packet data can be owned or borrowed.
-#[derive(Clone, Debug, IntoOwned)]
+#[derive(Clone, Debug, Eq, PartialEq, IntoOwned)]
 pub struct RawPcapPacket<'a> {
     /// Whole-second component of the timestamp.
     pub ts_sec: u32,

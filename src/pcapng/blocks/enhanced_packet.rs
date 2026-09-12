@@ -163,7 +163,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 
 /* ----- */
 
-/// The Enhanced Packet Block (EPB) options
+/// Enhanced Packet Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum EnhancedPacketOption<'a> {
     /// 32-bit flags word containing link-layer information.

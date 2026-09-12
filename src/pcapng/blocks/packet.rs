@@ -160,7 +160,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     }
 }
 
-/// Packet Block option.
+/// Packet Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum PacketOption<'a> {
     /// 32-bit flags word containing link-layer information.

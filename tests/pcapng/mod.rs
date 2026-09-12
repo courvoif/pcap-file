@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use glob::glob;
+use pcap_file::pcapng::blocks::Block;
 use pcap_file::pcapng::errors::ContentValidationError;
 use pcap_file::pcapng::{PcapNgParser, PcapNgReader, PcapNgWriter};
 
@@ -357,7 +358,8 @@ fn parser_handles_section_endianness_switch() {
     let (rem, block) = parser.next_block(rem).unwrap();
 
     assert!(rem.is_empty());
-    let section = block.as_section_header().unwrap();
+    let Block::SectionHeader(section) = block else { panic!() };
+
     assert_eq!(section.options, vec![SectionHeaderOption::OS("linux-x6".into())]);
 }
 
@@ -438,7 +440,9 @@ fn reader_with_capacity_handles_large_blocks() {
     let mut reader = PcapNgReader::with_capacity(&pcapng[..], pcapng.len()).unwrap();
     let _ = reader.next_block().unwrap().unwrap();
     let (block, _) = reader.next_block().unwrap().unwrap();
-    let packet = block.as_enhanced_packet().unwrap();
+    let Block::EnhancedPacket(packet) = block else {
+        panic!();
+    };
 
     assert_eq!(packet.data.len(), data.len());
     assert_eq!(&*packet.data, data.as_slice());

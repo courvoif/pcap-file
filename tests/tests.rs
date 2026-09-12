@@ -5,7 +5,10 @@ use std::time::Duration;
 
 use pcap_file::pcapng::{
     PcapNgReader,
-    blocks::interface_description::{InterfaceDescriptionOption, InterfaceTsResolution},
+    blocks::{
+        Block,
+        interface_description::{InterfaceDescriptionOption, InterfaceTsResolution},
+    },
 };
 
 mod pcap;
@@ -23,9 +26,9 @@ fn timestamp_resolution() {
 
         match i {
             0 => {
-                let if_en0 = block
-                    .as_interface_description()
-                    .expect("Block 0 should be an InterfaceDescriptionBlock");
+                let Block::InterfaceDescription(if_en0) = block else {
+                    panic!("Block 0 should be an InterfaceDescriptionBlock");
+                };
                 assert!(
                     matches!(
                         if_en0.options[2],
@@ -35,9 +38,9 @@ fn timestamp_resolution() {
                 );
             }
             7 => {
-                let if_utun4 = block
-                    .as_interface_description()
-                    .expect("Block 7 should be an InterfaceDescriptionBlock");
+                let Block::InterfaceDescription(if_utun4) = block else {
+                    panic!("Block 7 should be an InterfaceDescriptionBlock");
+                };
                 assert_eq!(
                     if_utun4.options[1],
                     InterfaceDescriptionOption::IfTsResol(InterfaceTsResolution::MICRO),
@@ -45,9 +48,9 @@ fn timestamp_resolution() {
                 );
             }
             8 => {
-                let pkt_0 = block
-                    .as_enhanced_packet()
-                    .expect("Block 8 should be an EnhancedPacketBlock");
+                let Block::EnhancedPacket(pkt_0) = block else {
+                    panic!("Block 8 should be an EnhancedPacketBlock");
+                };
                 assert_eq!(
                     pkt_0.timestamp,
                     Duration::from_nanos_u128(1704187433103553000),
@@ -55,9 +58,9 @@ fn timestamp_resolution() {
                 );
             }
             10 => {
-                let pkt_2 = block
-                    .as_enhanced_packet()
-                    .expect("Block 10 should be an EnhancedPacketBlock");
+                let Block::EnhancedPacket(pkt_2) = block else {
+                    panic!("Block 10 should be an EnhancedPacketBlock");
+                };
                 assert_eq!(
                     pkt_2.timestamp,
                     Duration::from_nanos_u128(1704187433132051),

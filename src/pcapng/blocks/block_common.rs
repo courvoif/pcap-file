@@ -43,7 +43,7 @@ pub const SIMPLE_PACKET_BLOCK: u32 = 0x00000003;
 /// Name Resolution Block type code.
 pub const NAME_RESOLUTION_BLOCK: u32 = 0x00000004;
 /// Interface Statistics Block type code.
-pub const INTERFACE_STATISTIC_BLOCK: u32 = 0x00000005;
+pub const INTERFACE_STATISTICS_BLOCK: u32 = 0x00000005;
 /// Enhanced Packet Block type code.
 pub const ENHANCED_PACKET_BLOCK: u32 = 0x00000006;
 /// systemd Journal Export Block type code.
@@ -264,14 +264,6 @@ pub enum Block<'a> {
 }
 
 impl<'a> Block<'a> {
-    /// Classifies this block as a packet or another block type.
-    ///
-    /// Non-packet blocks are returned unchanged in
-    /// [`crate::pcapng::PcapNgPacketOrBlock::Block`].
-    pub fn into_pcapng_packet(self) -> crate::pcapng::PcapNgPacketOrBlock<'a> {
-        crate::pcapng::PcapNgPacket::from_block(self)
-    }
-
     /// Tries to create a [`Block`] from a [`RawBlock`], given a [`PcapNgState`].
     ///
     /// # Errors
@@ -308,7 +300,7 @@ impl<'a> Block<'a> {
                 NAME_RESOLUTION_BLOCK => {
                     NameResolutionBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::NameResolution(blk))
                 }
-                INTERFACE_STATISTIC_BLOCK => InterfaceStatisticsBlock::from_slice::<B>(state, body)
+                INTERFACE_STATISTICS_BLOCK => InterfaceStatisticsBlock::from_slice::<B>(state, body)
                     .map(|(_, blk)| Block::InterfaceStatistics(blk)),
                 ENHANCED_PACKET_BLOCK => {
                     EnhancedPacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::EnhancedPacket(blk))
@@ -373,7 +365,7 @@ impl<'a> Block<'a> {
             Self::Packet(b) => inner_write_to::<B, _, W>(state, b, PACKET_BLOCK, writer),
             Self::SimplePacket(b) => inner_write_to::<B, _, W>(state, b, SIMPLE_PACKET_BLOCK, writer),
             Self::NameResolution(b) => inner_write_to::<B, _, W>(state, b, NAME_RESOLUTION_BLOCK, writer),
-            Self::InterfaceStatistics(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_STATISTIC_BLOCK, writer),
+            Self::InterfaceStatistics(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_STATISTICS_BLOCK, writer),
             Self::EnhancedPacket(b) => inner_write_to::<B, _, W>(state, b, ENHANCED_PACKET_BLOCK, writer),
             Self::SystemdJournalExport(b) => inner_write_to::<B, _, W>(state, b, SYSTEMD_JOURNAL_EXPORT_BLOCK, writer),
             Self::CustomCopiable(b) => inner_write_to::<B, _, W>(state, b, CUSTOM_BLOCK_COPIABLE, writer),
@@ -423,164 +415,12 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Returns the contained [`EnhancedPacketBlock`], if present.
-    pub fn into_enhanced_packet(self) -> Option<EnhancedPacketBlock<'a>> {
-        match self {
-            Block::EnhancedPacket(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the contained [`EnhancedPacketBlock`], if present.
-    pub fn as_enhanced_packet(&self) -> Option<&EnhancedPacketBlock<'a>> {
-        match self {
-            Block::EnhancedPacket(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns the contained [`InterfaceDescriptionBlock`], if present.
-    pub fn into_interface_description(self) -> Option<InterfaceDescriptionBlock<'a>> {
-        match self {
-            Block::InterfaceDescription(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the contained [`InterfaceDescriptionBlock`], if present.
-    pub fn as_interface_description(&self) -> Option<&InterfaceDescriptionBlock<'a>> {
-        match self {
-            Block::InterfaceDescription(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns the contained [`InterfaceStatisticsBlock`], if present.
-    pub fn into_interface_statistics(self) -> Option<InterfaceStatisticsBlock<'a>> {
-        match self {
-            Block::InterfaceStatistics(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the contained [`InterfaceStatisticsBlock`], if present.
-    pub fn as_interface_statistics(&self) -> Option<&InterfaceStatisticsBlock<'a>> {
-        match self {
-            Block::InterfaceStatistics(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns the contained [`NameResolutionBlock`], if present.
-    pub fn into_name_resolution(self) -> Option<NameResolutionBlock<'a>> {
-        match self {
-            Block::NameResolution(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the contained [`NameResolutionBlock`], if present.
-    pub fn as_name_resolution(&self) -> Option<&NameResolutionBlock<'a>> {
-        match self {
-            Block::NameResolution(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns the contained [`PacketBlock`], if present.
-    pub fn into_packet(self) -> Option<PacketBlock<'a>> {
-        match self {
-            Block::Packet(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the contained [`PacketBlock`], if present.
-    pub fn as_packet(&self) -> Option<&PacketBlock<'a>> {
-        match self {
-            Block::Packet(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns the contained [`SectionHeaderBlock`], if present.
-    pub fn into_section_header(self) -> Option<SectionHeaderBlock<'a>> {
-        match self {
-            Block::SectionHeader(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the contained [`SectionHeaderBlock`], if present.
-    pub fn as_section_header(&self) -> Option<&SectionHeaderBlock<'a>> {
-        match self {
-            Block::SectionHeader(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns the contained [`SimplePacketBlock`], if present.
-    pub fn into_simple_packet(self) -> Option<SimplePacketBlock<'a>> {
-        match self {
-            Block::SimplePacket(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the contained [`SimplePacketBlock`], if present.
-    pub fn as_simple_packet(&self) -> Option<&SimplePacketBlock<'a>> {
-        match self {
-            Block::SimplePacket(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns the contained [`SystemdJournalExportBlock`], if present.
-    pub fn into_systemd_journal_export(self) -> Option<SystemdJournalExportBlock<'a>> {
-        match self {
-            Block::SystemdJournalExport(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the contained [`SystemdJournalExportBlock`], if present.
-    pub fn as_systemd_journal_export(&self) -> Option<&SystemdJournalExportBlock<'a>> {
-        match self {
-            Block::SystemdJournalExport(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns the contained copiable [`CustomBlock`], if present.
-    pub fn into_custom_copiable(self) -> Option<CustomBlock<'a, true>> {
-        match self {
-            Block::CustomCopiable(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the contained copiable [`CustomBlock`], if present.
-    pub fn as_custom_copiable(&self) -> Option<&CustomBlock<'a, true>> {
-        match self {
-            Block::CustomCopiable(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns the contained non-copiable [`CustomBlock`], if present.
-    pub fn into_custom_non_copiable(self) -> Option<CustomBlock<'a, false>> {
-        match self {
-            Block::CustomNonCopiable(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Returns a reference to the contained non-copiable [`CustomBlock`], if present.
-    pub fn as_custom_non_copiable(&self) -> Option<&CustomBlock<'a, false>> {
-        match self {
-            Block::CustomNonCopiable(a) => Some(a),
-            _ => None,
-        }
+    /// Classifies this block as a packet or another block type.
+    ///
+    /// Non-packet blocks are returned unchanged in
+    /// [`crate::pcapng::PcapNgPacketOrBlock::Block`].
+    pub fn into_pcapng_packet(self) -> crate::pcapng::PcapNgPacketOrBlock<'a> {
+        crate::pcapng::PcapNgPacket::from_block(self)
     }
 }
 
@@ -618,7 +458,7 @@ pub fn block_name(type_: u32) -> &'static str {
         PACKET_BLOCK => "Packet Block",
         SIMPLE_PACKET_BLOCK => "Simple Packet Block",
         NAME_RESOLUTION_BLOCK => "Name Resolution Block",
-        INTERFACE_STATISTIC_BLOCK => "Interface Statistics Block",
+        INTERFACE_STATISTICS_BLOCK => "Interface Statistics Block",
         ENHANCED_PACKET_BLOCK => "Enhanced Packet Block",
         SYSTEMD_JOURNAL_EXPORT_BLOCK => "Systemd Journal Export Block",
         CUSTOM_BLOCK_COPIABLE => "Custom Block (Copiable)",
