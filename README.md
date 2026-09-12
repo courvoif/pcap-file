@@ -26,7 +26,7 @@ Add it to your `Cargo.toml`:
 pcap-file = "3.0.0-rc.3"
 ```
 
-## Pcap
+## pcap
 
 ### PcapReader
 
@@ -70,7 +70,7 @@ for pkt in pcap_reader {
 }
 ```
 
-## PcapNg
+## pcapng
 
 ### PcapNgReader
 
@@ -172,8 +172,8 @@ $ cargo fuzz run pcap_ng_parser
 ```
 
 Keep in mind that libfuzzer by default uses only one core, so you can either run all the harnesses in different terminals, or you can pass the `-jobs` and `-workers` attributes. More info can be found in its documentation [here](https://llvm.org/docs/LibFuzzer.html).
-To get better crash reports add to you rust flags: `-Zsanitizer=address`.
-E.g.
+To get better crash reports, add `-Zsanitizer=address` to your Rust flags.
+For example:
 
 ```bash
 RUSTFLAGS="-Zsanitizer=address" cargo fuzz run pcap_reader

@@ -11,14 +11,14 @@ use crate::pcap::{PcapPacketConversionError, PcapParseError, PcapTsResolution, P
 
 /// A valid pcap packet.
 ///
-/// The payload can be owned or borrowed.
+/// The packet data can be owned or borrowed.
 #[derive(Clone, Debug)]
 pub struct PcapPacket<'a> {
-    /// Timestamp EPOCH of the packet
+    /// Time elapsed since the Unix epoch.
     timestamp: Duration,
-    /// Original length of the packet when captured on the wire
-    orig_len: u32,
-    /// Payload, owned or borrowed, of the packet
+    /// Original length of the packet on the wire.
+    original_len: u32,
+    /// Owned or borrowed packet data.
     data: Cow<'a, [u8]>,
 }
 
@@ -31,11 +31,11 @@ impl<'a> PcapPacket<'a> {
     ///   cannot be represented on a u32.
     /// - Returns [`PcapValidationError::DataTooBig`] if the packet data is
     ///   larger than `u32::MAX` bytes.
-    /// - Returns [`PcapValidationError::OriginLenTooSmall`] if `orig_len` is
+    /// - Returns [`PcapValidationError::OriginalLenTooSmall`] if `original_len` is
     ///   smaller than the packet data length.
     pub fn new(
         timestamp: Duration,
-        orig_len: u32,
+        original_len: u32,
         data: impl Into<Cow<'a, [u8]>>,
     ) -> Result<Self, PcapValidationError> {
         let data = data.into();
@@ -49,13 +49,13 @@ impl<'a> PcapPacket<'a> {
             return Err(PcapValidationError::DataTooBig(data.len()));
         };
 
-        if incl_len > orig_len {
-            return Err(PcapValidationError::OriginLenTooSmall(orig_len, incl_len));
+        if incl_len > original_len {
+            return Err(PcapValidationError::OriginalLenTooSmall(original_len, incl_len));
         }
 
         Ok(PcapPacket {
             timestamp,
-            orig_len,
+            original_len,
             data,
         })
     }
@@ -66,45 +66,36 @@ impl<'a> PcapPacket<'a> {
     }
 
     /// Returns the original length of the packet.
-    pub fn orig_len(&self) -> u32 {
-        self.orig_len
+    pub fn original_len(&self) -> u32 {
+        self.original_len
     }
 
     /// Returns the length of the packet.
-    pub fn len(&self) -> u32 {
-        self.data
-            .len()
-            .try_into()
-            .expect("PcapPacket::data_len > u32::MAX, should have been validated on PcapPacket creation")
+    pub fn len(&self) -> usize {
+        self.data.len()
     }
 
-    /// Returns true if the packet has no payload.
+    /// Returns whether the packet has no data.
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
-    /// Returns the packet payload as a slice.
+    /// Returns the packet data as a slice.
     pub fn data(&self) -> &[u8] {
         &self.data
     }
 
-    /// Returns the packet payload.
+    /// Returns the packet data, preserving whether it is borrowed or owned.
     pub fn into_data(self) -> Cow<'a, [u8]> {
         self.data
     }
 
     /// Returns an owned version of the packet.
-    /// Slower than `into_owned` if the payload is already owned.
-    pub fn to_owned(&self) -> PcapPacket<'static> {
-        self.clone().into_owned()
-    }
-
-    /// Returns an owned version of the packet.
-    /// Faster than `to_owned` if the payload is already owned.
+    /// Faster than `to_owned` if the packet data is already owned.
     pub fn into_owned(self) -> PcapPacket<'static> {
         PcapPacket {
             timestamp: self.timestamp,
-            orig_len: self.orig_len,
+            original_len: self.original_len,
             data: Cow::Owned(self.data.into_owned()),
         }
     }
@@ -125,7 +116,7 @@ impl<'a> PcapPacket<'a> {
         let ts_sec = raw.ts_sec;
 
         // Convert original microsecond TS to nanosecond TS
-        let ts_nsec = if ts_resolution == PcapTsResolution::MicroSecond {
+        let ts_nsec = if ts_resolution == PcapTsResolution::Microsecond {
             let ts_usec = raw.ts_frac;
             if ts_usec >= 1_000_000 {
                 return Err(PcapPacketConversionError {
@@ -154,7 +145,7 @@ impl<'a> PcapPacket<'a> {
         // Validate lengths //
         if raw.incl_len > snap_len {
             return Err(PcapPacketConversionError {
-                source: PcapValidationError::IncludedLenTooBig(raw.incl_len, snap_len),
+                source: PcapValidationError::PacketTooBig(raw.incl_len, snap_len),
                 packet: raw,
             });
         }
@@ -175,14 +166,14 @@ impl<'a> PcapPacket<'a> {
 
         if data_len > raw.orig_len {
             return Err(PcapPacketConversionError {
-                source: PcapValidationError::OriginLenTooSmall(raw.orig_len, data_len),
+                source: PcapValidationError::OriginalLenTooSmall(raw.orig_len, data_len),
                 packet: raw,
             });
         }
 
         Ok(Self {
             timestamp,
-            orig_len: raw.orig_len,
+            original_len: raw.orig_len,
             data: raw.data,
         })
     }
@@ -221,7 +212,7 @@ impl<'a> PcapPacket<'a> {
             .expect("PcapPacket::timestamp_secs > u32::MAX, should have been validated on PcapPacket creation");
 
         let mut ts_frac = self.timestamp.subsec_nanos();
-        if ts_resolution == PcapTsResolution::MicroSecond {
+        if ts_resolution == PcapTsResolution::Microsecond {
             ts_frac /= 1000;
         }
 
@@ -231,15 +222,15 @@ impl<'a> PcapPacket<'a> {
             .try_into()
             .expect("PcapPacket::data_len > u32::MAX, should have been validated on PcapPacket creation");
 
-        let orig_len = self.orig_len;
+        let orig_len = self.original_len;
 
         (ts_sec, ts_frac, incl_len, orig_len)
     }
 }
 
-/// Raw pcap packet header and payload.
+/// Raw pcap packet header and packet data.
 ///
-/// Header fields are not validated, and the payload can be owned or borrowed.
+/// Header fields are not validated, and the packet data can be owned or borrowed.
 #[derive(Clone, Debug, IntoOwned)]
 pub struct RawPcapPacket<'a> {
     /// Whole-second component of the timestamp.
@@ -250,7 +241,7 @@ pub struct RawPcapPacket<'a> {
     pub incl_len: u32,
     /// Original packet length on the wire.
     pub orig_len: u32,
-    /// Owned or borrowed packet payload.
+    /// Owned or borrowed packet data.
     pub data: Cow<'a, [u8]>,
 }
 
@@ -260,7 +251,7 @@ impl<'a> RawPcapPacket<'a> {
     /// # Errors
     ///
     /// - Returns [`PcapParseError::IncompleteBuffer`] if the input does not
-    ///   contain the complete packet header and payload.
+    ///   contain the complete packet header and packet data.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapParseError> {
         // Check header length
         if slice.len() < 16 {
@@ -296,8 +287,8 @@ impl<'a> RawPcapPacket<'a> {
     ///
     /// # Errors
     ///
-    /// - Returns an error if the packet header or payload cannot be written.
-    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
+    /// - Returns an error if the packet header or packet data cannot be written.
+    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
         writer
             .write_u32::<B>(self.ts_sec)
             .map_err(|e| PcapWriteError::FieldWriteFailed("ts_sec", e))?;
@@ -348,8 +339,8 @@ mod tests {
         };
 
         // Typed conversion must not silently replace the raw included length
-        // with the actual payload length.
-        let error = PcapPacket::try_from_raw_packet(raw_packet, PcapTsResolution::MicroSecond, 65_535).unwrap_err();
+        // with the actual packet data length.
+        let error = PcapPacket::try_from_raw_packet(raw_packet, PcapTsResolution::Microsecond, 65_535).unwrap_err();
         assert!(matches!(error.source, PcapValidationError::IncludedLenMismatch(2, 4)));
         assert_eq!(error.packet.incl_len, 2);
         assert_eq!(&*error.packet.data, &[1, 2, 3, 4]);

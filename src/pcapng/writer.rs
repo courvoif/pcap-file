@@ -35,7 +35,7 @@ use crate::pcapng::errors::PcapNgWriteError;
 pub struct PcapNgWriter<W: Write> {
     /// Current state of the pcapng format.
     state: PcapNgState,
-    /// Wrapped writer to which blocks are written.
+    /// Underlying writer to which blocks are written.
     writer: W,
 }
 
@@ -110,7 +110,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// - Returns an error if the block is invalid for the current state.
     /// - Returns an error if the block cannot be written.
     ///
-    /// # Example
+    /// # Examples
     /// ```rust,no_run
     /// use std::borrow::Cow;
     /// use std::fs::File;
@@ -144,9 +144,9 @@ impl<W: Write> PcapNgWriter<W> {
         // The state is updated only after a successful write.
         // The endianness is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
 
-        let endianess = self.state.block_endianness(Some(block));
+        let endianness = self.state.block_endianness(Some(block));
 
-        let nb_written = match endianess {
+        let nb_written = match endianness {
             Endianness::Big => block.write_to::<BigEndian, _>(&self.state, &mut self.writer)?,
             Endianness::Little => block.write_to::<LittleEndian, _>(&self.state, &mut self.writer)?,
         };
@@ -166,7 +166,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// - Returns an error if a block is invalid for the current state.
     /// - Returns an error if a block cannot be written.
     ///
-    /// # Example
+    /// # Examples
     /// ```rust,no_run
     /// use std::borrow::Cow;
     /// use std::fs::File;
@@ -221,10 +221,10 @@ impl<W: Write> PcapNgWriter<W> {
         // The state is updated only after a successful write.
         // The endianness is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
         let opt_block = self.state.decode_block_if_needed(raw_block)?;
-        let endianess = self.state.block_endianness(opt_block.as_ref());
+        let endianness = self.state.block_endianness(opt_block.as_ref());
 
         // Write the block to the writer
-        let nb_written = match endianess {
+        let nb_written = match endianness {
             Endianness::Big => raw_block.write_to::<BigEndian, _>(&mut self.writer)?,
             Endianness::Little => raw_block.write_to::<LittleEndian, _>(&mut self.writer)?,
         };
@@ -236,7 +236,7 @@ impl<W: Write> PcapNgWriter<W> {
         Ok(nb_written)
     }
 
-    /// Consumes the writer, returning the wrapped writer.
+    /// Consumes the writer, returning the underlying writer.
     pub fn into_inner(self) -> W {
         self.writer
     }
@@ -248,7 +248,8 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Returns a mutable reference to the underlying writer.
     ///
-    /// Modifying the writer directly can produce an invalid pcapng stream.
+    /// Writing directly to the underlying writer can produce an invalid pcapng
+    /// stream.
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.writer
     }

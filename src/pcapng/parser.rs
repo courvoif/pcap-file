@@ -2,7 +2,6 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
 use super::PcapNgState;
 use super::blocks::block_common::{Block, RawBlock};
-use super::blocks::enhanced_packet::EnhancedPacketBlock;
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
 use crate::Endianness;
@@ -15,7 +14,7 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 /// Some typed conversion errors from [`Self::next_block`] can be recovered by
 /// calling [`Self::next_raw_block`] with the same input slice.
 ///
-/// # Example
+/// # Examples
 /// ```rust,no_run
 /// use pcap_file::pcapng::errors::PcapNgParseError;
 /// use pcap_file::pcapng::PcapNgParser;
@@ -167,8 +166,8 @@ impl PcapNgParser {
         &self.state.interfaces[..]
     }
 
-    /// Returns the [`InterfaceDescriptionBlock`] corresponding to the given packet.
-    pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock<'_>> {
-        self.state.interfaces.get(packet.interface_id as usize)
+    /// Returns the [`InterfaceDescriptionBlock`] identified by `interface_id`.
+    pub fn interface(&self, interface_id: u32) -> Option<&InterfaceDescriptionBlock<'static>> {
+        self.state.interface(interface_id)
     }
 }

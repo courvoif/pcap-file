@@ -41,6 +41,33 @@ pub struct PacketBlock<'a> {
     pub options: Vec<PacketOption<'a>>,
 }
 
+impl<'a> PacketBlock<'a> {
+    /// Returns the packet data as a slice.
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Returns the packet data, preserving whether it is borrowed or owned.
+    pub fn into_data(self) -> Cow<'a, [u8]> {
+        self.data
+    }
+
+    /// Returns the captured packet data length.
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    /// Returns whether the packet contains no captured data.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    /// Returns the packet's original length on the wire.
+    pub fn original_len(&self) -> u32 {
+        self.original_len
+    }
+}
+
 impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     fn from_slice<B: ByteOrder>(
         state: &PcapNgState,

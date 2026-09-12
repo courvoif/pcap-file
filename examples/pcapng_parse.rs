@@ -17,7 +17,7 @@ fn main() -> Result<()> {
 
         if let Block::EnhancedPacket(packet) = block {
             let interface = parser
-                .packet_interface(&packet)
+                .interface(packet.interface_id)
                 .context("packet refers to an unknown interface")?;
 
             println!("{} bytes on {:?}", packet.data.len(), interface.linktype);

@@ -1,14 +1,9 @@
-use std::borrow::Cow;
 use std::io::Read;
-use std::time::Duration;
 
 use super::blocks::block_common::{Block, RawBlock};
-use super::blocks::enhanced_packet::EnhancedPacketBlock;
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
-use super::{PcapNgParser, PcapNgState};
-use crate::pcapng::blocks::packet::PacketBlock;
-use crate::pcapng::blocks::simple_packet::SimplePacketBlock;
+use super::{PcapNgPacket, PcapNgParser, PcapNgState};
 use crate::pcapng::errors::PcapNgReadError;
 use crate::read_buffer::ReadBuffer;
 
@@ -16,7 +11,7 @@ use crate::read_buffer::ReadBuffer;
 ///
 /// Buffers data from the underlying reader internally.
 ///
-/// # Example
+/// # Examples
 /// ```rust,no_run
 /// use std::fs::File;
 ///
@@ -158,17 +153,17 @@ impl<R: Read> PcapNgReader<R> {
         self.parser.interfaces()
     }
 
-    /// Returns the [`InterfaceDescriptionBlock`] corresponding to the given packet.
-    pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock<'_>> {
-        self.interfaces().get(packet.interface_id as usize)
+    /// Returns the [`InterfaceDescriptionBlock`] identified by `interface_id`.
+    pub fn interface(&self, interface_id: u32) -> Option<&InterfaceDescriptionBlock<'static>> {
+        self.parser.interface(interface_id)
     }
 
-    /// Consumes the [`PcapNgReader`], returning the wrapped reader.
+    /// Consumes the [`PcapNgReader`], returning the underlying reader.
     pub fn into_inner(self) -> R {
         self.reader.into_inner()
     }
 
-    /// Returns a reference to the wrapped reader.
+    /// Returns a reference to the underlying reader.
     pub fn get_ref(&self) -> &R {
         self.reader.get_ref()
     }
@@ -203,7 +198,7 @@ impl<R: Read> IntoIterator for PcapNgReader<R> {
 /// corresponding state, and [`PcapNgReader::next_raw_block`] when malformed
 /// block content must be handled.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust,no_run
 /// use std::fs::File;
@@ -226,12 +221,12 @@ pub struct PcapNgPacketIterator<R: Read> {
 }
 
 impl<R: Read> PcapNgPacketIterator<R> {
-    /// Returns a reference to the wrapped [`PcapNgReader`].
+    /// Returns a reference to the underlying [`PcapNgReader`].
     pub fn get_ref(&self) -> &PcapNgReader<R> {
         &self.reader
     }
 
-    /// Consumes the iterator, returning the wrapped [`PcapNgReader`].
+    /// Consumes the iterator, returning the underlying [`PcapNgReader`].
     pub fn into_inner(self) -> PcapNgReader<R> {
         self.reader
     }
@@ -247,16 +242,11 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
 
         loop {
             match self.reader.next_block() {
-                Some(Ok((Block::EnhancedPacket(packet), _))) => {
-                    return Some(Ok(PcapNgPacket::Enhanced(packet.into_owned())));
+                Some(Ok((block, _))) => {
+                    if let Some(packet) = block.into_pcapng_packet() {
+                        return Some(Ok(packet.into_owned()));
+                    }
                 }
-                Some(Ok((Block::SimplePacket(packet), _))) => {
-                    return Some(Ok(PcapNgPacket::Simple(packet.into_owned())));
-                }
-                Some(Ok((Block::Packet(packet), _))) => {
-                    return Some(Ok(PcapNgPacket::Deprecated(packet.into_owned())));
-                }
-                Some(Ok(_)) => {}
                 Some(Err(error)) => {
                     self.err = true;
                     return Some(Err(error));
@@ -264,130 +254,5 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
                 None => return None,
             }
         }
-    }
-}
-
-/* ----- PcapNgPacket ----- */
-
-/// A packet read from any pcapng packet block type.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum PcapNgPacket<'a> {
-    /// A packet from an Enhanced Packet Block.
-    Enhanced(EnhancedPacketBlock<'a>),
-    /// A packet from a Simple Packet Block.
-    Simple(SimplePacketBlock<'a>),
-    /// A packet from the obsolete Packet Block format.
-    Deprecated(PacketBlock<'a>),
-}
-
-impl<'a> PcapNgPacket<'a> {
-    /// Returns the packet data as a slice.
-    pub fn data(&self) -> &[u8] {
-        match self {
-            Self::Enhanced(packet) => &packet.data,
-            Self::Simple(packet) => &packet.data,
-            Self::Deprecated(packet) => &packet.data,
-        }
-    }
-
-    /// Returns the packet data, preserving whether it is borrowed or owned.
-    pub fn into_data(self) -> Cow<'a, [u8]> {
-        match self {
-            Self::Enhanced(packet) => packet.data,
-            Self::Simple(packet) => packet.data,
-            Self::Deprecated(packet) => packet.data,
-        }
-    }
-
-    /// Returns the packet timestamp, or [`None`] for a Simple Packet Block.
-    pub fn timestamp(&self) -> Option<Duration> {
-        match self {
-            Self::Enhanced(packet) => Some(packet.timestamp),
-            Self::Simple(_) => None,
-            Self::Deprecated(packet) => Some(packet.timestamp),
-        }
-    }
-
-    /// Returns the packet's original length on the wire.
-    pub fn original_len(&self) -> u32 {
-        match self {
-            Self::Enhanced(packet) => packet.original_len,
-            Self::Simple(packet) => packet.original_len,
-            Self::Deprecated(packet) => packet.original_len,
-        }
-    }
-}
-
-impl<'a> From<EnhancedPacketBlock<'a>> for PcapNgPacket<'a> {
-    fn from(value: EnhancedPacketBlock<'a>) -> Self {
-        Self::Enhanced(value)
-    }
-}
-
-impl<'a> From<SimplePacketBlock<'a>> for PcapNgPacket<'a> {
-    fn from(value: SimplePacketBlock<'a>) -> Self {
-        Self::Simple(value)
-    }
-}
-
-impl<'a> From<PacketBlock<'a>> for PcapNgPacket<'a> {
-    fn from(value: PacketBlock<'a>) -> Self {
-        Self::Deprecated(value)
-    }
-}
-
-/* ----- Tests ----- */
-
-#[cfg(test)]
-mod tests {
-    use std::borrow::Cow;
-    use std::time::Duration;
-
-    use super::PcapNgPacket;
-    use crate::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
-    use crate::pcapng::blocks::packet::PacketBlock;
-    use crate::pcapng::blocks::simple_packet::SimplePacketBlock;
-
-    #[test]
-    fn packet_accessors_cover_all_packet_block_types() {
-        let enhanced = PcapNgPacket::from(EnhancedPacketBlock {
-            timestamp: Duration::from_secs(1),
-            original_len: 4,
-            data: Cow::Borrowed(&[1, 2]),
-            ..Default::default()
-        });
-        assert_eq!(enhanced.data(), [1, 2]);
-        assert_eq!(enhanced.timestamp(), Some(Duration::from_secs(1)));
-        assert_eq!(enhanced.original_len(), 4);
-
-        let simple = PcapNgPacket::from(SimplePacketBlock {
-            original_len: 5,
-            data: Cow::Borrowed(&[3, 4]),
-        });
-        assert_eq!(simple.data(), [3, 4]);
-        assert_eq!(simple.timestamp(), None);
-        assert_eq!(simple.original_len(), 5);
-
-        let deprecated = PcapNgPacket::from(PacketBlock {
-            interface_id: 0,
-            drop_count: 0,
-            timestamp: Duration::from_secs(2),
-            original_len: 6,
-            data: Cow::Borrowed(&[5, 6]),
-            options: Vec::new(),
-        });
-        assert_eq!(deprecated.data(), [5, 6]);
-        assert_eq!(deprecated.timestamp(), Some(Duration::from_secs(2)));
-        assert_eq!(deprecated.original_len(), 6);
-    }
-
-    #[test]
-    fn into_data_preserves_ownership() {
-        let packet = PcapNgPacket::from(SimplePacketBlock {
-            original_len: 2,
-            data: Cow::Owned(vec![1, 2]),
-        });
-
-        assert!(matches!(packet.into_data(), Cow::Owned(data) if data == [1, 2]));
     }
 }

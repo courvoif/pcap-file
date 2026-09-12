@@ -4,24 +4,13 @@ use thiserror::Error;
 
 use super::packet::RawPcapPacket;
 
-/* ----- PcapPacketConversionError ----- */
-
-/// Error returned when a raw pcap packet cannot be converted into a typed
-/// packet.
-#[derive(Debug, Error)]
-#[error("Failed to convert raw pcap packet: {source}")]
-pub struct PcapPacketConversionError<'a> {
-    /// Original raw packet that failed conversion.
-    pub packet: RawPcapPacket<'a>,
-    /// Validation error that caused the conversion to fail.
-    #[source]
-    pub source: PcapValidationError,
-}
-
 /* ----- PcapError ----- */
 
-/// Convenience error type that wraps all errors that can occur while parsing,
-/// reading, writing, or validating a pcap file.
+/// High-level error wrapper for typed pcap parsing, reading, writing, and
+/// validation operations.
+///
+/// Lower-level operations can return more specific errors, such as
+/// [`PcapPacketConversionError`], directly.
 #[derive(Debug, Error)]
 pub enum PcapError {
     /// Error while parsing pcap data.
@@ -47,7 +36,7 @@ pub enum PcapParseError {
     /// # Fields
     /// - 0: needed size to parse the data
     /// - 1: actual size of the buffer
-    #[error("The buffer too small: need {0}B, got {1}B")]
+    #[error("Buffer is too small: need {0}B, got {1}B")]
     IncompleteBuffer(usize, usize),
 
     /// A field of the pcap file is invalid.
@@ -61,7 +50,7 @@ pub enum PcapParseError {
 #[derive(Debug, Error)]
 pub enum PcapReadError {
     /// An I/O error occurred while reading the pcap.
-    #[error("I/O error while reading the pcap")]
+    #[error("I/O error while reading pcap data")]
     Io(#[source] std::io::Error),
     /// A field of the pcap file is invalid.
     #[error(transparent)]
@@ -73,14 +62,11 @@ pub enum PcapReadError {
 /// Errors that can occur while writing pcap data.
 #[derive(Debug, Error)]
 pub enum PcapWriteError {
-    /// An I/O error occurred while writing the pcap stream.
-    #[error("I/O error while writing the pcap")]
-    Io(#[source] std::io::Error),
     /// An I/O error occurred while writing a field in the file.
     /// # Fields
     /// - 0: field that failed to be written
     /// - 1: underlying I/O error
-    #[error("I/O error while writing the field {0}")]
+    #[error("I/O error while writing field `{0}`")]
     FieldWriteFailed(&'static str, #[source] std::io::Error),
     /// A field of the pcap file is invalid.
     #[error(transparent)]
@@ -96,27 +82,38 @@ pub enum PcapValidationError {
     #[error("Invalid magic number: {0:#X}")]
     InvalidMagicNumber(u32),
     /// The fractional timestamp part is too large for microsecond resolution.
-    #[error("Ts_frac micro too big: {0} >= 1_000_000 us")]
+    #[error("Fractional timestamp exceeds microsecond range: {0} >= 1_000_000 us")]
     TsFracMicroTooBig(u32),
     /// The fractional timestamp part is too large for nanosecond resolution.
-    #[error("Ts_frac nano too big: {0} >= 1_000_000_000 ns")]
+    #[error("Fractional timestamp exceeds nanosecond range: {0} >= 1_000_000_000 ns")]
     TsFracNanoTooBig(u32),
     /// The timestamp is too large to be represented in a 32-bit seconds field.
-    #[error("Timestamp too big: {0:?} > 2^32 seconds")]
+    #[error("Timestamp exceeds the 32-bit seconds range: {0:?}")]
     TimestampTooBig(Duration),
-    /// The captured packet length is larger than the file snaplen.
-    #[error("included_len > snap_len: {0} > {1}")]
-    IncludedLenTooBig(u32, u32),
     /// The captured packet length does not match the packet data length.
-    #[error("included_len != data length: {0} != {1}")]
+    #[error("Captured length does not match packet data length: {0} != {1}")]
     IncludedLenMismatch(u32, u32),
     /// The original packet length is smaller than the captured packet length.
-    #[error("origin_len < included_len: {0} < {1}")]
-    OriginLenTooSmall(u32, u32),
+    #[error("Original length is smaller than captured length: {0} < {1}")]
+    OriginalLenTooSmall(u32, u32),
     /// The packet data length is larger than `u32::MAX`.
-    #[error("data length too big: {0} > u32::MAX")]
+    #[error("Packet data length exceeds u32::MAX: {0}")]
     DataTooBig(usize),
-    /// The packet length is larger than the file snaplen.
-    #[error("Packet length > snap_len: {0} > {1}")]
-    PacketLenTooBig(u32, u32),
+    /// The packet data length is larger than the file snaplen.
+    #[error("Packet data length exceeds snaplen: {0} > {1}")]
+    PacketTooBig(u32, u32),
+}
+
+/* ----- PcapPacketConversionError ----- */
+
+/// Error returned when a raw pcap packet cannot be converted into a typed
+/// packet.
+#[derive(Debug, Error)]
+#[error("Failed to convert raw pcap packet: {source}")]
+pub struct PcapPacketConversionError<'a> {
+    /// Original raw packet that failed conversion.
+    pub packet: RawPcapPacket<'a>,
+    /// Validation error that caused the conversion to fail.
+    #[source]
+    pub source: PcapValidationError,
 }

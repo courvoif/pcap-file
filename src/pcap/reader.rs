@@ -8,7 +8,7 @@ use crate::read_buffer::ReadBuffer;
 ///
 /// Buffers data from the underlying reader internally.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust,no_run
 /// use std::fs::File;
@@ -68,9 +68,19 @@ impl<R: Read> PcapReader<R> {
         Ok(PcapReader { parser, reader })
     }
 
-    /// Consumes the [`PcapReader`], returning the wrapped reader.
+    /// Consumes the [`PcapReader`], returning the underlying reader.
     pub fn into_inner(self) -> R {
         self.reader.into_inner()
+    }
+
+    /// Returns a reference to the underlying reader.
+    pub fn get_ref(&self) -> &R {
+        self.reader.get_ref()
+    }
+
+    /// Returns the number of bytes parsed so far.
+    pub fn bytes_parsed(&self) -> u64 {
+        self.reader.bytes_used
     }
 
     /// Returns the next [`PcapPacket`].
@@ -147,11 +157,11 @@ impl<R: Read> IntoIterator for PcapReader<R> {
 
 /// Iterator over owned [`PcapPacket`] values.
 ///
-/// This iterator copies each packet payload out of the internal read buffer, so
+/// This iterator copies each packet's data out of the internal read buffer, so
 /// it is slower than [`PcapReader::next_packet`]. It stops after the first
 /// error.
 ///
-/// # Example
+/// # Examples
 ///
 /// ```rust,no_run
 /// use std::fs::File;
@@ -174,12 +184,12 @@ pub struct PcapPacketIterator<R: Read> {
 }
 
 impl<R: Read> PcapPacketIterator<R> {
-    /// Returns a reference to the wrapped [`PcapReader`].
+    /// Returns a reference to the underlying [`PcapReader`].
     pub fn get_ref(&self) -> &PcapReader<R> {
         &self.reader
     }
 
-    /// Consumes the iterator, returning the wrapped [`PcapReader`].
+    /// Consumes the iterator, returning the underlying [`PcapReader`].
     pub fn into_inner(self) -> PcapReader<R> {
         self.reader
     }

@@ -11,7 +11,11 @@ use crate::{
 
 /* ----- PcapError ----- */
 
-/// Errors that can occur while parsing, reading or writing a pcapng file.
+/// High-level error wrapper for typed pcapng parsing, reading, writing,
+/// validation, and state-management operations.
+///
+/// Lower-level raw block and block-content operations return their more
+/// specific error types directly.
 #[derive(Debug, Error)]
 pub enum PcapNgError {
     /// Error while parsing pcapng data.
@@ -40,7 +44,7 @@ pub enum PcapNgParseError {
     /// # Fields
     /// - 0: needed size to parse the data
     /// - 1: actual size of the buffer
-    #[error("The buffer is too small: need {0}B, got {1}B")]
+    #[error("Buffer is too small: need {0}B, got {1}B")]
     IncompleteBuffer(usize, usize),
 
     /// The raw block format is invalid.
@@ -71,7 +75,7 @@ impl From<RawBlockParseError> for PcapNgParseError {
 #[derive(Debug, Error)]
 pub enum PcapNgReadError {
     /// An I/O error occurred while reading the pcapng.
-    #[error("I/O error while reading the pcapng")]
+    #[error("I/O error while reading pcapng data")]
     Io(#[source] std::io::Error),
 
     /// The raw block format is invalid.
@@ -106,11 +110,11 @@ impl From<PcapNgParseError> for PcapNgReadError {
 #[derive(Debug, Error)]
 pub enum PcapNgWriteError {
     /// An I/O error occurred while writing the pcapng stream.
-    #[error("I/O error during writing")]
+    #[error("I/O error while writing pcapng data")]
     Io(#[from] std::io::Error),
 
     /// A field failed validation before being written.
-    #[error("Field `{field}` failed validation during writing")]
+    #[error("Field `{field}` failed validation while writing")]
     Validation {
         /// Name of the field that failed validation.
         field: &'static str,
@@ -124,7 +128,7 @@ pub enum PcapNgWriteError {
     InvalidFormat(#[from] PcapNgFormatError),
 
     /// Error while updating the pcapng state.
-    #[error("State update error during writing")]
+    #[error("State update failed while writing")]
     StateUpdate(#[from] StateUpdateError),
 }
 
@@ -144,9 +148,9 @@ impl PcapNgWriteError {
 #[derive(Debug, Error)]
 pub enum PcapNgFormatError {
     /// The file does not start with a Section Header Block.
-    #[error("The section header is missing")]
+    #[error("Section Header Block is missing")]
     MissingSectionHeader,
-    /// The magic number of the pcapng SectionBlock is invalid.
+    /// The magic number of the pcapng Section Header Block is invalid.
     #[error("Invalid magic number: {0:#X}")]
     InvalidMagicNumber(u32),
     /// The block length field of a block is not a multiple of 4, which is required by the pcapng specification.
@@ -162,10 +166,10 @@ pub enum PcapNgFormatError {
     /// # Fields
     /// - 0: initial length field
     /// - 1: trailing length field
-    #[error("Block length fields don't match: initial {0}B, trailing {1}B")]
+    #[error("Block length fields do not match: initial {0}B, trailing {1}B")]
     BlockLengthMismatch(u32, u32),
     /// The block length field does not match the raw block body length.
-    #[error("Block length doesn't match body length: expected {expected}B, got {actual}B")]
+    #[error("Block length does not match body length: expected {expected}B, got {actual}B")]
     InvalidBlockLength {
         /// Expected total length based on the raw block body.
         expected: usize,
@@ -183,7 +187,7 @@ pub enum RawBlockParseError {
     /// # Fields
     /// - 0: needed size to parse the data
     /// - 1: actual size of the buffer
-    #[error("The buffer is too small: need {0}B, got {1}B")]
+    #[error("Buffer is too small: need {0}B, got {1}B")]
     IncompleteBuffer(usize, usize),
 
     /// The raw block format is invalid.
@@ -234,7 +238,7 @@ impl From<RawBlockConversionError<'_>> for BlockConversionError {
 #[derive(Debug, Error)]
 pub enum BlockContentParseError {
     /// The block is too short.
-    #[error("Block content too small: need {needed}B, got {actual}B")]
+    #[error("Block content is too small: need {needed}B, got {actual}B")]
     BlockContentTooSmall {
         /// Needed size to parse the block content.
         needed: usize,
@@ -247,7 +251,7 @@ pub enum BlockContentParseError {
     Validation(#[from] ContentValidationError),
 
     /// Error parsing block options.
-    #[error("Error parsing the options")]
+    #[error("Failed to parse block options")]
     Option(#[from] OptionParseError),
 }
 
@@ -266,21 +270,21 @@ pub enum StateUpdateError {
 /// Errors that can occur while validating decoded pcapng content.
 #[derive(Debug, Error)]
 pub enum ContentValidationError {
-    /// The magic number of the pcapng SectionBlock is invalid.
+    /// The magic number of the pcapng Section Header Block is invalid.
     #[error("Invalid magic number: {0:#X}")]
     InvalidMagicNumber(u32),
     /// A reserved field is not zero.
     #[error("Invalid reserved field: {0}")]
     InvalidReservedField(u16),
     /// The timestamp resolution value is invalid.
-    #[error("Invalid timestamp resolution: {0:#X} (is_bin: {1}, resol:{2})")]
+    #[error("Invalid timestamp resolution: {0:#X} (binary: {1}, resolution: {2})")]
     InvalidTsResolution(u8, bool, u8),
-    /// The linktype in invalid (superior to u16::MAX)
-    #[error("Invalid Linktype: {0:?}")]
+    /// The link-layer type exceeds `u16::MAX`.
+    #[error("Invalid link-layer type: {0:?}")]
     InvalidLinktype(DataLink),
 
     /// No interface in the current section state.
-    #[error("Section without any interface")]
+    #[error("Section does not contain an interface")]
     NoInterface,
     /// The interface ID does not exist in the current section state.
     #[error("Invalid interface ID: {0}")]
@@ -314,7 +318,7 @@ pub enum ContentValidationError {
     },
 
     /// The original length of the packet is lower than its actual length
-    #[error("The original length of the packet is lower than its actual length: {0}B on wire, {1}B captured")]
+    #[error("Original length is smaller than captured length: {0}B on wire, {1}B captured")]
     InvalidOriginalLen(u32, usize),
 
     /// The captured length of the packet does not match the expected length.
@@ -327,7 +331,7 @@ pub enum ContentValidationError {
     },
 
     /// The Name Resolution record entry size is invalid.
-    #[error("Wrong record size: expected {expected}B, got {actual}B")]
+    #[error("Invalid record size: expected {expected}B, got {actual}B")]
     RecordWrongSize {
         /// Expected size
         expected: usize,
@@ -335,7 +339,7 @@ pub enum ContentValidationError {
         actual: usize,
     },
     /// The Name Resolution record entry is smaller than its minimum valid size.
-    #[error("Wrong record minimum size: expected at least {min}B, got {actual}B")]
+    #[error("Record is too small: need at least {min}B, got {actual}B")]
     RecordWrongMinSize {
         /// Expected size
         min: usize,
@@ -343,25 +347,25 @@ pub enum ContentValidationError {
         actual: usize,
     },
     /// The Name Resolution record entry is too big to be written
-    #[error("Record length doesn't fit on a u16: {0}B")]
+    #[error("Record length exceeds u16::MAX: {0}B")]
     RecordTooBig(usize),
     /// A record name is not valid UTF-8.
-    #[error("A record name is not valid UTF-8")]
+    #[error("Record name is not valid UTF-8")]
     RecordNameNotUtf8(#[source] std::str::Utf8Error),
     /// A Name Resolution record does not contain any names.
-    #[error("Record without any name")]
+    #[error("Record does not contain a name")]
     RecordNamesEmpty,
 
     /// Error converting a custom block payload.
-    #[error("Error in custom block conversion for PEN {0}: {1}")]
+    #[error("Custom block conversion failed for PEN {0}: {1}")]
     CustomBlockConversionError(u32, Box<dyn std::error::Error + Sync + Send>),
 
     /// The content of a block is too big to fit on a block.
-    #[error("Block content doesn't fit on a u32: {0}B")]
+    #[error("Block content length exceeds u32::MAX: {0}B")]
     BlockContentTooBig(u64),
 
     /// The content of a pcapng option is too large to be written.
-    #[error("Option content doesn't fit on a u16: {0}B")]
+    #[error("Option content length exceeds u16::MAX: {0}B")]
     OptionTooBig(usize),
 }
 
@@ -371,7 +375,7 @@ pub enum ContentValidationError {
 #[derive(Debug, Error)]
 pub enum OptionParseError {
     /// The buffer is too short to parse the options.
-    #[error("The option field is too small to parse the options: need {needed}B, got {actual}B")]
+    #[error("Option data is too small: need {needed}B, got {actual}B")]
     ContentTooSmall {
         /// Needed size to parse the option list.
         needed: usize,
@@ -379,7 +383,7 @@ pub enum OptionParseError {
         actual: usize,
     },
     /// An individual option entry is invalid.
-    #[error("Invalid option entry. Code: {code}, Name: {name}")]
+    #[error("Invalid option entry: code {code}, name {name}")]
     InvalidEntry {
         /// Numeric option code.
         code: u16,
@@ -397,7 +401,7 @@ pub enum OptionParseError {
 #[derive(Debug, Error)]
 pub enum OptionEntryError {
     /// The size of the option entry is not correct.
-    #[error("Wrong entry size: expected {expected}B, got {actual}B")]
+    #[error("Invalid option entry size: expected {expected}B, got {actual}B")]
     WrongSize {
         /// Expected size
         expected: usize,
@@ -405,7 +409,7 @@ pub enum OptionEntryError {
         actual: usize,
     },
     /// The option payload is not valid UTF-8.
-    #[error("Invalid UTF-8 format")]
+    #[error("Option payload is not valid UTF-8")]
     InvalidUtf8(#[from] std::str::Utf8Error),
     /// Validation error while decoding an option entry.
     #[error(transparent)]

@@ -52,13 +52,13 @@ impl PcapHeader {
         let magic_number = slice.read_u32::<BigEndian>().unwrap();
 
         match magic_number {
-            0xA1B2C3D4 => return init_pcap_header::<BigEndian>(slice, PcapTsResolution::MicroSecond, Endianness::Big),
-            0xA1B23C4D => return init_pcap_header::<BigEndian>(slice, PcapTsResolution::NanoSecond, Endianness::Big),
+            0xA1B2C3D4 => return init_pcap_header::<BigEndian>(slice, PcapTsResolution::Microsecond, Endianness::Big),
+            0xA1B23C4D => return init_pcap_header::<BigEndian>(slice, PcapTsResolution::Nanosecond, Endianness::Big),
             0xD4C3B2A1 => {
-                return init_pcap_header::<LittleEndian>(slice, PcapTsResolution::MicroSecond, Endianness::Little);
+                return init_pcap_header::<LittleEndian>(slice, PcapTsResolution::Microsecond, Endianness::Little);
             }
             0x4D3CB2A1 => {
-                return init_pcap_header::<LittleEndian>(slice, PcapTsResolution::NanoSecond, Endianness::Little);
+                return init_pcap_header::<LittleEndian>(slice, PcapTsResolution::Nanosecond, Endianness::Little);
             }
             _ => return Err(PcapValidationError::InvalidMagicNumber(magic_number).into()),
         };
@@ -102,8 +102,8 @@ impl PcapHeader {
 
         fn write_header<W: Write, B: ByteOrder>(header: &PcapHeader, writer: &mut W) -> Result<usize, PcapWriteError> {
             let magic_number = match header.ts_resolution {
-                PcapTsResolution::MicroSecond => 0xA1B2C3D4,
-                PcapTsResolution::NanoSecond => 0xA1B23C4D,
+                PcapTsResolution::Microsecond => 0xA1B2C3D4,
+                PcapTsResolution::Nanosecond => 0xA1B23C4D,
             };
 
             writer
@@ -146,7 +146,7 @@ impl PcapHeader {
 ///     ts_accuracy: 0,
 ///     snaplen: 65535,
 ///     datalink: DataLink::ETHERNET,
-///     ts_resolution: PcapTsResolution::MicroSecond,
+///     ts_resolution: PcapTsResolution::Microsecond,
 ///     endianness: Endianness::native()
 /// };
 /// ```
@@ -159,7 +159,7 @@ impl Default for PcapHeader {
             ts_accuracy: 0,
             snaplen: 65535,
             datalink: DataLink::ETHERNET,
-            ts_resolution: PcapTsResolution::MicroSecond,
+            ts_resolution: PcapTsResolution::Microsecond,
             endianness: Endianness::default(),
         }
     }

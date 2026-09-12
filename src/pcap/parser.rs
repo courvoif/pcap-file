@@ -10,7 +10,7 @@ use crate::pcap::PcapParseError;
 ///
 /// Match [`PcapParseError::IncompleteBuffer`] to determine whether more data is needed.
 ///
-/// # Example
+/// # Examples
 /// ```no_run
 /// use pcap_file::pcap::{PcapParseError, PcapParser};
 ///

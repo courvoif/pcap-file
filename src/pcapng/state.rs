@@ -48,6 +48,11 @@ impl PcapNgState {
         &self.interfaces[..]
     }
 
+    /// Returns the [`InterfaceDescriptionBlock`] identified by `interface_id`.
+    pub fn interface(&self, interface_id: u32) -> Option<&InterfaceDescriptionBlock<'static>> {
+        self.interfaces.get(interface_id as usize)
+    }
+
     /// Returns the endianness of the current section.
     pub fn endianness(&self) -> Endianness {
         self.section.endianness

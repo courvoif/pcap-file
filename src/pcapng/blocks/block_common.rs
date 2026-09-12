@@ -264,6 +264,14 @@ pub enum Block<'a> {
 }
 
 impl<'a> Block<'a> {
+    /// Converts this block into a [`crate::pcapng::PcapNgPacket`].
+    ///
+    /// Returns [`None`] when this is not an Enhanced Packet, Simple Packet, or
+    /// obsolete Packet Block.
+    pub fn into_pcapng_packet(self) -> Option<crate::pcapng::PcapNgPacket<'a>> {
+        crate::pcapng::PcapNgPacket::from_block(self)
+    }
+
     /// Tries to create a [`Block`] from a [`RawBlock`], given a [`PcapNgState`].
     ///
     /// # Errors

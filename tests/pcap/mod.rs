@@ -23,7 +23,7 @@ fn read() {
         data_len += pkt.len();
     }
 
-    assert_eq!(data_len as usize, DATA.len());
+    assert_eq!(data_len, DATA.len());
 }
 
 #[test]
@@ -40,7 +40,7 @@ fn read_with_iterator() {
         data_len += pkt.len();
     }
 
-    assert_eq!(data_len as usize, DATA.len());
+    assert_eq!(data_len, DATA.len());
 }
 
 #[test]
@@ -126,7 +126,7 @@ fn big_endian() {
         ts_accuracy: 0,
         snaplen: 0xFFFF,
         datalink: pcap_file::DataLink::ETHERNET,
-        ts_resolution: PcapTsResolution::MicroSecond,
+        ts_resolution: PcapTsResolution::Microsecond,
         endianness: pcap_file::Endianness::Big,
     };
 
@@ -146,7 +146,7 @@ fn big_endian() {
     let pkt = pcap_reader.next_packet().unwrap().unwrap();
 
     assert_eq!(pkt.timestamp(), pkt_truth.timestamp());
-    assert_eq!(pkt.orig_len(), pkt_truth.orig_len());
+    assert_eq!(pkt.original_len(), pkt_truth.original_len());
     assert_eq!(pkt.data(), pkt_truth.data());
 }
 
@@ -162,7 +162,7 @@ fn little_endian() {
         ts_accuracy: 0,
         snaplen: 4096,
         datalink: pcap_file::DataLink::ETHERNET,
-        ts_resolution: PcapTsResolution::MicroSecond,
+        ts_resolution: PcapTsResolution::Microsecond,
         endianness: pcap_file::Endianness::Little,
     };
 
@@ -179,7 +179,7 @@ fn little_endian() {
     let pkt = pcap_reader.next_packet().unwrap().unwrap();
 
     assert_eq!(pkt.timestamp(), pkt_truth.timestamp());
-    assert_eq!(pkt.orig_len(), pkt_truth.orig_len());
+    assert_eq!(pkt.original_len(), pkt_truth.original_len());
     assert_eq!(pkt.data(), pkt_truth.data());
 }
 
@@ -219,7 +219,7 @@ fn reader_with_capacity_handles_large_packets() {
     let mut reader = PcapReader::with_capacity(&pcap[..], pcap.len()).unwrap();
     let packet = reader.next_packet().unwrap().unwrap();
 
-    assert_eq!(packet.len(), data.len() as u32);
+    assert_eq!(packet.len(), data.len());
     assert_eq!(packet.data(), &data);
     assert!(reader.next_packet().is_none());
 }
@@ -246,7 +246,7 @@ fn typed_reader_returns_validation_error() {
     let typed_error = reader.next_packet().unwrap().unwrap_err();
     assert!(matches!(
         typed_error,
-        pcap_file::pcap::PcapReadError::Validation(PcapValidationError::OriginLenTooSmall(2, 4))
+        pcap_file::pcap::PcapReadError::Validation(PcapValidationError::OriginalLenTooSmall(2, 4))
     ));
 }
 
@@ -263,7 +263,7 @@ fn raw_reader_handles_malformed_typed_content() {
     let error = raw_packet
         .try_into_pcap_packet(header.ts_resolution, header.snaplen)
         .unwrap_err();
-    assert!(matches!(error.source, PcapValidationError::OriginLenTooSmall(2, 4)));
+    assert!(matches!(error.source, PcapValidationError::OriginalLenTooSmall(2, 4)));
     assert_eq!(error.packet.incl_len, 4);
     assert_eq!(error.packet.orig_len, 2);
     assert_eq!(&*error.packet.data, &[1, 2, 3, 4]);

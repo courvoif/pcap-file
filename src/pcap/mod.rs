@@ -1,7 +1,8 @@
 //! Parsing, reading, and writing pcap files.
 //!
-//! Use [`PcapParser`] to parse pcap data from byte slices , [`PcapReader`] to read pcap data from an I/O stream,
-//! [`PcapPacketIterator`] for simple iteration over owned packets and [`PcapWriter`] to write pcap data.
+//! Use [`PcapParser`] to parse pcap data from byte slices, [`PcapReader`] to read
+//! pcap data from an I/O stream, [`PcapPacketIterator`] for simple iteration
+//! over owned packets, and [`PcapWriter`] to write pcap data.
 
 mod errors;
 mod header;
