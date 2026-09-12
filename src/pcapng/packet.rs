@@ -19,17 +19,27 @@ pub enum PcapNgPacket<'a> {
     Packet(PacketBlock<'a>),
 }
 
+/// The result of classifying a pcapng [`Block`] as a packet block or another
+/// block type.
+#[derive(Clone, Debug, Eq, PartialEq, IntoOwned)]
+pub enum PcapNgPacketOrBlock<'a> {
+    /// An Enhanced Packet, Simple Packet, or obsolete Packet Block.
+    Packet(PcapNgPacket<'a>),
+    /// Any other pcapng block.
+    Block(Block<'a>),
+}
+
 impl<'a> PcapNgPacket<'a> {
-    /// Converts a [`Block`] into a packet.
+    /// Classifies a [`Block`] as a packet or another block type.
     ///
-    /// Returns [`None`] when the block is not an Enhanced Packet, Simple
-    /// Packet, or obsolete Packet Block.
-    pub fn from_block(block: Block<'a>) -> Option<Self> {
+    /// The original block is preserved in [`PcapNgPacketOrBlock::Block`] when
+    /// it is not an Enhanced Packet, Simple Packet, or obsolete Packet Block.
+    pub fn from_block(block: Block<'a>) -> PcapNgPacketOrBlock<'a> {
         match block {
-            Block::EnhancedPacket(packet) => Some(Self::Enhanced(packet)),
-            Block::SimplePacket(packet) => Some(Self::Simple(packet)),
-            Block::Packet(packet) => Some(Self::Packet(packet)),
-            _ => None,
+            Block::EnhancedPacket(packet) => PcapNgPacketOrBlock::Packet(Self::Enhanced(packet)),
+            Block::SimplePacket(packet) => PcapNgPacketOrBlock::Packet(Self::Simple(packet)),
+            Block::Packet(packet) => PcapNgPacketOrBlock::Packet(Self::Packet(packet)),
+            block => PcapNgPacketOrBlock::Block(block),
         }
     }
 
@@ -115,7 +125,7 @@ mod tests {
     use std::borrow::Cow;
     use std::time::Duration;
 
-    use super::PcapNgPacket;
+    use super::{PcapNgPacket, PcapNgPacketOrBlock};
     use crate::pcapng::blocks::Block;
     use crate::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     use crate::pcapng::blocks::packet::PacketBlock;
@@ -123,11 +133,11 @@ mod tests {
     use crate::pcapng::blocks::simple_packet::SimplePacketBlock;
 
     #[test]
-    fn from_block_accepts_only_packet_blocks() {
+    fn block_classification_preserves_packets_and_other_blocks() {
         let packet = EnhancedPacketBlock::default();
         assert!(matches!(
             Block::EnhancedPacket(packet).into_pcapng_packet(),
-            Some(PcapNgPacket::Enhanced(_))
+            PcapNgPacketOrBlock::Packet(PcapNgPacket::Enhanced(_))
         ));
 
         let packet = SimplePacketBlock {
@@ -136,7 +146,7 @@ mod tests {
         };
         assert!(matches!(
             PcapNgPacket::from_block(Block::SimplePacket(packet)),
-            Some(PcapNgPacket::Simple(_))
+            PcapNgPacketOrBlock::Packet(PcapNgPacket::Simple(_))
         ));
 
         let packet = PacketBlock {
@@ -149,14 +159,13 @@ mod tests {
         };
         assert!(matches!(
             PcapNgPacket::from_block(Block::Packet(packet)),
-            Some(PcapNgPacket::Packet(_))
+            PcapNgPacketOrBlock::Packet(PcapNgPacket::Packet(_))
         ));
 
-        assert!(
-            Block::SectionHeader(SectionHeaderBlock::default())
-                .into_pcapng_packet()
-                .is_none()
-        );
+        assert!(matches!(
+            Block::SectionHeader(SectionHeaderBlock::default()).into_pcapng_packet(),
+            PcapNgPacketOrBlock::Block(Block::SectionHeader(_))
+        ));
     }
 
     #[test]

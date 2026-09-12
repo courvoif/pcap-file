@@ -3,7 +3,7 @@ use std::io::Read;
 use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
-use super::{PcapNgPacket, PcapNgParser, PcapNgState};
+use super::{PcapNgPacket, PcapNgPacketOrBlock, PcapNgParser, PcapNgState};
 use crate::pcapng::errors::PcapNgReadError;
 use crate::read_buffer::ReadBuffer;
 
@@ -243,7 +243,7 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
         loop {
             match self.reader.next_block() {
                 Some(Ok((block, _))) => {
-                    if let Some(packet) = block.into_pcapng_packet() {
+                    if let PcapNgPacketOrBlock::Packet(packet) = block.into_pcapng_packet() {
                         return Some(Ok(packet.into_owned()));
                     }
                 }

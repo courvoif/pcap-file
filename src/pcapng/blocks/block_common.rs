@@ -264,11 +264,11 @@ pub enum Block<'a> {
 }
 
 impl<'a> Block<'a> {
-    /// Converts this block into a [`crate::pcapng::PcapNgPacket`].
+    /// Classifies this block as a packet or another block type.
     ///
-    /// Returns [`None`] when this is not an Enhanced Packet, Simple Packet, or
-    /// obsolete Packet Block.
-    pub fn into_pcapng_packet(self) -> Option<crate::pcapng::PcapNgPacket<'a>> {
+    /// Non-packet blocks are returned unchanged in
+    /// [`crate::pcapng::PcapNgPacketOrBlock::Block`].
+    pub fn into_pcapng_packet(self) -> crate::pcapng::PcapNgPacketOrBlock<'a> {
         crate::pcapng::PcapNgPacket::from_block(self)
     }
 

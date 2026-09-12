@@ -17,7 +17,7 @@ pub(crate) mod reader;
 pub use reader::{PcapNgPacketIterator, PcapNgReader};
 
 pub(crate) mod packet;
-pub use packet::PcapNgPacket;
+pub use packet::{PcapNgPacket, PcapNgPacketOrBlock};
 
 pub(crate) mod writer;
 pub use writer::PcapNgWriter;
