@@ -238,7 +238,7 @@ fn test_custom_block() {
     }
 
     // 2. Implement the required traits for the custom payload
-    impl CustomPayloadCopyable<'_> for MyCustomPayload {
+    impl CustomPayloadCopiable<'_> for MyCustomPayload {
         // A unique PEN for our test block
         const PEN: u32 = 70000;
         type WriteToError = IoError;
@@ -267,7 +267,7 @@ fn test_custom_block() {
         options: vec![SectionHeaderOption::Common(
             original_payload
                 .clone()
-                .into_custom_binary_option_copyable()
+                .into_custom_binary_option_copiable()
                 .expect("Failed to encode custom option")
                 .into_common_option(),
         )],
@@ -279,7 +279,7 @@ fn test_custom_block() {
 
     let block_to_write = original_payload
         .clone()
-        .into_custom_block_copyable()
+        .into_custom_block_copiable()
         .expect("Failed to encode custom block")
         .into_block();
 
@@ -300,9 +300,9 @@ fn test_custom_block() {
     // --- VERIFICATION ---
     // Extract the CustomBlock from the enum
     let read_block = match read_block_enum {
-        Block::CustomCopyable(block) => block,
-        // In a real scenario, you might handle both, but we know we wrote a copyable one.
-        _ => panic!("Expected a CustomCopyable block, but got something else."),
+        Block::CustomCopiable(block) => block,
+        // In a real scenario, you might handle both, but we know we wrote a copiable one.
+        _ => panic!("Expected a CustomCopiable block, but got something else."),
     };
 
     // Assert that the PEN is correct
@@ -325,7 +325,7 @@ fn test_custom_block() {
         .first()
         .expect("No options on section header")
     {
-        SectionHeaderOption::Common(CommonOption::CustomBinaryCopyable(custom)) => {
+        SectionHeaderOption::Common(CommonOption::CustomBinaryCopiable(custom)) => {
             let opt_payload = custom
                 .interpret::<MyCustomPayload>()
                 .expect("Failed to parse payload")
@@ -522,7 +522,7 @@ fn test_stateful_custom_block() {
     }
 
     // 2. Implement the required traits for the custom payload
-    impl CustomPayloadNonCopyable<'_> for MyStatefulPayload {
+    impl CustomPayloadNonCopiable<'_> for MyStatefulPayload {
         // A unique PEN for our test block
         const PEN: u32 = 70000;
 
@@ -602,7 +602,7 @@ fn test_stateful_custom_block() {
 
     let block_to_write = original_payload
         .clone()
-        .into_custom_block_non_copyable(pcapng_writer.state())
+        .into_custom_block_non_copiable(pcapng_writer.state())
         .expect("Failed to encode custom block")
         .into_block();
 
@@ -618,7 +618,7 @@ fn test_stateful_custom_block() {
         options: vec![EnhancedPacketOption::Common(
             original_payload
                 .clone()
-                .into_custom_binary_option_non_copyable(pcapng_writer.state())
+                .into_custom_binary_option_non_copiable(pcapng_writer.state())
                 .expect("Failed to encode custom option")
                 .into_common_option(),
         )],
@@ -648,8 +648,8 @@ fn test_stateful_custom_block() {
     // --- VERIFICATION ---
     // Extract the CustomBlock from the enum
     let read_block = match read_block_enum {
-        Block::CustomNonCopyable(block) => block,
-        _ => panic!("Expected a CustomNonCopyable block, but got something else."),
+        Block::CustomNonCopiable(block) => block,
+        _ => panic!("Expected a CustomNonCopiable block, but got something else."),
     };
 
     // Assert that the PEN is correct
@@ -674,7 +674,7 @@ fn test_stateful_custom_block() {
         Block::EnhancedPacket(packet) => {
             let option = packet.options.first().expect("No options on packet");
             match option {
-                EnhancedPacketOption::Common(CommonOption::CustomBinaryNonCopyable(custom)) => {
+                EnhancedPacketOption::Common(CommonOption::CustomBinaryNonCopiable(custom)) => {
                     let opt_payload = custom
                         .interpret::<MyStatefulPayload>(reader_state)
                         .expect("Failed to parse payload")

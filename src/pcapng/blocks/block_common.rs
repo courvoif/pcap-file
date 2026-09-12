@@ -48,10 +48,10 @@ pub const INTERFACE_STATISTIC_BLOCK: u32 = 0x00000005;
 pub const ENHANCED_PACKET_BLOCK: u32 = 0x00000006;
 /// systemd Journal Export Block type code.
 pub const SYSTEMD_JOURNAL_EXPORT_BLOCK: u32 = 0x00000009;
-/// Copyable Custom Block type code.
-pub const CUSTOM_BLOCK_COPYABLE: u32 = 0x00000BAD;
-/// Non-copyable Custom Block type code.
-pub const CUSTOM_BLOCK_NON_COPYABLE: u32 = 0x40000BAD;
+/// Copiable Custom Block type code.
+pub const CUSTOM_BLOCK_COPIABLE: u32 = 0x00000BAD;
+/// Non-copiable Custom Block type code.
+pub const CUSTOM_BLOCK_NON_COPIABLE: u32 = 0x40000BAD;
 
 //   0               1               2               3
 //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -255,10 +255,10 @@ pub enum Block<'a> {
     EnhancedPacket(EnhancedPacketBlock<'a>),
     /// Systemd Journal Export block
     SystemdJournalExport(SystemdJournalExportBlock<'a>),
-    /// Copyable Custom Block.
-    CustomCopyable(CustomBlock<'a, true>),
-    /// Non-copyable Custom Block.
-    CustomNonCopyable(CustomBlock<'a, false>),
+    /// Copiable Custom Block.
+    CustomCopiable(CustomBlock<'a, true>),
+    /// Non-copiable Custom Block.
+    CustomNonCopiable(CustomBlock<'a, false>),
     /// Unknown block
     Unknown(UnknownBlock<'a>),
 }
@@ -315,11 +315,11 @@ impl<'a> Block<'a> {
                 }
                 SYSTEMD_JOURNAL_EXPORT_BLOCK => SystemdJournalExportBlock::from_slice::<B>(state, body)
                     .map(|(_, blk)| Block::SystemdJournalExport(blk)),
-                CUSTOM_BLOCK_COPYABLE => {
-                    CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomCopyable(blk))
+                CUSTOM_BLOCK_COPIABLE => {
+                    CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomCopiable(blk))
                 }
-                CUSTOM_BLOCK_NON_COPYABLE => {
-                    CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomNonCopyable(blk))
+                CUSTOM_BLOCK_NON_COPIABLE => {
+                    CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomNonCopiable(blk))
                 }
                 _ => Ok(Block::Unknown(UnknownBlock::new(type_, initial_len, body))),
             }
@@ -376,8 +376,8 @@ impl<'a> Block<'a> {
             Self::InterfaceStatistics(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_STATISTIC_BLOCK, writer),
             Self::EnhancedPacket(b) => inner_write_to::<B, _, W>(state, b, ENHANCED_PACKET_BLOCK, writer),
             Self::SystemdJournalExport(b) => inner_write_to::<B, _, W>(state, b, SYSTEMD_JOURNAL_EXPORT_BLOCK, writer),
-            Self::CustomCopyable(b) => inner_write_to::<B, _, W>(state, b, CUSTOM_BLOCK_COPYABLE, writer),
-            Self::CustomNonCopyable(b) => inner_write_to::<B, _, W>(state, b, CUSTOM_BLOCK_NON_COPYABLE, writer),
+            Self::CustomCopiable(b) => inner_write_to::<B, _, W>(state, b, CUSTOM_BLOCK_COPIABLE, writer),
+            Self::CustomNonCopiable(b) => inner_write_to::<B, _, W>(state, b, CUSTOM_BLOCK_NON_COPIABLE, writer),
             Self::Unknown(b) => inner_write_to::<B, _, W>(state, b, b.type_, writer),
         };
 
@@ -551,34 +551,34 @@ impl<'a> Block<'a> {
         }
     }
 
-    /// Returns the contained copyable [`CustomBlock`], if present.
-    pub fn into_custom_copyable(self) -> Option<CustomBlock<'a, true>> {
+    /// Returns the contained copiable [`CustomBlock`], if present.
+    pub fn into_custom_copiable(self) -> Option<CustomBlock<'a, true>> {
         match self {
-            Block::CustomCopyable(a) => Some(a),
+            Block::CustomCopiable(a) => Some(a),
             _ => None,
         }
     }
 
-    /// Returns a reference to the contained copyable [`CustomBlock`], if present.
-    pub fn as_custom_copyable(&self) -> Option<&CustomBlock<'a, true>> {
+    /// Returns a reference to the contained copiable [`CustomBlock`], if present.
+    pub fn as_custom_copiable(&self) -> Option<&CustomBlock<'a, true>> {
         match self {
-            Block::CustomCopyable(a) => Some(a),
+            Block::CustomCopiable(a) => Some(a),
             _ => None,
         }
     }
 
-    /// Returns the contained non-copyable [`CustomBlock`], if present.
-    pub fn into_custom_non_copyable(self) -> Option<CustomBlock<'a, false>> {
+    /// Returns the contained non-copiable [`CustomBlock`], if present.
+    pub fn into_custom_non_copiable(self) -> Option<CustomBlock<'a, false>> {
         match self {
-            Block::CustomNonCopyable(a) => Some(a),
+            Block::CustomNonCopiable(a) => Some(a),
             _ => None,
         }
     }
 
-    /// Returns a reference to the contained non-copyable [`CustomBlock`], if present.
-    pub fn as_custom_non_copyable(&self) -> Option<&CustomBlock<'a, false>> {
+    /// Returns a reference to the contained non-copiable [`CustomBlock`], if present.
+    pub fn as_custom_non_copiable(&self) -> Option<&CustomBlock<'a, false>> {
         match self {
-            Block::CustomNonCopyable(a) => Some(a),
+            Block::CustomNonCopiable(a) => Some(a),
             _ => None,
         }
     }
@@ -621,8 +621,8 @@ pub fn block_name(type_: u32) -> &'static str {
         INTERFACE_STATISTIC_BLOCK => "Interface Statistics Block",
         ENHANCED_PACKET_BLOCK => "Enhanced Packet Block",
         SYSTEMD_JOURNAL_EXPORT_BLOCK => "Systemd Journal Export Block",
-        CUSTOM_BLOCK_COPYABLE => "Custom Block (Copyable)",
-        CUSTOM_BLOCK_NON_COPYABLE => "Custom Block (Non-Copyable)",
+        CUSTOM_BLOCK_COPIABLE => "Custom Block (Copiable)",
+        CUSTOM_BLOCK_NON_COPIABLE => "Custom Block (Non-Copiable)",
         _ => "Unknown Block",
     }
 }

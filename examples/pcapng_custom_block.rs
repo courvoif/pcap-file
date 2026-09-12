@@ -4,13 +4,13 @@ use std::io::{self, BufWriter, Write};
 use anyhow::{Context, Result, anyhow};
 use byteorder_slice::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use pcap_file::pcapng::blocks::Block;
-use pcap_file::pcapng::blocks::custom::{CustomBlockPayload, CustomPayloadCopyable};
+use pcap_file::pcapng::blocks::custom::{CustomBlockPayload, CustomPayloadCopiable};
 use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 
 #[derive(Clone, Debug)]
 struct Counter(u64);
 
-impl CustomPayloadCopyable<'_> for Counter {
+impl CustomPayloadCopiable<'_> for Counter {
     // Obtain a real Private Enterprise Number before publishing a format.
     const PEN: u32 = 70_000;
     type FromSliceError = io::Error;
@@ -38,7 +38,7 @@ fn main() -> Result<()> {
     let mut writer = PcapNgWriter::new(BufWriter::new(output)).context("failed to write the section header")?;
 
     let block = Counter(42)
-        .into_custom_block_copyable()
+        .into_custom_block_copiable()
         .context("failed to encode the custom block")?;
 
     writer
@@ -55,7 +55,7 @@ fn main() -> Result<()> {
     let mut reader = PcapNgReader::new(input).context("failed to read the section header")?;
 
     while let Some(result) = reader.next_block() {
-        if let Block::CustomCopyable(block) = result.context("failed to read a pcapng block")?.0 {
+        if let Block::CustomCopiable(block) = result.context("failed to read a pcapng block")?.0 {
             let counter = block
                 .interpret::<Counter>()
                 .context("failed to decode the custom block")?
