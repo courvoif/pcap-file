@@ -1,5 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
-use pcap_file::pcap::{PcapParseError, PcapParser, PcapReader};
+use pcap_file::pcap::errors::PcapParseError;
+use pcap_file::pcap::{PcapParser, PcapReader};
 use pcap_file::pcapng::errors::PcapNgParseError;
 use pcap_file::pcapng::{PcapNgParser, PcapNgReader};
 

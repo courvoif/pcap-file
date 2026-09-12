@@ -8,6 +8,9 @@ For pcap files, see the [`pcap`] module, especially [`PcapParser`],
 For pcapng files, see the [`pcapng`] module, especially [`PcapNgParser`],
 [`PcapNgReader`], [`PcapNgPacketIterator`] and [`PcapNgWriter`].
 
+Format-specific error types are available in [`pcap::errors`] and
+[`pcapng::errors`].
+
 [![Crates.io](https://img.shields.io/crates/v/pcap-file)](https://crates.io/crates/pcap-file/3.0.0-rc.3)
 [![Docs](https://img.shields.io/docsrs/pcap-file)](https://docs.rs/pcap-file/latest/pcap_file/)
 [![License](https://img.shields.io/crates/l/pcap-file)](https://github.com/courvoif/pcap-file/blob/master/LICENSE)
@@ -95,6 +98,9 @@ blocks, returns owned packets, does not expose [`PcapNgState`], and stops after
 the first error. Use [`PcapNgReader::next_block`] when processing a block
 requires the current state; it returns borrowed blocks and the state after
 applying that block.
+Use [`PcapNgReader::state`] to inspect the current section or interfaces
+outside that reading loop. The parser and writer provide equivalent `state()`
+accessors.
 After an unrecoverable reading error, callers should discard the reader. Use
 [`PcapNgReader::next_raw_block`] from the outset when malformed block content
 must be handled; see the [raw-reading example][pcapng-read-raw].
@@ -113,7 +119,7 @@ let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
 
 let file_out = File::create("out.pcapng").expect("Error creating file");
 let mut pcapng_writer =
-    PcapNgWriter::with_section_header(file_out, pcapng_reader.section().clone()).unwrap();
+    PcapNgWriter::with_section_header(file_out, pcapng_reader.state().section().clone()).unwrap();
 
 while let Some(block) = pcapng_reader.next_block() {
     let (block, _) = block.unwrap();
@@ -200,7 +206,9 @@ The test suite uses the pcapng files provided by [hadrielk's pcapng test generat
 [pcapng-custom-option]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_custom_option.rs
 
 [`pcap`]: crate::pcap
+[`pcap::errors`]: crate::pcap::errors
 [`pcapng`]: crate::pcapng
+[`pcapng::errors`]: crate::pcapng::errors
 [`PcapParser`]: crate::pcap::PcapParser
 [`PcapReader`]: crate::pcap::PcapReader
 [`PcapReader::next_packet`]: crate::pcap::PcapReader::next_packet
@@ -212,6 +220,7 @@ The test suite uses the pcapng files provided by [hadrielk's pcapng test generat
 [`PcapNgReader`]: crate::pcapng::PcapNgReader
 [`PcapNgReader::next_block`]: crate::pcapng::PcapNgReader::next_block
 [`PcapNgReader::next_raw_block`]: crate::pcapng::PcapNgReader::next_raw_block
+[`PcapNgReader::state`]: crate::pcapng::PcapNgReader::state
 [`PcapNgPacketIterator`]: crate::pcapng::PcapNgPacketIterator
 [`PcapNgWriter`]: crate::pcapng::PcapNgWriter
 [`PcapNgState`]: crate::pcapng::PcapNgState

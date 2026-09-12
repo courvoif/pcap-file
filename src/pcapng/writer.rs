@@ -5,12 +5,13 @@ use byteorder_slice::{BigEndian, LittleEndian};
 use super::PcapNgState;
 use super::blocks::RawBlock;
 use super::blocks::block_common::{Block, PcapNgBlock};
-use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
 use crate::Endianness;
 use crate::pcapng::errors::PcapNgWriteError;
 
 /// Writes a pcapng stream to a writer.
+///
+/// Use [`Self::state`] to access the current section and interfaces.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -254,18 +255,11 @@ impl<W: Write> PcapNgWriter<W> {
         &mut self.writer
     }
 
-    /// Access the current [`PcapNgState`].
+    /// Returns the current [`PcapNgState`].
+    ///
+    /// Use the state to access the current section, interfaces, endianness, and
+    /// timestamp conversion methods.
     pub fn state(&self) -> &PcapNgState {
         &self.state
-    }
-
-    /// Returns the current [`SectionHeaderBlock`].
-    pub fn section(&self) -> &SectionHeaderBlock<'static> {
-        &self.state.section
-    }
-
-    /// Returns all current [`InterfaceDescriptionBlock`] values.
-    pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
-        &self.state.interfaces
     }
 }

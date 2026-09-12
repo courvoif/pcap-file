@@ -18,9 +18,9 @@ use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, Opti
 /// (present in the captured packets) and their corresponding canonical names and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct NameResolutionBlock<'a> {
-    /// Records
+    /// Name-resolution records.
     pub records: Vec<Record<'a>>,
-    /// Options
+    /// Block options.
     pub options: Vec<NameResolutionOption<'a>>,
 }
 
@@ -71,11 +71,11 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
 pub enum Record<'a> {
     /// End of the records
     End,
-    /// Ipv4 records
+    /// IPv4 record.
     Ipv4(Ipv4Record<'a>),
-    /// Ipv6 records
+    /// IPv6 record.
     Ipv6(Ipv6Record<'a>),
-    /// Unknown records
+    /// Unknown record.
     Unknown(UnknownRecord<'a>),
 }
 
@@ -205,12 +205,12 @@ impl<'a> Record<'a> {
     }
 }
 
-/// Ipv4 records
+/// IPv4 name-resolution record.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct Ipv4Record<'a> {
-    /// IPv4 Addr
+    /// IPv4 address.
     pub ip_addr: Ipv4Addr,
-    /// Fqdn
+    /// Fully qualified domain names (FQDNs).
     pub names: Vec<Cow<'a, str>>,
 }
 
@@ -274,12 +274,12 @@ impl<'a> Ipv4Record<'a> {
     }
 }
 
-/// Ipv6 records
+/// IPv6 name-resolution record.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct Ipv6Record<'a> {
-    /// Ipv6 addr
+    /// IPv6 address.
     pub ip_addr: Ipv6Addr,
-    /// Fqdn
+    /// Fully qualified domain names (FQDNs).
     pub names: Vec<Cow<'a, str>>,
 }
 
@@ -342,12 +342,12 @@ impl<'a> Ipv6Record<'a> {
     }
 }
 
-/// Unknown records
+/// Unknown name-resolution record.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct UnknownRecord<'a> {
-    /// Records type
+    /// Record type.
     pub type_: u16,
-    /// Record body
+    /// Record body.
     pub value: Cow<'a, [u8]>,
 }
 
@@ -361,7 +361,7 @@ impl<'a> UnknownRecord<'a> {
     }
 }
 
-/// The Name Resolution Block (NRB) options
+/// Name Resolution Block (NRB) options.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum NameResolutionOption<'a> {
     /// The ns_dnsname option is a UTF-8 string containing the name of the machine (DNS server) used to perform the name resolution.

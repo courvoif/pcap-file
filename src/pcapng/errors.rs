@@ -11,8 +11,9 @@ use crate::{
 
 /* ----- PcapError ----- */
 
-/// High-level error wrapper for typed pcapng parsing, reading, writing,
-/// validation, and state-management operations.
+/// Convenience error wrapper for applications that want to combine typed
+/// pcapng parsing, reading, writing, validation, and state-management errors
+/// into one error type.
 ///
 /// Lower-level raw block and block-content operations return their more
 /// specific error types directly.
@@ -317,7 +318,8 @@ pub enum ContentValidationError {
         offset: i64,
     },
 
-    /// The original length of the packet is lower than its actual length
+    /// The original length of the packet on the wire is smaller than its
+    /// captured length.
     #[error("Original length is smaller than captured length: {0}B on wire, {1}B captured")]
     InvalidOriginalLen(u32, usize),
 

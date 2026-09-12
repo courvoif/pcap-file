@@ -110,7 +110,8 @@ fn writer() {
 
         let pcapng_in = std::fs::read(&entry).unwrap();
         let mut pcapng_reader = PcapNgReader::new(&pcapng_in[..]).unwrap();
-        let mut pcapng_writer = PcapNgWriter::with_section_header(Vec::new(), pcapng_reader.section().clone()).unwrap();
+        let mut pcapng_writer =
+            PcapNgWriter::with_section_header(Vec::new(), pcapng_reader.state().section().clone()).unwrap();
 
         let mut idx = 0;
         while let Some(block) = pcapng_reader.next_block() {
@@ -217,7 +218,7 @@ fn raw_writer_rejects_invalid_state_block_lengths_without_state_update() {
             actual: 24,
         })
     ));
-    assert!(writer.interfaces().is_empty());
+    assert!(writer.state().interfaces().is_empty());
     assert_eq!(writer.get_ref().len(), len_before);
 }
 
@@ -318,6 +319,7 @@ fn test_custom_block() {
 
     // Verify that our custom option in the header was also read correctly.
     match pcapng_parser
+        .state()
         .section()
         .options
         .first()
@@ -394,14 +396,14 @@ fn writer_handles_section_endianness_switch() {
 
     // Check each block value //
     let (rem, mut parser) = PcapNgParser::new(writer.get_ref()).unwrap();
-    assert_eq!(parser.section(), &little_section);
+    assert_eq!(parser.state().section(), &little_section);
 
     let (rem, block) = parser.next_block(rem).unwrap();
     assert_eq!(block, Block::InterfaceDescription(little_interface));
 
     let (rem, block) = parser.next_block(rem).unwrap();
     assert_eq!(block, Block::SectionHeader(big_section.clone()));
-    assert_eq!(parser.section(), &big_section);
+    assert_eq!(parser.state().section(), &big_section);
 
     let (rem, block) = parser.next_block(rem).unwrap();
     assert_eq!(block, Block::InterfaceDescription(big_interface));

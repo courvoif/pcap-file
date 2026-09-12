@@ -3,9 +3,8 @@ extern crate pcap_file;
 use std::borrow::Cow;
 use std::time::Duration;
 
-use pcap_file::pcap::{
-    PcapHeader, PcapPacket, PcapReader, PcapTsResolution, PcapValidationError, PcapWriter, RawPcapPacket,
-};
+use pcap_file::pcap::errors::PcapValidationError;
+use pcap_file::pcap::{PcapHeader, PcapPacket, PcapReader, PcapTsResolution, PcapWriter, RawPcapPacket};
 
 static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
 
@@ -246,7 +245,7 @@ fn typed_reader_returns_validation_error() {
     let typed_error = reader.next_packet().unwrap().unwrap_err();
     assert!(matches!(
         typed_error,
-        pcap_file::pcap::PcapReadError::Validation(PcapValidationError::OriginalLenTooSmall(2, 4))
+        pcap_file::pcap::errors::PcapReadError::Validation(PcapValidationError::OriginalLenTooSmall(2, 4))
     ));
 }
 

@@ -2,8 +2,6 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
 use super::PcapNgState;
 use super::blocks::block_common::{Block, RawBlock};
-use super::blocks::interface_description::InterfaceDescriptionBlock;
-use super::blocks::section_header::SectionHeaderBlock;
 use crate::Endianness;
 use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 
@@ -13,6 +11,8 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 ///
 /// Some typed conversion errors from [`Self::next_block`] can be recovered by
 /// calling [`Self::next_raw_block`] with the same input slice.
+///
+/// Use [`Self::state`] to access the current section and interfaces.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -51,7 +51,7 @@ pub struct PcapNgParser {
 impl PcapNgParser {
     /// Creates a new [`PcapNgParser`].
     ///
-    /// Parses the first block which must be a valid SectionHeaderBlock.
+    /// Parses the first block, which must be a valid Section Header Block.
     ///
     /// # Errors
     ///
@@ -152,22 +152,10 @@ impl PcapNgParser {
     }
 
     /// Returns the current [`PcapNgState`].
+    ///
+    /// Use the state to access the current section, interfaces, endianness, and
+    /// timestamp conversion methods.
     pub fn state(&self) -> &PcapNgState {
         &self.state
-    }
-
-    /// Returns the current [`SectionHeaderBlock`].
-    pub fn section(&self) -> &SectionHeaderBlock<'static> {
-        &self.state.section
-    }
-
-    /// Returns the current [`InterfaceDescriptionBlock`] values.
-    pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
-        &self.state.interfaces[..]
-    }
-
-    /// Returns the [`InterfaceDescriptionBlock`] identified by `interface_id`.
-    pub fn interface(&self, interface_id: u32) -> Option<&InterfaceDescriptionBlock<'static>> {
-        self.state.interface(interface_id)
     }
 }

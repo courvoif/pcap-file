@@ -4,7 +4,7 @@ use super::RawPcapPacket;
 use crate::Endianness;
 use crate::pcap::PcapHeader;
 use crate::pcap::PcapPacket;
-use crate::pcap::PcapParseError;
+use crate::pcap::errors::PcapParseError;
 
 /// Parses a pcap stream from a byte slice.
 ///
@@ -12,7 +12,8 @@ use crate::pcap::PcapParseError;
 ///
 /// # Examples
 /// ```no_run
-/// use pcap_file::pcap::{PcapParseError, PcapParser};
+/// use pcap_file::pcap::errors::PcapParseError;
+/// use pcap_file::pcap::PcapParser;
 ///
 /// let pcap = std::fs::read("test.pcap").expect("Error reading file");
 /// let mut src = &pcap[..];

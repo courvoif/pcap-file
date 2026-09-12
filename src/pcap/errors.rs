@@ -6,8 +6,8 @@ use super::packet::RawPcapPacket;
 
 /* ----- PcapError ----- */
 
-/// High-level error wrapper for typed pcap parsing, reading, writing, and
-/// validation operations.
+/// Convenience error wrapper for applications that want to combine typed pcap
+/// parsing, reading, writing, and validation errors into one error type.
 ///
 /// Lower-level operations can return more specific errors, such as
 /// [`PcapPacketConversionError`], directly.
@@ -62,12 +62,9 @@ pub enum PcapReadError {
 /// Errors that can occur while writing pcap data.
 #[derive(Debug, Error)]
 pub enum PcapWriteError {
-    /// An I/O error occurred while writing a field in the file.
-    /// # Fields
-    /// - 0: field that failed to be written
-    /// - 1: underlying I/O error
-    #[error("I/O error while writing field `{0}`")]
-    FieldWriteFailed(&'static str, #[source] std::io::Error),
+    /// An I/O error occurred while writing pcap data.
+    #[error("I/O error while writing pcap data")]
+    Io(#[from] std::io::Error),
     /// A field of the pcap file is invalid.
     #[error(transparent)]
     Validation(#[from] PcapValidationError),

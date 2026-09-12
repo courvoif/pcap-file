@@ -4,7 +4,8 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
-use crate::pcap::{PcapParseError, PcapTsResolution, PcapValidationError, PcapWriteError};
+use crate::pcap::PcapTsResolution;
+use crate::pcap::errors::{PcapParseError, PcapValidationError, PcapWriteError};
 use crate::{DataLink, Endianness};
 
 /// Global header of a pcap file.
@@ -106,27 +107,13 @@ impl PcapHeader {
                 PcapTsResolution::Nanosecond => 0xA1B23C4D,
             };
 
-            writer
-                .write_u32::<B>(magic_number)
-                .map_err(|e| PcapWriteError::FieldWriteFailed("magic_number", e))?;
-            writer
-                .write_u16::<B>(header.version_major)
-                .map_err(|e| PcapWriteError::FieldWriteFailed("version_major", e))?;
-            writer
-                .write_u16::<B>(header.version_minor)
-                .map_err(|e| PcapWriteError::FieldWriteFailed("version_minor", e))?;
-            writer
-                .write_i32::<B>(header.ts_correction)
-                .map_err(|e| PcapWriteError::FieldWriteFailed("ts_correction", e))?;
-            writer
-                .write_u32::<B>(header.ts_accuracy)
-                .map_err(|e| PcapWriteError::FieldWriteFailed("ts_accuracy", e))?;
-            writer
-                .write_u32::<B>(header.snaplen)
-                .map_err(|e| PcapWriteError::FieldWriteFailed("snaplen", e))?;
-            writer
-                .write_u32::<B>(header.datalink.into())
-                .map_err(|e| PcapWriteError::FieldWriteFailed("datalink", e))?;
+            writer.write_u32::<B>(magic_number)?;
+            writer.write_u16::<B>(header.version_major)?;
+            writer.write_u16::<B>(header.version_minor)?;
+            writer.write_i32::<B>(header.ts_correction)?;
+            writer.write_u32::<B>(header.ts_accuracy)?;
+            writer.write_u32::<B>(header.snaplen)?;
+            writer.write_u32::<B>(header.datalink.into())?;
 
             Ok(24)
         }

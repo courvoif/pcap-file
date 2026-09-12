@@ -37,7 +37,7 @@ pub struct InterfaceDescriptionBlock<'a> {
     /// A value of zero indicates no limit.
     pub snaplen: u32,
 
-    /// Options
+    /// Block options.
     pub options: Vec<InterfaceDescriptionOption<'a>>,
 }
 

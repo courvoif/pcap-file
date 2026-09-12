@@ -26,7 +26,7 @@ pub struct InterfaceStatisticsBlock<'a> {
     /// Time elapsed since 1970-01-01 00:00:00 UTC to which these statistics refer.
     pub timestamp: Duration,
 
-    /// Options
+    /// Block options.
     pub options: Vec<InterfaceStatisticsOption<'a>>,
 }
 

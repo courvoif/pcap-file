@@ -296,14 +296,14 @@ pub trait CustomOptionPayload<'a> {
 pub struct CustomError {
     /// PEN of the custom block or option.
     pub pen: u32,
-    /// Source of the error
+    /// Source of the error.
     #[source]
     pub src: Box<dyn Error + Sync + Send + 'static>,
 }
 
 /* ----- struct CustomBlock ----- */
 
-/// Custom block
+/// Custom Block.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CustomBlock<'a, const COPIABLE: bool> {
     /// Private Enterprise Number of the entity which defined this block.
@@ -419,12 +419,12 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
 
 /* ----- struct CustomBinaryOption ----- */
 
-/// Custom binary option
+/// Custom binary option.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
-    /// Option PEN identifier
+    /// Option Private Enterprise Number (PEN).
     pub pen: u32,
-    /// Option value
+    /// Option value.
     pub value: Cow<'a, [u8]>,
 }
 
@@ -509,12 +509,12 @@ impl<'a> CustomBinaryOption<'a, false> {
 
 /* ----- struct CustomUtf8Option ----- */
 
-/// Custom string (UTF-8) option
+/// Custom UTF-8 string option.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
-    /// Option PEN identifier
+    /// Option Private Enterprise Number (PEN).
     pub pen: u32,
-    /// Option value
+    /// Option value.
     pub value: Cow<'a, str>,
 }
 

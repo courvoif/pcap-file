@@ -4,7 +4,8 @@ use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::RawPcapPacket;
 use crate::Endianness;
-use crate::pcap::{PcapHeader, PcapPacket, PcapTsResolution, PcapValidationError, PcapWriteError};
+use crate::pcap::errors::{PcapValidationError, PcapWriteError};
+use crate::pcap::{PcapHeader, PcapPacket, PcapTsResolution};
 
 /// Writes a pcap to a writer.
 ///

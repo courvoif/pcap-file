@@ -1,7 +1,7 @@
 use std::io::{Error, ErrorKind, Read};
 
 use crate::{
-    pcap::{PcapParseError, PcapReadError},
+    pcap::errors::{PcapParseError, PcapReadError},
     pcapng::errors::{PcapNgParseError, PcapNgReadError},
 };
 
@@ -214,7 +214,7 @@ mod test {
 
     use byteorder_slice::option::ReadSlice;
 
-    use crate::pcap::{PcapParseError, PcapReadError};
+    use crate::pcap::errors::{PcapParseError, PcapReadError};
 
     /// Fake reader that returns two data chunks separated by a transient I/O error.
     #[derive(Debug, Default)]

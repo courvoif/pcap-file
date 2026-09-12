@@ -34,7 +34,7 @@ pub struct SectionHeaderBlock<'a> {
     /// large files. Length of -1i64 means that the length is unspecified.
     pub section_length: i64,
 
-    /// Options
+    /// Block options.
     pub options: Vec<SectionHeaderOption<'a>>,
 }
 

@@ -13,36 +13,36 @@ use crate::pcapng::blocks::custom::{CustomBinaryOption, CustomUtf8Option};
 use crate::pcapng::errors::ContentValidationError;
 use crate::pcapng::errors::{OptionEntryError, OptionParseError, PcapNgWriteError};
 
-/// Comment
+/// Comment option code.
 pub const COMMENT: u16 = 0x0001;
-/// Custom UTF-8 option code, copiable
+/// Copiable custom UTF-8 option code.
 pub const CUSTOM_UTF8_OPTION_COPIABLE: u16 = 0x0BAC;
-/// Custom UTF-8 option code, non-copiable
+/// Non-copiable custom UTF-8 option code.
 pub const CUSTOM_UTF8_OPTION_NON_COPIABLE: u16 = 0x4BAC;
-/// Custom binary option code, copiable
+/// Copiable custom binary option code.
 pub const CUSTOM_BINARY_OPTION_COPIABLE: u16 = 0x0BAD;
-/// Custom binary option code, non-copiable
+/// Non-copiable custom binary option code.
 pub const CUSTOM_BINARY_OPTION_NON_COPIABLE: u16 = 0x4BAD;
 
 /// Common options applicable to all block types.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum CommonOption<'a> {
-    /// Comment
+    /// Comment.
     Comment(Cow<'a, str>),
 
-    /// Custom option containing copiable binary octets in the Custom Data portion
+    /// Custom option containing copiable binary octets in the Custom Data portion.
     CustomBinaryCopiable(CustomBinaryOption<'a, true>),
 
-    /// Custom option containing non-copiable binary octets in the Custom Data portion
+    /// Custom option containing non-copiable binary octets in the Custom Data portion.
     CustomBinaryNonCopiable(CustomBinaryOption<'a, false>),
 
-    /// Custom option containing a copiable UTF-8 string in the Custom Data portion
+    /// Custom option containing a copiable UTF-8 string in the Custom Data portion.
     CustomUtf8Copiable(CustomUtf8Option<'a, true>),
 
-    /// Custom option containing a non-copiable UTF-8 string in the Custom Data portion
+    /// Custom option containing a non-copiable UTF-8 string in the Custom Data portion.
     CustomUtf8NonCopiable(CustomUtf8Option<'a, false>),
 
-    /// Unknown option
+    /// Unknown option.
     Unknown(UnknownOption<'a>),
 }
 
@@ -199,7 +199,7 @@ pub(crate) trait PcapNgOption<'a> {
 pub struct UnknownOption<'a> {
     /// Option code
     pub code: u16,
-    /// Option value
+    /// Option value.
     pub value: Cow<'a, [u8]>,
 }
 
@@ -359,7 +359,7 @@ mod tests {
         }
     }
 
-    /// Test that a list of option without an endofopt can be parsed
+    /// Tests that an option list without an end-of-options marker can be parsed.
     #[test]
     fn opt_without_endofopt() {
         let data = [0, 1, 0, 4, 0, 0, 0, 0];

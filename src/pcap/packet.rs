@@ -7,7 +7,8 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use crate::pcap::{PcapPacketConversionError, PcapParseError, PcapTsResolution, PcapValidationError, PcapWriteError};
+use crate::pcap::PcapTsResolution;
+use crate::pcap::errors::{PcapPacketConversionError, PcapParseError, PcapValidationError, PcapWriteError};
 
 /// A valid pcap packet.
 ///
@@ -65,7 +66,7 @@ impl<'a> PcapPacket<'a> {
         self.timestamp
     }
 
-    /// Returns the original length of the packet.
+    /// Returns the packet's original length on the wire.
     pub fn original_len(&self) -> u32 {
         self.original_len
     }
@@ -289,21 +290,11 @@ impl<'a> RawPcapPacket<'a> {
     ///
     /// - Returns an error if the packet header or packet data cannot be written.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
-        writer
-            .write_u32::<B>(self.ts_sec)
-            .map_err(|e| PcapWriteError::FieldWriteFailed("ts_sec", e))?;
-        writer
-            .write_u32::<B>(self.ts_frac)
-            .map_err(|e| PcapWriteError::FieldWriteFailed("ts_frac", e))?;
-        writer
-            .write_u32::<B>(self.incl_len)
-            .map_err(|e| PcapWriteError::FieldWriteFailed("incl_len", e))?;
-        writer
-            .write_u32::<B>(self.orig_len)
-            .map_err(|e| PcapWriteError::FieldWriteFailed("orig_len", e))?;
-        writer
-            .write_all(&self.data)
-            .map_err(|e| PcapWriteError::FieldWriteFailed("data", e))?;
+        writer.write_u32::<B>(self.ts_sec)?;
+        writer.write_u32::<B>(self.ts_frac)?;
+        writer.write_u32::<B>(self.incl_len)?;
+        writer.write_u32::<B>(self.orig_len)?;
+        writer.write_all(&self.data)?;
 
         Ok(16 + self.data.len())
     }

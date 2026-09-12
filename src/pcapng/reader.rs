@@ -1,8 +1,6 @@
 use std::io::Read;
 
 use super::blocks::block_common::{Block, RawBlock};
-use super::blocks::interface_description::InterfaceDescriptionBlock;
-use super::blocks::section_header::SectionHeaderBlock;
 use super::{PcapNgPacket, PcapNgPacketOrBlock, PcapNgParser, PcapNgState};
 use crate::pcapng::errors::PcapNgReadError;
 use crate::read_buffer::ReadBuffer;
@@ -10,6 +8,8 @@ use crate::read_buffer::ReadBuffer;
 /// Reads a pcapng stream from a reader.
 ///
 /// Buffers data from the underlying reader internally.
+///
+/// Use [`Self::state`] to access the current section and interfaces.
 ///
 /// # Examples
 /// ```rust,no_run
@@ -36,7 +36,8 @@ pub struct PcapNgReader<R: Read> {
 impl<R: Read> PcapNgReader<R> {
     /// Creates a new [`PcapNgReader`] from an existing reader.
     ///
-    /// Parses the first block, which must be a valid [`SectionHeaderBlock`].
+    /// Parses the first block, which must be a valid
+    /// [`SectionHeaderBlock`](crate::pcapng::blocks::section_header::SectionHeaderBlock).
     ///
     /// Prefer an unbuffered input because this type already uses an internal
     /// buffer with a default capacity of 8 MB.
@@ -54,7 +55,8 @@ impl<R: Read> PcapNgReader<R> {
 
     /// Creates a new [`PcapNgReader`] with a custom internal buffer capacity.
     ///
-    /// Parses the first block, which must be a valid [`SectionHeaderBlock`].
+    /// Parses the first block, which must be a valid
+    /// [`SectionHeaderBlock`](crate::pcapng::blocks::section_header::SectionHeaderBlock).
     ///
     /// Use this when the stream can contain blocks larger than the default
     /// internal buffer capacity of 8 MB.
@@ -143,19 +145,12 @@ impl<R: Read> PcapNgReader<R> {
         }
     }
 
-    /// Returns the current [`SectionHeaderBlock`].
-    pub fn section(&self) -> &SectionHeaderBlock<'static> {
-        self.parser.section()
-    }
-
-    /// Returns the current [`InterfaceDescriptionBlock`] values.
-    pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
-        self.parser.interfaces()
-    }
-
-    /// Returns the [`InterfaceDescriptionBlock`] identified by `interface_id`.
-    pub fn interface(&self, interface_id: u32) -> Option<&InterfaceDescriptionBlock<'static>> {
-        self.parser.interface(interface_id)
+    /// Returns the current [`PcapNgState`].
+    ///
+    /// Use the state to access the current section, interfaces, endianness, and
+    /// timestamp conversion methods.
+    pub fn state(&self) -> &PcapNgState {
+        self.parser.state()
     }
 
     /// Consumes the [`PcapNgReader`], returning the underlying reader.

@@ -17,6 +17,7 @@ fn main() -> Result<()> {
 
         if let Block::EnhancedPacket(packet) = block {
             let interface = parser
+                .state()
                 .interface(packet.interface_id)
                 .context("packet refers to an unknown interface")?;
 

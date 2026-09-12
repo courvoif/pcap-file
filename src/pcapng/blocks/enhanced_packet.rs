@@ -36,7 +36,7 @@ pub struct EnhancedPacketBlock<'a> {
     /// The data coming from the network, including link-layer headers.
     pub data: Cow<'a, [u8]>,
 
-    /// Options
+    /// Block options.
     pub options: Vec<EnhancedPacketOption<'a>>,
 }
 

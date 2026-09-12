@@ -3,6 +3,7 @@
 //! Use [`PcapNgParser`] to parse pcapng data from byte slices, [`PcapNgReader`]
 //! to read pcapng data from an I/O stream, [`PcapNgPacketIterator`] for simple
 //! iteration over owned packets, and [`PcapNgWriter`] to write pcapng data.
+//! Error types are available in the [`errors`] module.
 
 pub mod blocks;
 pub mod errors;

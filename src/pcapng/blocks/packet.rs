@@ -37,7 +37,7 @@ pub struct PacketBlock<'a> {
     /// The data coming from the network, including link-layer headers.
     pub data: Cow<'a, [u8]>,
 
-    /// Options
+    /// Block options.
     pub options: Vec<PacketOption<'a>>,
 }
 
@@ -160,7 +160,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     }
 }
 
-/// Packet Block option
+/// Packet Block option.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum PacketOption<'a> {
     /// 32-bit flags word containing link-layer information.

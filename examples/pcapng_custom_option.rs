@@ -58,7 +58,7 @@ fn main() -> Result<()> {
     let input = File::open(path).context("failed to open the custom-option capture")?;
     let reader = PcapNgReader::new(input).context("failed to read the section header")?;
 
-    for option in &reader.section().options {
+    for option in &reader.state().section().options {
         if let SectionHeaderOption::Common(CommonOption::CustomBinaryCopiable(option)) = option {
             let capture_id = option
                 .interpret::<CaptureId>()
