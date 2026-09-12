@@ -239,27 +239,27 @@ impl<'a> RawBlock<'a> {
 /// Parsed pcapng block.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum Block<'a> {
-    /// Section Header block
+    /// Section Header Block
     SectionHeader(SectionHeaderBlock<'a>),
-    /// Interface Description block
+    /// Interface Description Block
     InterfaceDescription(InterfaceDescriptionBlock<'a>),
-    /// Packet block
+    /// Packet Block
     Packet(PacketBlock<'a>),
-    /// Simple packet block
+    /// Simple Packet Block
     SimplePacket(SimplePacketBlock<'a>),
-    /// Name Resolution block
+    /// Name Resolution Block
     NameResolution(NameResolutionBlock<'a>),
-    /// Interface statistics block
+    /// Interface Statistics Block
     InterfaceStatistics(InterfaceStatisticsBlock<'a>),
-    /// Enhanced packet block
+    /// Enhanced Packet Block
     EnhancedPacket(EnhancedPacketBlock<'a>),
-    /// Systemd Journal Export block
+    /// Systemd Journal Export Block
     SystemdJournalExport(SystemdJournalExportBlock<'a>),
-    /// Copiable Custom Block.
+    /// Copiable Custom Block
     CustomCopiable(CustomBlock<'a, true>),
-    /// Non-copiable Custom Block.
+    /// Non-copiable Custom Block
     CustomNonCopiable(CustomBlock<'a, false>),
-    /// Unknown block
+    /// Unknown Block
     Unknown(UnknownBlock<'a>),
 }
 

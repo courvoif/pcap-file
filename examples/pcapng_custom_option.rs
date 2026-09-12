@@ -54,7 +54,7 @@ fn main() -> Result<()> {
         .flush()
         .context("failed to flush the custom-option capture")?;
 
-    // The reader consumes the Section Header Block in new(), so inspect it via section().
+    // The reader consumes the Section Header Block in new(), so inspect it via state().section().
     let input = File::open(path).context("failed to open the custom-option capture")?;
     let reader = PcapNgReader::new(input).context("failed to read the section header")?;
 

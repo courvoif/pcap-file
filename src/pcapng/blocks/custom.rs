@@ -328,6 +328,9 @@ impl<'a, const COPIABLE: bool> CustomBlock<'a, COPIABLE> {
 impl<'a> CustomBlock<'a, true> {
     /// Converts this block's payload into a copiable custom payload type.
     ///
+    /// Returns [`None`] if this block's PEN does not match [`CustomPayloadCopiable::PEN`]
+    /// for `T`.
+    ///
     /// # Errors
     ///
     /// - Returns an error if the payload cannot be decoded as `T`.
@@ -348,6 +351,9 @@ impl<'a> CustomBlock<'a, true> {
 
 impl<'a> CustomBlock<'a, false> {
     /// Converts this block's payload into a non-copiable custom payload type.
+    ///
+    /// Returns [`None`] if this block's PEN does not match
+    /// [`CustomPayloadNonCopiable::PEN`] for `T`.
     ///
     /// # Errors
     ///
@@ -458,6 +464,9 @@ impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
 impl<'a> CustomBinaryOption<'a, true> {
     /// Converts this option's value into a copiable custom payload type.
     ///
+    /// Returns [`None`] if this option's PEN does not match
+    /// [`CustomPayloadCopiable::PEN`] for `T`.
+    ///
     /// # Errors
     ///
     /// - Returns an error if the value cannot be decoded as `T`.
@@ -483,6 +492,9 @@ impl<'a> CustomBinaryOption<'a, true> {
 
 impl<'a> CustomBinaryOption<'a, false> {
     /// Converts this option's value into a non-copiable custom payload type.
+    ///
+    /// Returns [`None`] if this option's PEN does not match
+    /// [`CustomPayloadNonCopiable::PEN`] for `T`.
     ///
     /// # Errors
     ///
