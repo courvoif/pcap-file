@@ -75,6 +75,11 @@ for pkt in pcap_reader {
 
 ## Pcapng
 
+The pcapng implementation targets
+[draft-ietf-opsawg-pcapng-05](https://www.ietf.org/archive/id/draft-ietf-opsawg-pcapng-05.html#name-interface-description-block).
+Unsupported block, record, and option types are preserved as unknown data when
+their framing is valid.
+
 ### PcapNgReader
 
 ```rust,no_run

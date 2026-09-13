@@ -137,7 +137,6 @@ impl<'a> RawBlock<'a> {
 
             let body_len = initial_len - 12;
             let body = &slice[..body_len as usize];
-
             let mut rem = &slice[body_len as usize..];
 
             let trailer_len = rem.read_u32::<B>().expect("slice length checked above");
@@ -209,13 +208,12 @@ impl<'a> RawBlock<'a> {
         Ok(())
     }
 
-    /// Tries to convert a [`RawBlock`] into a [`Block`] using a [`PcapNgState`].
+    /// Validates and converts a [`RawBlock`] into a [`Block`] using a [`PcapNgState`].
     /// The state determines the byte order.
     ///
     /// # Errors
     ///
-    /// Returns a [`RawBlockConversionError`] containing this raw block and the
-    /// content error if conversion fails.
+    /// Returns a [`RawBlockConversionError`] containing this raw block and the framing or content error if conversion fails.
     pub fn try_into_block(self, state: &PcapNgState) -> Result<Block<'a>, RawBlockConversionError<'a>> {
         match state.section.endianness {
             crate::Endianness::Big => Block::try_from_raw_block::<BigEndian>(state, self),
@@ -223,13 +221,11 @@ impl<'a> RawBlock<'a> {
         }
     }
 
-    /// Tries to convert a [`RawBlock`] into a [`Block`] using a [`PcapNgState`]
-    /// and the byte order specified by `B`.
+    /// Validates and converts a [`RawBlock`] into a [`Block`] using a [`PcapNgState`] and the byte order specified by `B`.
     ///
     /// # Errors
     ///
-    /// Returns a [`RawBlockConversionError`] containing this raw block and the
-    /// content error if conversion fails.
+    /// Returns a [`RawBlockConversionError`] containing this raw block and the  framing or content error if conversion fails.
     pub fn try_into_block_with_byteorder<B: ByteOrder>(
         self,
         state: &PcapNgState,
@@ -255,7 +251,7 @@ pub enum Block<'a> {
     InterfaceStatistics(InterfaceStatisticsBlock<'a>),
     /// Enhanced Packet Block
     EnhancedPacket(EnhancedPacketBlock<'a>),
-    /// Systemd Journal Export Block
+    /// systemd Journal Export Block.
     SystemdJournalExport(SystemdJournalExportBlock<'a>),
     /// Copiable Custom Block
     CustomCopiable(CustomBlock<'a, true>),
@@ -270,9 +266,8 @@ impl<'a> Block<'a> {
     ///
     /// # Errors
     ///
-    /// Returns a [`RawBlockConversionError`] containing the original raw block
-    /// and the content error if it cannot be decoded or validated using the
-    /// supplied byte order and state.
+    /// Returns a [`RawBlockConversionError`] containing the original raw block and the framing or content error
+    /// if it cannot be validated and decoded using the supplied byte order and state.
     ///
     /// If `raw_block` borrows its body, the returned [`Block`] will borrow from
     /// that same buffer whenever possible.
@@ -283,6 +278,13 @@ impl<'a> Block<'a> {
         state: &PcapNgState,
         raw_block: RawBlock<'a>,
     ) -> Result<Block<'a>, RawBlockConversionError<'a>> {
+        if let Err(source) = raw_block.validate() {
+            return Err(RawBlockConversionError {
+                block: raw_block,
+                source: Box::new(BlockContentParseError::InvalidFormat(source)),
+            });
+        }
+
         fn parse_body<'a, B: ByteOrder>(
             state: &PcapNgState,
             type_: u32,
@@ -585,5 +587,27 @@ mod tests {
                 actual: 32,
             }
         ));
+    }
+
+    #[test]
+    fn raw_block_conversion_validates_framing() {
+        let raw_block = RawBlock {
+            type_: 42,
+            initial_len: 16,
+            body: Cow::Borrowed(&[0; 8]),
+            trailer_len: 16,
+        };
+
+        let error = raw_block.try_into_block(&PcapNgState::default()).unwrap_err();
+
+        assert!(matches!(
+            error.source.as_ref(),
+            BlockContentParseError::InvalidFormat(PcapNgFormatError::InvalidBlockLength {
+                expected: 20,
+                actual: 16,
+            })
+        ));
+        assert_eq!(error.block.initial_len, 16);
+        assert_eq!(error.block.body.len(), 8);
     }
 }

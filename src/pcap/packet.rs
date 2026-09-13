@@ -78,7 +78,7 @@ impl<'a> PcapPacket<'a> {
         self.data.len()
     }
 
-    /// Returns whether the packet has no data.
+    /// Returns whether the packet contains no captured data.
     pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }

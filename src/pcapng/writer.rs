@@ -45,7 +45,7 @@ pub struct PcapNgWriter<W: Write> {
 impl<W: Write> PcapNgWriter<W> {
     /// Creates a new [`PcapNgWriter`] from an existing writer.
     ///
-    /// Uses the CPU's native endianness by default.
+    /// Uses the system's native endianness by default.
     ///
     /// Writes this section header to the file:
     /// ```rust
@@ -136,10 +136,10 @@ impl<W: Write> PcapNgWriter<W> {
     /// packet.data = Cow::Borrowed(&data);
     ///
     /// let file = File::create("out.pcapng").expect("Error creating file");
-    /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
+    /// let mut pcapng_writer = PcapNgWriter::new(file).unwrap();
     ///
-    /// pcap_ng_writer.write_block(&interface.into_block()).unwrap();
-    /// pcap_ng_writer.write_block(&packet.into_block()).unwrap();
+    /// pcapng_writer.write_block(&interface.into_block()).unwrap();
+    /// pcapng_writer.write_block(&packet.into_block()).unwrap();
     /// ```
     pub fn write_block(&mut self, block: &Block) -> Result<usize, PcapNgWriteError> {
         // The order of operation is important to prevent writing invalid files in case of error.
@@ -191,10 +191,10 @@ impl<W: Write> PcapNgWriter<W> {
     /// packet.data = Cow::Borrowed(&data);
     ///
     /// let file = File::create("out.pcapng").expect("Error creating file");
-    /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
+    /// let mut pcapng_writer = PcapNgWriter::new(file).unwrap();
     ///
-    /// pcap_ng_writer.write_typed_block(interface).unwrap();
-    /// pcap_ng_writer.write_typed_block(packet).unwrap();
+    /// pcapng_writer.write_typed_block(interface).unwrap();
+    /// pcapng_writer.write_typed_block(packet).unwrap();
     /// ```
     pub fn write_typed_block<'a, B: PcapNgBlock<'a>>(&mut self, block: B) -> Result<usize, PcapNgWriteError> {
         self.write_block(&block.into_block())
@@ -220,6 +220,7 @@ impl<W: Write> PcapNgWriter<W> {
         // The order of operation is important to prevent writing invalid files in case of error.
         // The state is updated only after a successful write.
         // The endianness is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
+        raw_block.validate()?;
         let opt_block = self.state.decode_block_if_needed(raw_block)?;
         let endianness = self.state.block_endianness(opt_block.as_ref());
 

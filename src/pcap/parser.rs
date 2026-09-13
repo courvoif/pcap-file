@@ -37,7 +37,8 @@ use crate::pcap::errors::PcapParseError;
 ///             // Load more data into src if parsing a stream.
 ///         },
 ///         Err(_) => {
-///             // Handle an unrecoverable parsing error.
+///             // Handle the parsing error. A validation error can instead be
+///             // inspected by calling next_raw_packet with the same src.
 ///         },
 ///     }
 /// }
@@ -67,8 +68,7 @@ impl PcapParser {
     /// - Returns [`PcapParseError::IncompleteBuffer`] if the input does not
     ///   contain a complete packet. Load more data and retry with the same input.
     /// - Returns [`PcapParseError::Validation`] if a packet field is invalid.
-    ///   The input remains unconsumed and can be passed to
-    ///   [`PcapParser::next_raw_packet`].
+    ///   The input remains unconsumed and can be passed to [`PcapParser::next_raw_packet`].
     pub fn next_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], PcapPacket<'a>), PcapParseError> {
         let res = match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),

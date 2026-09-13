@@ -207,7 +207,7 @@ pub enum RawBlockParseError {
 pub struct RawBlockConversionError<'a> {
     /// Original raw block that failed conversion.
     pub block: RawBlock<'a>,
-    /// Underlying block content parse error.
+    /// Underlying block framing or content error.
     // Boxed to keep the error small
     pub source: Box<BlockContentParseError>,
 }
@@ -221,7 +221,7 @@ pub struct RawBlockConversionError<'a> {
 pub struct BlockConversionError {
     /// Numeric block type.
     pub type_: u32,
-    /// Underlying block content parse error.
+    /// Underlying block framing or content error.
     // Boxed to keep the error small
     pub source: Box<BlockContentParseError>,
 }
@@ -237,9 +237,13 @@ impl From<RawBlockConversionError<'_>> for BlockConversionError {
 
 /* ----- BlockContentParseError ----- */
 
-/// Errors that can occur while parsing the content of a block.
+/// Errors that can occur while validating a raw block or parsing its content.
 #[derive(Debug, Error)]
 pub enum BlockContentParseError {
+    /// The raw block framing is invalid.
+    #[error(transparent)]
+    InvalidFormat(#[from] PcapNgFormatError),
+
     /// An unknown block cannot be parsed through [`PcapNgBlock`](crate::pcapng::blocks::PcapNgBlock).
     ///
     /// Unknown block bodies have no format known to this crate and must be
@@ -283,9 +287,6 @@ pub enum ContentValidationError {
     /// The magic number of the pcapng Section Header Block is invalid.
     #[error("Invalid magic number: {0:#X}")]
     InvalidMagicNumber(u32),
-    /// A reserved field is not zero.
-    #[error("Invalid reserved field: {0}")]
-    InvalidReservedField(u16),
     /// The timestamp resolution value is invalid.
     #[error("Invalid timestamp resolution: {0:#X} (binary: {1}, resolution: {2})")]
     InvalidTsResolution(u8, bool, u8),
@@ -396,6 +397,14 @@ pub enum ContentValidationError {
     /// The content of a pcapng option is too large to be written.
     #[error("Option content length exceeds u16::MAX: {0}B")]
     OptionTooBig(usize),
+
+    /// A pcapng option that requires content is empty.
+    #[error("Option content must not be empty")]
+    OptionEmpty,
+
+    /// A Name Resolution Block contains more than one end record.
+    #[error("Name Resolution Block contains multiple end records")]
+    MultipleEndRecords,
 }
 
 /* ----- OptionParseError ----- */
@@ -437,6 +446,9 @@ pub enum OptionEntryError {
         /// Actual size.
         actual: usize,
     },
+    /// An option that requires content is empty.
+    #[error("Option content must not be empty")]
+    Empty,
     /// The option payload is not valid UTF-8.
     #[error("Option payload is not valid UTF-8")]
     InvalidUtf8(#[from] std::str::Utf8Error),

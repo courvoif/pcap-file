@@ -82,7 +82,6 @@ pub enum DataLink {
     RAW,
     SLIP_BSDOS,
     PPP_BSDOS,
-    MATCHING_MIN,
     C_HDLC,
     IEEE802_11,
     ATM_CLIP,
@@ -284,6 +283,14 @@ pub enum DataLink {
     DEBUG_ONLY,
 
     Unknown(u32),
+}
+
+impl DataLink {
+    /// Lowest value in the matching range used by libpcap.
+    ///
+    /// This is an alias for [`DataLink::C_HDLC`], because both names refer to
+    /// the numeric value 104.
+    pub const MATCHING_MIN: Self = Self::C_HDLC;
 }
 
 impl From<u32> for DataLink {
@@ -535,7 +542,6 @@ impl From<DataLink> for u32 {
             DataLink::RAW => 101,
             DataLink::SLIP_BSDOS => 102,
             DataLink::PPP_BSDOS => 103,
-            DataLink::MATCHING_MIN => 104,
             DataLink::C_HDLC => 104,
             DataLink::IEEE802_11 => 105,
             DataLink::ATM_CLIP => 106,
@@ -738,5 +744,20 @@ impl From<DataLink> for u32 {
 
             DataLink::Unknown(n) => n,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::DataLink;
+
+    #[test]
+    fn matching_min_is_a_roundtrippable_alias() {
+        let encoded = u32::from(DataLink::MATCHING_MIN);
+
+        assert_eq!(encoded, 104);
+        assert_eq!(DataLink::from(encoded), DataLink::MATCHING_MIN);
+        assert_eq!(DataLink::MATCHING_MIN, DataLink::C_HDLC);
+        assert!(matches!(DataLink::C_HDLC, DataLink::MATCHING_MIN));
     }
 }

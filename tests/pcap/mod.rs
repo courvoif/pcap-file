@@ -124,7 +124,7 @@ fn big_endian() {
         ts_correction: 0,
         ts_accuracy: 0,
         snaplen: 0xFFFF,
-        datalink: pcap_file::DataLink::ETHERNET,
+        linktype: pcap_file::DataLink::ETHERNET,
         ts_resolution: PcapTsResolution::Microsecond,
         endianness: pcap_file::Endianness::Big,
     };
@@ -160,7 +160,7 @@ fn little_endian() {
         ts_correction: 0,
         ts_accuracy: 0,
         snaplen: 4096,
-        datalink: pcap_file::DataLink::ETHERNET,
+        linktype: pcap_file::DataLink::ETHERNET,
         ts_resolution: PcapTsResolution::Microsecond,
         endianness: pcap_file::Endianness::Little,
     };

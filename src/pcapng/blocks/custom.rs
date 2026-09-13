@@ -76,7 +76,7 @@ pub trait CustomPayloadCopiable<'a> {
     /// - Returns an error if the payload cannot be written.
     fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), Self::WriteToError>;
 
-    /// Serialize this payload into bytes.
+    /// Serializes this payload into bytes.
     ///
     /// # Important
     /// Do not override.
@@ -152,7 +152,7 @@ pub trait CustomPayloadNonCopiable<'a> {
     /// - Returns an error if the payload cannot be written using `state`.
     fn write_to<W: Write>(&self, state: &Self::State, writer: &mut W) -> Result<(), Self::WriteToError>;
 
-    /// Serialize this payload into bytes.
+    /// Serializes this payload into bytes.
     ///
     /// # Important
     /// Do not override.
@@ -188,7 +188,7 @@ pub trait CustomPayloadNonCopiable<'a> {
 /// impl CustomBlockPayload<'_> for Payload {}
 /// ```
 pub trait CustomBlockPayload<'a> {
-    /// Convert this payload into a copiable [`CustomBlock`].
+    /// Converts this payload into a copiable [`CustomBlock`].
     ///
     /// # Important
     /// Do not override.
@@ -208,7 +208,7 @@ pub trait CustomBlockPayload<'a> {
         })
     }
 
-    /// Convert this payload into a non-copiable [`CustomBlock`].
+    /// Converts this payload into a non-copiable [`CustomBlock`].
     ///
     /// # Important
     /// Do not override.
@@ -244,7 +244,7 @@ pub trait CustomBlockPayload<'a> {
 /// impl CustomOptionPayload<'_> for Payload {}
 /// ```
 pub trait CustomOptionPayload<'a> {
-    /// Convert this payload into a copiable [`CustomBinaryOption`].
+    /// Converts this payload into a copiable [`CustomBinaryOption`].
     ///
     /// # Important
     /// Do not override.
@@ -264,7 +264,7 @@ pub trait CustomOptionPayload<'a> {
         })
     }
 
-    /// Convert this payload into a non-copiable [`CustomBinaryOption`].
+    /// Converts this payload into a non-copiable [`CustomBinaryOption`].
     ///
     /// # Important
     /// Do not override.

@@ -4,9 +4,9 @@ use std::io::Cursor;
 use anyhow::{Context, Result};
 use byteorder_slice::BigEndian;
 use pcap_file::DataLink;
-use pcap_file::pcapng::blocks::block_common::{ENHANCED_PACKET_BLOCK, RawBlock};
+use pcap_file::pcapng::blocks::block_common::ENHANCED_PACKET_BLOCK;
 use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
+use pcap_file::pcapng::{PcapNgReader, PcapNgWriter, RawBlock};
 
 fn main() -> Result<()> {
     let data = malformed_pcapng().context("failed to build the malformed pcapng")?;

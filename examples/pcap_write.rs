@@ -8,7 +8,7 @@ use pcap_file::pcap::{PcapHeader, PcapPacket, PcapWriter};
 
 fn main() -> Result<()> {
     let header = PcapHeader {
-        datalink: DataLink::ETHERNET,
+        linktype: DataLink::ETHERNET,
         snaplen: 65_535,
         ..Default::default()
     };

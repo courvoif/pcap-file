@@ -17,6 +17,9 @@ use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, Opti
 /// Name Resolution Block (NRB).
 ///
 /// Associates numeric addresses from captured packets with canonical names.
+/// An end record is written automatically unless [`Record::End`] is already
+/// present in [`Self::records`]. Supplying more than one end record results in
+/// an error.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct NameResolutionBlock<'a> {
     /// Name-resolution records.
@@ -50,12 +53,28 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+        let end_record_count = self
+            .records
+            .iter()
+            .filter(|record| matches!(record, Record::End))
+            .count();
+
+        if end_record_count > 1 {
+            return Err(PcapNgWriteError::validation_error(
+                "NameResolutionBlock.records",
+                ContentValidationError::MultipleEndRecords,
+            ));
+        }
+
         let mut len = 0;
 
         for record in &self.records {
             len += record.write_to::<B, _>(writer)?;
         }
-        len += Record::End.write_to::<B, _>(writer)?;
+        
+        if end_record_count == 0 {
+            len += Record::End.write_to::<B, _>(writer)?;
+        }
 
         len += NameResolutionOption::write_opts_to::<B, _>(&self.options, state, None, writer)?;
 
@@ -70,7 +89,11 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
 /// Record types stored in a Name Resolution Block.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum Record<'a> {
-    /// End of the records
+    /// End of the records.
+    ///
+    /// Supplying this record is optional because [`NameResolutionBlock`] adds
+    /// it automatically when no end record is present. Supplying more than one
+    /// end record results in an error when writing.
     End,
     /// IPv4 record.
     Ipv4(Ipv4Record<'a>),
@@ -369,10 +392,10 @@ pub enum NameResolutionOption<'a> {
     NsDnsName(Cow<'a, str>),
 
     /// IPv4 address of the DNS server.
-    NsDnsIpv4Addr(Cow<'a, [u8]>),
+    NsDnsIpv4Addr(Ipv4Addr),
 
     /// IPv6 address of the DNS server.
-    NsDnsIpv6Addr(Cow<'a, [u8]>),
+    NsDnsIpv6Addr(Ipv6Addr),
 
     /// A common option applicable to any block type.
     Common(CommonOption<'a>),
@@ -400,7 +423,9 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
                         actual: slice.len(),
                     });
                 }
-                NameResolutionOption::NsDnsIpv4Addr(Cow::Borrowed(slice))
+
+                let ip: [u8; 4] = slice.try_into().expect("slice length checked above");
+                NameResolutionOption::NsDnsIpv4Addr(Ipv4Addr::from_octets(ip))
             }
             Self::NS_DNS_IPV6_ADDR => {
                 if slice.len() != 16 {
@@ -409,7 +434,9 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
                         actual: slice.len(),
                     });
                 }
-                NameResolutionOption::NsDnsIpv6Addr(Cow::Borrowed(slice))
+
+                let ip: [u8; 16] = slice.try_into().expect("slice length checked above");
+                NameResolutionOption::NsDnsIpv6Addr(Ipv6Addr::from_octets(ip))
             }
             _ => NameResolutionOption::Common(CommonOption::new::<B>(code, slice)?),
         };
@@ -425,8 +452,8 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
     ) -> Result<usize, PcapNgWriteError> {
         match self {
             NameResolutionOption::NsDnsName(a) => a.write_opt::<B, W>(Self::NS_DNS_NAME, writer),
-            NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt::<B, W>(Self::NS_DNS_IPV4_ADDR, writer),
-            NameResolutionOption::NsDnsIpv6Addr(a) => a.write_opt::<B, W>(Self::NS_DNS_IPV6_ADDR, writer),
+            NameResolutionOption::NsDnsIpv4Addr(a) => a.octets().write_opt::<B, W>(Self::NS_DNS_IPV4_ADDR, writer),
+            NameResolutionOption::NsDnsIpv6Addr(a) => a.octets().write_opt::<B, W>(Self::NS_DNS_IPV6_ADDR, writer),
             NameResolutionOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
         }
     }
@@ -447,7 +474,7 @@ mod tests {
 
     use byteorder_slice::BigEndian;
 
-    use super::{NameResolutionBlock, NameResolutionOption, PcapNgBlock};
+    use super::{NameResolutionBlock, NameResolutionOption, PcapNgBlock, Record};
     use crate::pcapng::PcapNgState;
     use crate::pcapng::errors::{ContentValidationError, PcapNgWriteError};
 
@@ -473,6 +500,48 @@ mod tests {
                 source.as_ref(),
                 ContentValidationError::OptionTooBig(len) if *len == u16::MAX as usize + 1
             )
+        ));
+    }
+
+    #[test]
+    fn write_adds_end_record_only_when_absent() {
+        let mut encoded = Vec::new();
+        NameResolutionBlock {
+            records: vec![],
+            options: vec![],
+        }
+        .write_to::<BigEndian, _>(&PcapNgState::default(), &mut encoded)
+        .unwrap();
+        assert_eq!(encoded, [0, 0, 0, 0]);
+
+        encoded.clear();
+        NameResolutionBlock {
+            records: vec![Record::End],
+            options: vec![],
+        }
+        .write_to::<BigEndian, _>(&PcapNgState::default(), &mut encoded)
+        .unwrap();
+        assert_eq!(encoded, [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn write_rejects_multiple_end_records_before_writing() {
+        let block = NameResolutionBlock {
+            records: vec![Record::End, Record::End],
+            options: vec![],
+        };
+        let mut encoded = Vec::new();
+
+        let error = block
+            .write_to::<BigEndian, _>(&PcapNgState::default(), &mut encoded)
+            .unwrap_err();
+
+        assert!(encoded.is_empty());
+        assert!(matches!(
+            error,
+            PcapNgWriteError::Validation { field, source }
+                if field == "NameResolutionBlock.records"
+                    && matches!(source.as_ref(), ContentValidationError::MultipleEndRecords)
         ));
     }
 }

@@ -10,6 +10,8 @@ use crate::read_buffer::ReadBuffer;
 /// Reads a pcap from a reader.
 ///
 /// Buffers data from the underlying reader internally.
+/// Any unread data already held in the internal buffer is discarded.
+/// The underlying reader may therefore be positioned beyond [`Self::bytes_parsed`].
 ///
 /// # Examples
 ///

@@ -30,7 +30,7 @@ pub struct InterfaceDescriptionBlock<'a> {
     /// Link-layer type of this interface.
     ///
     /// The list of Standardized Link Layer Type codes is available in the
-    /// [tcpdump.org link-layer header types registry.](http://www.tcpdump.org/linktypes.html).
+    /// [tcpdump.org link-layer header types registry](https://www.tcpdump.org/linktypes.html).
     pub linktype: DataLink,
 
     /// Maximum number of bytes captured from each packet.
@@ -57,10 +57,8 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
 
         let linktype = (slice.read_u16::<B>().unwrap() as u32).into();
 
-        let reserved = slice.read_u16::<B>().unwrap();
-        if reserved != 0 {
-            return Err(ContentValidationError::InvalidReservedField(reserved).into());
-        }
+        // Readers must ignore the reserved field, even when it is nonzero.
+        let _reserved = slice.read_u16::<B>().unwrap();
 
         let snaplen = slice.read_u32::<B>().unwrap();
         let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(state, None, slice)?;
@@ -75,14 +73,14 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        let datalink: u16 = u32::from(self.linktype).try_into().map_err(|_| {
+        let linktype: u16 = u32::from(self.linktype).try_into().map_err(|_| {
             PcapNgWriteError::validation_error(
                 "InterfaceDescriptionBlock.linktype",
                 ContentValidationError::InvalidLinkLayerType(self.linktype),
             )
         })?;
 
-        writer.write_u16::<B>(datalink)?;
+        writer.write_u16::<B>(linktype)?;
         writer.write_u16::<B>(0)?;
         writer.write_u32::<B>(self.snaplen)?;
 
@@ -264,10 +262,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             }
             Self::IF_FILTER => {
                 if slice.is_empty() {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 0,
-                        actual: slice.len(),
-                    });
+                    return Err(OptionEntryError::Empty);
                 }
                 InterfaceDescriptionOption::IfFilter(Cow::Borrowed(slice))
             }
@@ -314,7 +309,15 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::IfSpeed(a) => a.write_opt::<B, W>(Self::IF_SPEED, writer),
             InterfaceDescriptionOption::IfTsResol(a) => a.to_u8().write_opt::<B, W>(Self::IF_TS_RESOL, writer),
             InterfaceDescriptionOption::IfTzone(a) => a.write_opt::<B, W>(Self::IF_T_ZONE, writer),
-            InterfaceDescriptionOption::IfFilter(a) => a.write_opt::<B, W>(Self::IF_FILTER, writer),
+            InterfaceDescriptionOption::IfFilter(a) => {
+                if a.is_empty() {
+                    return Err(PcapNgWriteError::validation_error(
+                        "InterfaceDescriptionOption.IfFilter",
+                        ContentValidationError::OptionEmpty,
+                    ));
+                }
+                a.write_opt::<B, W>(Self::IF_FILTER, writer)
+            }
             InterfaceDescriptionOption::IfOs(a) => a.write_opt::<B, W>(Self::IF_OS, writer),
             InterfaceDescriptionOption::IfFcsLen(a) => a.write_opt::<B, W>(Self::IF_FCS_LEN, writer),
             InterfaceDescriptionOption::IfTsOffset(a) => a.write_opt::<B, W>(Self::IF_TS_OFFSET, writer),
@@ -581,13 +584,19 @@ impl Display for InterfaceTsResolution {
 
 #[cfg(test)]
 mod tests {
+    use std::borrow::Cow;
     use std::net::{Ipv4Addr, Ipv6Addr};
     use std::time::Duration;
 
     use byteorder_slice::{BigEndian, LittleEndian};
 
-    use super::{ContentValidationError, IfIpv4AddrOpt, IfIpv6AddrOpt, InterfaceTsResolution, WriteOpt};
-    use crate::pcapng::errors::OptionEntryError;
+    use super::{
+        ContentValidationError, IfIpv4AddrOpt, IfIpv6AddrOpt, InterfaceDescriptionBlock, InterfaceDescriptionOption,
+        InterfaceTsResolution, PcapNgBlock, WriteOpt,
+    };
+    use crate::DataLink;
+    use crate::pcapng::PcapNgState;
+    use crate::pcapng::errors::{OptionEntryError, PcapNgWriteError};
 
     #[test]
     fn ipv4_address_option_roundtrip() {
@@ -631,6 +640,42 @@ mod tests {
                 expected: 17,
                 actual: 16
             })
+        ));
+    }
+
+    #[test]
+    fn interface_description_ignores_reserved_field() {
+        let data = [
+            0, 1, // Ethernet link type.
+            0x12, 0x34, // Nonzero reserved field.
+            0, 0, 0, 0, // Unlimited snaplen.
+        ];
+
+        let (rem, interface) =
+            InterfaceDescriptionBlock::from_slice::<BigEndian>(&PcapNgState::default(), &data).unwrap();
+
+        assert!(rem.is_empty());
+        assert_eq!(interface.linktype, DataLink::ETHERNET);
+        assert_eq!(interface.snaplen, 0);
+    }
+
+    #[test]
+    fn interface_description_rejects_empty_filter_when_writing() {
+        let block = InterfaceDescriptionBlock {
+            linktype: DataLink::ETHERNET,
+            snaplen: 0,
+            options: vec![InterfaceDescriptionOption::IfFilter(Cow::Borrowed(&[]))],
+        };
+
+        let error = block
+            .write_to::<BigEndian, _>(&PcapNgState::default(), &mut Vec::new())
+            .unwrap_err();
+
+        assert!(matches!(
+            error,
+            PcapNgWriteError::Validation { field, source }
+                if field == "InterfaceDescriptionOption.IfFilter"
+                    && matches!(source.as_ref(), ContentValidationError::OptionEmpty)
         ));
     }
 

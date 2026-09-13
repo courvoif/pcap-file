@@ -9,9 +9,11 @@ use crate::read_buffer::ReadBuffer;
 
 /// Reads a pcapng stream from a reader.
 ///
-/// Buffers data from the underlying reader internally.
-///
 /// Use [`Self::state`] to access the current section and interfaces.
+///
+/// Buffers data from the underlying reader internally.
+/// Any unread data already held in the internal buffer is discarded.
+/// The underlying reader may therefore be positioned beyond [`Self::bytes_parsed`].
 ///
 /// # Examples
 /// ```rust,no_run
@@ -116,7 +118,7 @@ impl<R: Read> PcapNgReader<R> {
     /// This is the permissive API for handling structurally valid blocks whose
     /// typed content may be malformed.
     ///
-    /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
+    /// A [`RawBlock`] can be validated and decoded using [`RawBlock::try_into_block`].
     ///
     /// # Errors
     ///

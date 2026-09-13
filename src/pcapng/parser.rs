@@ -21,8 +21,8 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 /// use pcap_file::pcapng::errors::PcapNgParseError;
 /// use pcap_file::pcapng::PcapNgParser;
 ///
-/// let pcap = std::fs::read("test.pcapng").expect("Error reading file");
-/// let mut src = &pcap[..];
+/// let pcapng = std::fs::read("test.pcapng").expect("Error reading file");
+/// let mut src = &pcapng[..];
 ///
 /// let (rem, mut pcapng_parser) = PcapNgParser::new(src).unwrap();
 /// src = rem;
@@ -39,7 +39,8 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 ///             // Load more data into src if parsing a stream.
 ///         },
 ///         Err(_) => {
-///             // Handle an unrecoverable parsing error.
+///             // Handle the parsing error.
+///             // Recoverable typed-content errors can instead be inspected with next_raw_block using the same src.
 ///         },
 ///     }
 /// }
@@ -117,7 +118,7 @@ impl PcapNgParser {
     /// Returns the remainder and the next [`RawBlock`].
     /// This method is more permissive than [`Self::next_block`].
     ///
-    /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
+    /// A [`RawBlock`] can be validated and decoded using [`RawBlock::try_into_block`].
     /// Section Header and Interface Description blocks are still decoded before
     /// returning so the parser can keep its state consistent. If decoding one of
     /// those state-changing blocks fails, the error is not recoverable by this
