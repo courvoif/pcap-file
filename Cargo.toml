@@ -3,7 +3,7 @@ name = "pcap-file"
 edition = "2021"
 version = "3.0.0-rc.3"
 authors = ["Courvoif <courvoif@pm.me>"]
-description = "A crate to parse, read and write Pcap and PcapNg"
+description = "A crate to parse, read, and write pcap and pcapng"
 rust-version = "1.93"
 
 license = "MIT"

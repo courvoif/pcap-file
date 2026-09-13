@@ -371,7 +371,7 @@ pub enum ContentValidationError {
     #[error(transparent)]
     CustomBlockConversionError(#[from] CustomError),
 
-    /// The content of a block is too big to fit on a block.
+    /// The content of a block is too large to fit in a block.
     #[error("Block content length exceeds u32::MAX: {0}B")]
     BlockContentTooBig(u64),
 

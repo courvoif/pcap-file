@@ -491,7 +491,7 @@ impl InterfaceTsResolution {
         Ok(InterfaceTsResolution { is_bin, resol })
     }
 
-    /// Creates a new [`InterfaceTsResolution`] from a [`u8`].
+    /// Decodes an [`InterfaceTsResolution`] from a [`u8`].
     ///
     /// # Errors
     ///

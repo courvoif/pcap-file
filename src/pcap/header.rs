@@ -39,7 +39,7 @@ pub struct PcapHeader {
 }
 
 impl PcapHeader {
-    /// Creates a new [`PcapHeader`] from a slice of bytes.
+    /// Parses a [`PcapHeader`] from a byte slice.
     ///
     /// # Errors
     ///

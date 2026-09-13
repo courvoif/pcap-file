@@ -25,7 +25,7 @@ pub struct InterfaceStatisticsBlock<'a> {
     /// When writing, that interface must already be present in the [`PcapNgState`].
     pub interface_id: u32,
 
-    /// Time elapsed since 1970-01-01 00:00:00 UTC to which these statistics refer.
+    /// Time elapsed since the Unix epoch to which these statistics refer.
     pub timestamp: Duration,
 
     /// Block options.
@@ -88,10 +88,10 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
 /// Interface Statistics Block (ISB) options.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum InterfaceStatisticsOption<'a> {
-    /// Time at which the capture started, relative to 1970-01-01 00:00:00 UTC.
+    /// Time at which the capture started, relative to the Unix epoch.
     IsbStartTime(Duration),
 
-    /// Time at which the capture ended, relative to 1970-01-01 00:00:00 UTC.
+    /// Time at which the capture ended, relative to the Unix epoch.
     IsbEndTime(Duration),
 
     /// Number of packets received from the physical interface.

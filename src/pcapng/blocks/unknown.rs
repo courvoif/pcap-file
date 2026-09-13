@@ -56,7 +56,7 @@ impl<'a> PcapNgBlock<'a> for UnknownBlock<'a> {
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         let expected = self.value.len() + 12;
-        
+
         if self.length as usize != expected {
             return Err(PcapNgWriteError::validation_error(
                 "UnknownBlock.length",

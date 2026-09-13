@@ -91,7 +91,7 @@ impl<R: Read> PcapNgReader<R> {
     /// - All other errors are terminal for this reader. After receiving one,
     ///   callers should discard the reader. Use [`Self::next_raw_block`] from
     ///   the beginning when malformed block content must be handled.
-    #[must_use = "the result must be handled before reading another block"]
+    #[must_use = "in case of an error, ignoring this result may cause an infinite loop"]
     pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
             Ok(true) => {
@@ -126,7 +126,7 @@ impl<R: Read> PcapNgReader<R> {
     /// - Transient I/O errors may be retried by calling this method again.
     /// - All other errors are terminal for this reader. After receiving an
     ///   error, callers should discard the reader.
-    #[must_use = "the result must be handled before reading another block"]
+    #[must_use = "in case of an error, ignoring this result may cause an infinite loop"]
     pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {

@@ -68,7 +68,7 @@ pub const CUSTOM_BLOCK_NON_COPIABLE: u32 = 0x40000BAD;
 /// Raw pcapng block.
 ///
 /// Stores a block header and its unparsed body bytes.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct RawBlock<'a> {
     /// Numeric block type.
     pub type_: u32,

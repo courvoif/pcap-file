@@ -98,6 +98,7 @@ impl<R: Read> PcapReader<R> {
     /// - All other errors are terminal for this reader. After receiving one,
     ///   callers should discard the reader. Use [`Self::next_raw_packet`] from
     ///   the beginning when malformed packet content must be handled.
+    #[must_use = "in case of an error, ignoring this result may cause an infinite loop"]
     pub fn next_packet(&mut self) -> Option<Result<PcapPacket<'_>, PcapReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {
@@ -127,6 +128,7 @@ impl<R: Read> PcapReader<R> {
     /// - Transient I/O errors may be retried by calling this method again.
     /// - All other errors are terminal for this reader. After receiving one,
     ///   callers should discard the reader.
+    #[must_use = "in case of an error, ignoring this result may cause an infinite loop"]
     pub fn next_raw_packet(&mut self) -> Option<Result<RawPcapPacket<'_>, PcapReadError>> {
         match self.reader.has_data_left() {
             Ok(has_data) => {

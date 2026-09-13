@@ -29,7 +29,7 @@ pub struct PacketBlock<'a> {
     /// Number of packets lost between this packet and the preceding packet.
     pub drop_count: u16,
 
-    /// Time elapsed since 1970-01-01 00:00:00 UTC.
+    /// Time elapsed since the Unix epoch.
     pub timestamp: Duration,
 
     /// Original length of the packet on the wire.
@@ -122,6 +122,13 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         // Integrity checks are done before any writing to prevent invalid state in the file
+        let captured_len: u32 = self.data.len().try_into().map_err(|_| {
+            PcapNgWriteError::validation_error(
+                "PacketBlock.data",
+                ContentValidationError::BlockContentTooBig(self.data.len() as u64),
+            )
+        })?;
+
         if (self.interface_id as usize) >= state.interfaces.len() {
             return Err(PcapNgWriteError::validation_error(
                 "PacketBlock.interface_id",
@@ -144,7 +151,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         writer.write_u16::<B>(self.drop_count)?;
         writer.write_u32::<B>(timestamp_high)?;
         writer.write_u32::<B>(timestamp_low)?;
-        writer.write_u32::<B>(self.data.len() as u32)?;
+        writer.write_u32::<B>(captured_len)?;
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
 

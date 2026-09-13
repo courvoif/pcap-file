@@ -26,7 +26,7 @@ pub struct EnhancedPacketBlock<'a> {
     /// When writing, that interface must already be present in the [`PcapNgState`].
     pub interface_id: u32,
 
-    /// Time elapsed since 1970-01-01 00:00:00 UTC.
+    /// Time elapsed since the Unix epoch.
     pub timestamp: Duration,
 
     /// Original length of the packet on the wire.
@@ -122,6 +122,13 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         // Integrity checks are done before any writing to prevent invalid state in the file
+        let captured_len: u32 = self.data.len().try_into().map_err(|_| {
+            PcapNgWriteError::validation_error(
+                "EnhancedPacketBlock.data",
+                ContentValidationError::BlockContentTooBig(self.data.len() as u64),
+            )
+        })?;
+
         if (self.interface_id as usize) >= state.interfaces.len() {
             return Err(PcapNgWriteError::validation_error(
                 "EnhancedPacketBlock.interface_id",
@@ -145,7 +152,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         writer.write_u32::<B>(self.interface_id)?;
         writer.write_u32::<B>(timestamp_high)?;
         writer.write_u32::<B>(timestamp_low)?;
-        writer.write_u32::<B>(self.data.len() as u32)?;
+        writer.write_u32::<B>(captured_len)?;
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
         writer.write_all(&[0_u8; 3][..pad_len])?;

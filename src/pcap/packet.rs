@@ -249,7 +249,7 @@ pub struct RawPcapPacket<'a> {
 }
 
 impl<'a> RawPcapPacket<'a> {
-    /// Parses a new borrowed [`RawPcapPacket`] from a slice.
+    /// Parses a borrowed [`RawPcapPacket`] from a byte slice.
     ///
     /// # Errors
     ///

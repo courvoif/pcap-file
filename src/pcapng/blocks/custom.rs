@@ -563,3 +563,17 @@ impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
         }
     }
 }
+
+impl<'a> CustomUtf8Option<'a, true> {
+    /// Converts this option into a [`CommonOption`].
+    pub fn into_common_option(self) -> CommonOption<'a> {
+        CommonOption::CustomUtf8Copiable(self)
+    }
+}
+
+impl<'a> CustomUtf8Option<'a, false> {
+    /// Converts this option into a [`CommonOption`].
+    pub fn into_common_option(self) -> CommonOption<'a> {
+        CommonOption::CustomUtf8NonCopiable(self)
+    }
+}

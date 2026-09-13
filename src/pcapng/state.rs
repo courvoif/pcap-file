@@ -110,7 +110,7 @@ impl PcapNgState {
 
     /// Decodes a timestamp using the referenced interface's resolution and offset.
     ///
-    /// Returns the time elapsed since 1970-01-01 00:00:00 UTC.
+    /// Returns the time elapsed since the Unix epoch.
     ///
     /// # Errors
     ///
@@ -149,7 +149,7 @@ impl PcapNgState {
 
     /// Encodes a timestamp using the referenced interface's resolution and offset.
     ///
-    /// `timestamp` is the time elapsed since 1970-01-01 00:00:00 UTC.
+    /// `timestamp` is the time elapsed since the Unix epoch.
     ///
     /// # Errors
     ///
