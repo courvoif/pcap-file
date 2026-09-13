@@ -21,7 +21,7 @@ fn main() -> Result<()> {
                 .interface(packet.interface_id)
                 .context("packet refers to an unknown interface")?;
 
-            println!("{} bytes on {:?}", packet.data.len(), interface.linktype);
+            println!("{} bytes on {:?}", packet.data.len(), interface.datalink);
         }
 
         remaining = next;

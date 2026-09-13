@@ -1,4 +1,4 @@
-Description: Two IDBs different linktype
+Description: Two IDBs different datalink
 Category:    basic
 
 Block counts:

@@ -202,7 +202,7 @@ fn raw_writer_rejects_invalid_state_block_lengths_without_state_update() {
         type_: INTERFACE_DESCRIPTION_BLOCK,
         initial_len: 24,
         body: vec![
-            0x00, 0x01, // linktype: Ethernet
+            0x00, 0x01, // datalink: Ethernet
             0x00, 0x00, // reserved
             0x00, 0x00, 0xFF, 0xFF, // snaplen
         ]
@@ -376,7 +376,7 @@ fn writer_handles_section_endianness_switch() {
         ..Default::default()
     };
     let little_interface = InterfaceDescriptionBlock {
-        linktype: DataLink::ETHERNET,
+        datalink: DataLink::ETHERNET,
         snaplen: 64,
         options: vec![],
     };
@@ -386,7 +386,7 @@ fn writer_handles_section_endianness_switch() {
         ..Default::default()
     };
     let big_interface = InterfaceDescriptionBlock {
-        linktype: DataLink::RAW,
+        datalink: DataLink::RAW,
         snaplen: 128,
         options: vec![],
     };
@@ -595,7 +595,7 @@ fn test_stateful_custom_block() {
 
     // Write an interface description block that sets the timestamp format.
     let interface_description = InterfaceDescriptionBlock {
-        linktype: DataLink::ETHERNET,
+        datalink: DataLink::ETHERNET,
         snaplen: 1500,
         options: vec![InterfaceDescriptionOption::IfTsResol(InterfaceTsResolution::NANO)],
     };

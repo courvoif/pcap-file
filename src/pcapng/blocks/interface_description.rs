@@ -31,7 +31,7 @@ pub struct InterfaceDescriptionBlock<'a> {
     ///
     /// The list of Standardized Link Layer Type codes is available in the
     /// [tcpdump.org link-layer header types registry](https://www.tcpdump.org/linktypes.html).
-    pub linktype: DataLink,
+    pub datalink: DataLink,
 
     /// Maximum number of bytes captured from each packet.
     ///
@@ -55,7 +55,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
             });
         }
 
-        let linktype = (slice.read_u16::<B>().unwrap() as u32).into();
+        let datalink = (slice.read_u16::<B>().unwrap() as u32).into();
 
         // Readers must ignore the reserved field, even when it is nonzero.
         let _reserved = slice.read_u16::<B>().unwrap();
@@ -64,7 +64,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(state, None, slice)?;
 
         let block = InterfaceDescriptionBlock {
-            linktype,
+            datalink,
             snaplen,
             options,
         };
@@ -73,14 +73,14 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
     }
 
     fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        let linktype: u16 = u32::from(self.linktype).try_into().map_err(|_| {
+        let datalink: u16 = u32::from(self.datalink).try_into().map_err(|_| {
             PcapNgWriteError::validation_error(
-                "InterfaceDescriptionBlock.linktype",
-                ContentValidationError::InvalidLinkLayerType(self.linktype),
+                "InterfaceDescriptionBlock.datalink",
+                ContentValidationError::InvalidLinkLayerType(self.datalink),
             )
         })?;
 
-        writer.write_u16::<B>(linktype)?;
+        writer.write_u16::<B>(datalink)?;
         writer.write_u16::<B>(0)?;
         writer.write_u32::<B>(self.snaplen)?;
 
@@ -95,9 +95,9 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
 
 impl<'a> InterfaceDescriptionBlock<'a> {
     /// Creates a new [`InterfaceDescriptionBlock`].
-    pub fn new(linktype: DataLink, snaplen: u32) -> Self {
+    pub fn new(datalink: DataLink, snaplen: u32) -> Self {
         Self {
-            linktype,
+            datalink,
             snaplen,
             options: vec![],
         }
@@ -655,14 +655,14 @@ mod tests {
             InterfaceDescriptionBlock::from_slice::<BigEndian>(&PcapNgState::default(), &data).unwrap();
 
         assert!(rem.is_empty());
-        assert_eq!(interface.linktype, DataLink::ETHERNET);
+        assert_eq!(interface.datalink, DataLink::ETHERNET);
         assert_eq!(interface.snaplen, 0);
     }
 
     #[test]
     fn interface_description_rejects_empty_filter_when_writing() {
         let block = InterfaceDescriptionBlock {
-            linktype: DataLink::ETHERNET,
+            datalink: DataLink::ETHERNET,
             snaplen: 0,
             options: vec![InterfaceDescriptionOption::IfFilter(Cow::Borrowed(&[]))],
         };

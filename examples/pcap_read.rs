@@ -15,7 +15,7 @@ fn main() -> Result<()> {
 
     // packets.by_ref() keeps the iterator available, and get_ref() provides access to
     // the original reader and its global header.
-    println!("link type: {:?}", packets.get_ref().header().linktype);
+    println!("data link: {:?}", packets.get_ref().header().datalink);
 
     Ok(())
 }

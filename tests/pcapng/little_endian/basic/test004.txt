@@ -1,4 +1,4 @@
-Description: Two IDBs same linktype, different snaplen
+Description: Two IDBs same datalink, different snaplen
 Category:    basic
 
 Block counts:

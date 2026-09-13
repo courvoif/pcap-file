@@ -15,7 +15,7 @@ use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 #[test]
 fn writer_rejects_timestamp_before_interface_offset() {
     let interface = InterfaceDescriptionBlock {
-        linktype: DataLink::ETHERNET,
+        datalink: DataLink::ETHERNET,
         snaplen: 0xFFFF,
         options: vec![
             InterfaceDescriptionOption::IfTsResol(InterfaceTsResolution::NANO),
@@ -46,7 +46,7 @@ fn writer_rejects_timestamp_before_interface_offset() {
 #[test]
 fn negative_offset_roundtrip_accepts_timestamp_at_unix_epoch() {
     let interface = InterfaceDescriptionBlock {
-        linktype: DataLink::ETHERNET,
+        datalink: DataLink::ETHERNET,
         snaplen: 0xFFFF,
         options: vec![
             InterfaceDescriptionOption::IfTsResol(InterfaceTsResolution::SEC),
@@ -77,7 +77,7 @@ fn negative_offset_roundtrip_accepts_timestamp_at_unix_epoch() {
 #[test]
 fn reader_rejects_timestamp_before_unix_epoch() {
     let interface = InterfaceDescriptionBlock {
-        linktype: DataLink::ETHERNET,
+        datalink: DataLink::ETHERNET,
         snaplen: 0xFFFF,
         options: vec![
             InterfaceDescriptionOption::IfTsResol(InterfaceTsResolution::SEC),

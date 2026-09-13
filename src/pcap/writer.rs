@@ -53,7 +53,7 @@ impl<W: Write> PcapWriter<W> {
     ///     ts_correction: 0,
     ///     ts_accuracy: 0,
     ///     snaplen: 65535,
-    ///     linktype: DataLink::ETHERNET,
+    ///     datalink: DataLink::ETHERNET,
     ///     ts_resolution: PcapTsResolution::Microsecond,
     ///     endianness: Endianness::native()
     /// };

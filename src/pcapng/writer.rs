@@ -126,7 +126,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// let data = [0u8; 10];
     ///
     /// let interface = InterfaceDescriptionBlock {
-    ///     linktype: DataLink::ETHERNET,
+    ///     datalink: DataLink::ETHERNET,
     ///     snaplen: 0xFFFF,
     ///     options: vec![],
     /// };
@@ -181,7 +181,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// let data = [0u8; 10];
     ///
     /// let interface = InterfaceDescriptionBlock {
-    ///     linktype: DataLink::ETHERNET,
+    ///     datalink: DataLink::ETHERNET,
     ///     snaplen: 0xFFFF,
     ///     options: vec![],
     /// };

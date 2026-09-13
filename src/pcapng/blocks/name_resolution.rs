@@ -71,7 +71,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         for record in &self.records {
             len += record.write_to::<B, _>(writer)?;
         }
-        
+
         if end_record_count == 0 {
             len += Record::End.write_to::<B, _>(writer)?;
         }

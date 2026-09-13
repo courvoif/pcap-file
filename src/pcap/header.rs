@@ -29,7 +29,7 @@ pub struct PcapHeader {
     pub snaplen: u32,
 
     /// Link-layer protocol of captured packets.
-    pub linktype: DataLink,
+    pub datalink: DataLink,
 
     /// Resolution of packet timestamps.
     pub ts_resolution: PcapTsResolution,
@@ -79,7 +79,7 @@ impl PcapHeader {
                 ts_correction: src.read_i32::<B>().unwrap(),
                 ts_accuracy: src.read_u32::<B>().unwrap(),
                 snaplen: src.read_u32::<B>().unwrap(),
-                linktype: DataLink::from(src.read_u32::<B>().unwrap()),
+                datalink: DataLink::from(src.read_u32::<B>().unwrap()),
                 ts_resolution,
                 endianness,
             };
@@ -115,7 +115,7 @@ impl PcapHeader {
             writer.write_i32::<B>(header.ts_correction)?;
             writer.write_u32::<B>(header.ts_accuracy)?;
             writer.write_u32::<B>(header.snaplen)?;
-            writer.write_u32::<B>(header.linktype.into())?;
+            writer.write_u32::<B>(header.datalink.into())?;
 
             Ok(24)
         }
@@ -134,7 +134,7 @@ impl PcapHeader {
 ///     ts_correction: 0,
 ///     ts_accuracy: 0,
 ///     snaplen: 65535,
-///     linktype: DataLink::ETHERNET,
+///     datalink: DataLink::ETHERNET,
 ///     ts_resolution: PcapTsResolution::Microsecond,
 ///     endianness: Endianness::native()
 /// };
@@ -147,7 +147,7 @@ impl Default for PcapHeader {
             ts_correction: 0,
             ts_accuracy: 0,
             snaplen: 65535,
-            linktype: DataLink::ETHERNET,
+            datalink: DataLink::ETHERNET,
             ts_resolution: PcapTsResolution::Microsecond,
             endianness: Endianness::default(),
         }
