@@ -107,8 +107,7 @@ impl<W: Write> PcapWriter<W> {
 
     /// Writes a [`PcapPacket`].
     ///
-    /// I/O errors can leave the output stream partially written. After any error,
-    /// callers should assume the pcap stream is no longer usable.
+    /// After an I/O error, callers should assume the pcap stream is no longer usable.
     ///
     /// # Errors
     ///
@@ -128,8 +127,7 @@ impl<W: Write> PcapWriter<W> {
 
     /// Writes a [`RawPcapPacket`].
     ///
-    /// I/O errors can leave the output stream partially written. After any error,
-    /// callers should assume the pcap stream is no longer usable.
+    /// After an I/O error, callers should assume the pcap stream is no longer usable.
     ///
     /// # Notes
     /// The packet fields are not validated; callers are responsible for their correctness.

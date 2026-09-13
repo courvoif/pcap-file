@@ -341,6 +341,15 @@ pub enum ContentValidationError {
         actual: usize,
     },
 
+    /// The captured length of the packet exceeds the interface snapshot length.
+    #[error("Captured length exceeds interface snaplen: {captured_len}B captured, snaplen is {snaplen}B")]
+    CapturedLengthExceedsSnaplen {
+        /// Captured packet length.
+        captured_len: usize,
+        /// Interface snapshot length.
+        snaplen: u32,
+    },
+
     /// The Name Resolution record entry size is invalid.
     #[error("Invalid record size: expected {expected}B, got {actual}B")]
     RecordWrongSize {

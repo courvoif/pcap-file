@@ -90,6 +90,15 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let captured_len = slice.read_u32::<B>().unwrap();
         let original_len = slice.read_u32::<B>().unwrap();
 
+        let snaplen = state.interfaces[interface_id as usize].snaplen;
+        if snaplen != 0 && captured_len > snaplen {
+            return Err(ContentValidationError::CapturedLengthExceedsSnaplen {
+                captured_len: captured_len as usize,
+                snaplen,
+            }
+            .into());
+        }
+
         if original_len < captured_len {
             return Err(ContentValidationError::InvalidOriginalLength(original_len, captured_len as usize).into());
         }
@@ -133,6 +142,17 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
             return Err(PcapNgWriteError::validation_error(
                 "PacketBlock.interface_id",
                 ContentValidationError::InvalidInterfaceId(self.interface_id as u32),
+            ));
+        }
+
+        let snaplen = state.interfaces[self.interface_id as usize].snaplen;
+        if snaplen != 0 && captured_len > snaplen {
+            return Err(PcapNgWriteError::validation_error(
+                "PacketBlock.data",
+                ContentValidationError::CapturedLengthExceedsSnaplen {
+                    captured_len: self.data.len(),
+                    snaplen,
+                },
             ));
         }
 

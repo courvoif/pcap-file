@@ -105,8 +105,7 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Writes a [`Block`].
     ///
-    /// I/O errors can leave the output stream partially written. After any error,
-    /// callers should assume the pcapng stream is no longer usable.
+    /// After an I/O error, callers should assume the pcapng stream is no longer usable.
     ///
     /// # Errors
     ///
@@ -161,8 +160,7 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Writes a [`PcapNgBlock`].
     ///
-    /// I/O errors can leave the output stream partially written. After any error,
-    /// callers should assume the pcapng stream is no longer usable.
+    /// After an I/O error, callers should assume the pcapng stream is no longer usable.
     ///
     /// # Errors
     ///
@@ -204,8 +202,7 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Writes a [`RawBlock`].
     ///
-    /// I/O errors can leave the output stream partially written. After any error,
-    /// callers should assume the pcapng stream is no longer usable.
+    /// After an I/O error, callers should assume the pcapng stream is no longer usable.
     ///
     /// Validates the raw block length fields, but does not validate non-state
     /// block contents before writing.
