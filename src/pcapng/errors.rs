@@ -1,10 +1,12 @@
+/* ----- Imports ----- */
+
 use std::{fmt::Display, time::Duration};
 
 use thiserror::Error;
 
 use crate::{
     DataLink,
-    pcapng::blocks::{block_name, interface_description::InterfaceTsResolution},
+    pcapng::blocks::{Block, block_name, interface_description::InterfaceTsResolution},
 };
 
 /* ----- PcapError ----- */
@@ -107,15 +109,9 @@ pub enum PcapNgWriteError {
     #[error("I/O error during writing")]
     Io(#[from] std::io::Error),
 
-    /// A field failed validation before being written.
-    #[error("Field `{field}` failed validation during writing")]
-    Validation {
-        /// Name of the field that failed validation.
-        field: &'static str,
-        /// Underlying validation error.
-        // Boxed to keep the error small
-        source: Box<ContentValidationError>,
-    },
+    /// Content validation failed while writing.
+    #[error(transparent)]
+    Validation(Box<ContentValidationError>),
 
     /// The raw block format is invalid.
     #[error("Invalid raw block format")]
@@ -126,13 +122,9 @@ pub enum PcapNgWriteError {
     StateUpdate(#[from] StateUpdateError),
 }
 
-impl PcapNgWriteError {
-    /// Creates a write error for a field that failed content validation.
-    pub(crate) fn validation_error(field: &'static str, source: ContentValidationError) -> Self {
-        Self::Validation {
-            field,
-            source: Box::new(source),
-        }
+impl From<ContentValidationError> for PcapNgWriteError {
+    fn from(source: ContentValidationError) -> Self {
+        Self::Validation(Box::new(source))
     }
 }
 
@@ -191,7 +183,7 @@ pub enum RawBlockParseError {
 
 /* ----- BlockConversionError ----- */
 
-/// Errors that can occur while converting a raw block into a typed block.
+/// Errors that can occur while decoding a block or resolving its packet data.
 #[derive(Debug, Error)]
 pub struct BlockConversionError {
     /// Numeric block type
@@ -212,11 +204,28 @@ impl Display for BlockConversionError {
     }
 }
 
+/* ----- PacketConversionError ----- */
+
+/// Errors that can occur while converting a typed block into a packet view.
+#[derive(Debug, Error)]
+pub enum PacketConversionError<'a> {
+    /// The original block, which does not contain a packet.
+    #[error("The block does not contain a packet")]
+    NotPacket(Block<'a>),
+    /// The packet's interface does not exist in the supplied section state.
+    #[error("Invalid interface ID: {0}")]
+    InvalidInterfaceId(u32),
+}
+
 /* ----- BlockContentParseError ----- */
 
 /// Errors that can occur while parsing the content of a block.
 #[derive(Debug, Error)]
 pub enum BlockContentParseError {
+    /// This block has no typed representation. Use the raw block API.
+    #[error("Unknown block type: {0:#X}")]
+    UnknownBlock(u32),
+
     /// The block is too short.
     #[error("Block content too small: need {needed}B, got {actual}B")]
     BlockContentTooSmall {
@@ -256,6 +265,23 @@ pub enum ContentValidationError {
     /// A reserved field is not zero.
     #[error("Invalid reserved field: {0}")]
     InvalidReservedField(u16),
+    /// Captured data exceeds the interface capture limit.
+    #[error("Captured length {captured_len} exceeds interface snaplen {snaplen}")]
+    CapturedLengthExceedsSnaplen {
+        /// Captured bytes.
+        captured_len: usize,
+        /// Interface capture limit.
+        snaplen: u32,
+    },
+
+    /// An opaque record uses a reserved or known type code.
+    #[error("Invalid opaque record type: {0}")]
+    InvalidRecordType(u16),
+
+    /// A record name is empty or contains an embedded NUL byte.
+    #[error("Record names must be nonempty and must not contain NUL bytes")]
+    InvalidRecordName,
+
     /// The timestamp resolution value is invalid.
     #[error("Invalid timestamp resolution: {0:#X} (is_bin: {1}, resol:{2})")]
     InvalidTsResolution(u8, bool, u8),

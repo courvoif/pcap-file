@@ -20,7 +20,10 @@ pub struct SystemdJournalExportBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
-    fn from_slice<B: ByteOrder>(
+    const TYPE: u32 = 0x00000009;
+    const NAME: &'static str = "systemd Journal Export Block";
+
+    fn from_body<B: ByteOrder>(
         _state: &PcapNgState,
         slice: &'a [u8],
     ) -> Result<(&'a [u8], Self), BlockContentParseError> {
@@ -30,7 +33,7 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
         Ok((&[], packet))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(
+    fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         _state: &PcapNgState,
         writer: &mut W,

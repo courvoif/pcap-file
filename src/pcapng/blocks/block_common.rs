@@ -1,5 +1,7 @@
 //! Common block types.
 
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::io::Write;
 
@@ -17,32 +19,12 @@ use super::packet::PacketBlock;
 use super::section_header::SectionHeaderBlock;
 use super::simple_packet::SimplePacketBlock;
 use super::systemd_journal_export::SystemdJournalExportBlock;
-use super::unknown::UnknownBlock;
 use crate::pcapng::errors::{
     BlockContentParseError, BlockConversionError, PcapNgFormatError, PcapNgWriteError, RawBlockParseError,
 };
 use crate::pcapng::{ContentValidationError, PcapNgState};
 
-/// Section header block type
-pub const SECTION_HEADER_BLOCK: u32 = 0x0A0D0D0A;
-/// Interface description block type
-pub const INTERFACE_DESCRIPTION_BLOCK: u32 = 0x00000001;
-/// Packet block type
-pub const PACKET_BLOCK: u32 = 0x00000002;
-/// Simple packet block type
-pub const SIMPLE_PACKET_BLOCK: u32 = 0x00000003;
-/// Name resolution block type
-pub const NAME_RESOLUTION_BLOCK: u32 = 0x00000004;
-/// Interface statistic block type
-pub const INTERFACE_STATISTIC_BLOCK: u32 = 0x00000005;
-/// Enhanced packet block type
-pub const ENHANCED_PACKET_BLOCK: u32 = 0x00000006;
-/// Systemd journal export block type
-pub const SYSTEMD_JOURNAL_EXPORT_BLOCK: u32 = 0x00000009;
-/// Custom block type, copiable
-pub const CUSTOM_BLOCK_COPIABLE: u32 = 0x00000BAD;
-/// Custom block type, non-copiable
-pub const CUSTOM_BLOCK_NON_COPIABLE: u32 = 0x40000BAD;
+/* ----- Raw blocks ----- */
 
 //   0               1               2               3
 //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -57,7 +39,7 @@ pub const CUSTOM_BLOCK_NON_COPIABLE: u32 = 0x40000BAD;
 //  |                      Block Total Length                       |
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 /// PcapNg Block
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct RawBlock<'a> {
     /// Type field
     pub type_: u32,
@@ -79,7 +61,7 @@ impl<'a> RawBlock<'a> {
         let type_ = slice.read_u32::<B>().expect("slice length checked above");
 
         // Special case for the section header because we don't know the endianness yet
-        if type_ == SECTION_HEADER_BLOCK {
+        if type_ == SectionHeaderBlock::TYPE {
             let initial_len = slice.read_u32::<BigEndian>().expect("slice length checked above");
 
             // Check the first field of the Section header to find the endianness
@@ -103,10 +85,6 @@ impl<'a> RawBlock<'a> {
             type_: u32,
             initial_len: u32,
         ) -> Result<(&[u8], RawBlock<'_>), RawBlockParseError> {
-            if !initial_len.is_multiple_of(4) {
-                return Err(PcapNgFormatError::BlockNotAligned(initial_len as usize).into());
-            }
-
             if initial_len < 12 {
                 return Err(PcapNgFormatError::BlockTooShort(12, initial_len as usize).into());
             }
@@ -115,7 +93,7 @@ impl<'a> RawBlock<'a> {
             if slice.len() < initial_len as usize - 8 {
                 return Err(RawBlockParseError::IncompleteBuffer(
                     initial_len as usize - 8,
-                    slice.len() + 8,
+                    slice.len(),
                 ));
             }
 
@@ -126,16 +104,14 @@ impl<'a> RawBlock<'a> {
 
             let trailer_len = rem.read_u32::<B>().expect("slice length checked above");
 
-            if initial_len != trailer_len {
-                return Err(PcapNgFormatError::BlockLengthMismatch(initial_len, trailer_len).into());
-            }
-
             let block = RawBlock {
                 type_,
                 initial_len,
                 body: Cow::Borrowed(body),
                 trailer_len,
             };
+
+            block.validate()?;
 
             Ok((rem, block))
         }
@@ -183,24 +159,28 @@ impl<'a> RawBlock<'a> {
         Ok(())
     }
 
-    /// Tries to convert a [`RawBlock`] into a [`Block`], using a [`PcapNgState`].
+    /// Decodes a raw block after checking framing, without semantic validation.
+    /// Call [`Block::validate`] explicitly to validate the decoded content.
     /// The byteorder is defined by the `state`.
-    pub fn try_into_block(self, state: &PcapNgState) -> Result<Block<'a>, BlockConversionError> {
+    pub fn try_into_block(&self, state: &PcapNgState) -> Result<Block<'a>, BlockConversionError> {
         match state.section.endianness {
             crate::Endianness::Big => Block::try_from_raw_block::<BigEndian>(state, self),
             crate::Endianness::Little => Block::try_from_raw_block::<LittleEndian>(state, self),
         }
     }
 
-    /// Tries to convert a [`RawBlock`] into a [`Block`], using a [`PcapNgState`].
-    /// The byteorder is defined by the caller
+    /// Decodes a raw block after checking framing, without semantic validation.
+    /// Call [`Block::validate`] explicitly to validate the decoded content.
+    /// The byteorder is defined by the caller.
     pub fn try_into_block_with_byteorder<B: ByteOrder>(
-        self,
+        &self,
         state: &PcapNgState,
     ) -> Result<Block<'a>, BlockConversionError> {
         Block::try_from_raw_block::<B>(state, self)
     }
 }
+
+/* ----- Parsed blocks ----- */
 
 /// PcapNg parsed blocks
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -225,8 +205,6 @@ pub enum Block<'a> {
     CustomCopiable(CustomBlock<'a, true>),
     /// Custom block, non-copiable
     CustomNonCopiable(CustomBlock<'a, false>),
-    /// Unknown block
-    Unknown(UnknownBlock<'a>),
 }
 
 impl<'a> Block<'a> {
@@ -237,89 +215,88 @@ impl<'a> Block<'a> {
     ///
     /// If `raw_block` owns its body, the block content is parsed and then
     /// converted into an owned [`Block`] before being returned.
+    /// Framing is checked, but semantic validation is left to [`Self::validate`].
     pub fn try_from_raw_block<B: ByteOrder>(
         state: &PcapNgState,
-        raw_block: RawBlock<'a>,
+        raw_block: &RawBlock<'a>,
     ) -> Result<Block<'a>, BlockConversionError> {
+        let type_ = raw_block.type_;
+
+        return match &raw_block.body {
+            Cow::Borrowed(body) => parse_body::<B>(state, type_, body),
+            Cow::Owned(body) => parse_body::<B>(state, type_, body).map(|block| block.into_owned()),
+        };
+
         fn parse_body<'a, B: ByteOrder>(
             state: &PcapNgState,
             type_: u32,
-            initial_len: u32,
             body: &'a [u8],
         ) -> Result<Block<'a>, BlockConversionError> {
             match type_ {
-                SECTION_HEADER_BLOCK => {
-                    SectionHeaderBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SectionHeader(blk))
+                SectionHeaderBlock::TYPE => {
+                    SectionHeaderBlock::from_body::<B>(state, body).map(|(_, blk)| Block::SectionHeader(blk))
                 }
-                INTERFACE_DESCRIPTION_BLOCK => InterfaceDescriptionBlock::from_slice::<B>(state, body)
+                InterfaceDescriptionBlock::TYPE => InterfaceDescriptionBlock::from_body::<B>(state, body)
                     .map(|(_, blk)| Block::InterfaceDescription(blk)),
-                PACKET_BLOCK => PacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::Packet(blk)),
-                SIMPLE_PACKET_BLOCK => {
-                    SimplePacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::SimplePacket(blk))
+                PacketBlock::TYPE => PacketBlock::from_body::<B>(state, body).map(|(_, blk)| Block::Packet(blk)),
+                SimplePacketBlock::TYPE => {
+                    SimplePacketBlock::from_body::<B>(state, body).map(|(_, blk)| Block::SimplePacket(blk))
                 }
-                NAME_RESOLUTION_BLOCK => {
-                    NameResolutionBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::NameResolution(blk))
+                NameResolutionBlock::TYPE => {
+                    NameResolutionBlock::from_body::<B>(state, body).map(|(_, blk)| Block::NameResolution(blk))
                 }
-                INTERFACE_STATISTIC_BLOCK => InterfaceStatisticsBlock::from_slice::<B>(state, body)
+                InterfaceStatisticsBlock::TYPE => InterfaceStatisticsBlock::from_body::<B>(state, body)
                     .map(|(_, blk)| Block::InterfaceStatistics(blk)),
-                ENHANCED_PACKET_BLOCK => {
-                    EnhancedPacketBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::EnhancedPacket(blk))
+                EnhancedPacketBlock::TYPE => {
+                    EnhancedPacketBlock::from_body::<B>(state, body).map(|(_, blk)| Block::EnhancedPacket(blk))
                 }
-                SYSTEMD_JOURNAL_EXPORT_BLOCK => SystemdJournalExportBlock::from_slice::<B>(state, body)
+                SystemdJournalExportBlock::TYPE => SystemdJournalExportBlock::from_body::<B>(state, body)
                     .map(|(_, blk)| Block::SystemdJournalExport(blk)),
-                CUSTOM_BLOCK_COPIABLE => {
-                    CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomCopiable(blk))
+                CustomBlock::<true>::TYPE => {
+                    CustomBlock::from_body::<B>(state, body).map(|(_, blk)| Block::CustomCopiable(blk))
                 }
-                CUSTOM_BLOCK_NON_COPIABLE => {
-                    CustomBlock::from_slice::<B>(state, body).map(|(_, blk)| Block::CustomNonCopiable(blk))
+                CustomBlock::<false>::TYPE => {
+                    CustomBlock::from_body::<B>(state, body).map(|(_, blk)| Block::CustomNonCopiable(blk))
                 }
-                _ => Ok(Block::Unknown(UnknownBlock::new(type_, initial_len, body))),
+                _ => Err(BlockContentParseError::UnknownBlock(type_)),
             }
             .map_err(|source| BlockConversionError {
                 type_,
                 source: source.into(),
             })
         }
-
-        let type_ = raw_block.type_;
-        let initial_len = raw_block.initial_len;
-
-        match raw_block.body {
-            Cow::Borrowed(body) => parse_body::<B>(state, type_, initial_len, body),
-            Cow::Owned(body) => parse_body::<B>(state, type_, initial_len, &body).map(|block| block.into_owned()),
-        }
     }
 
-    /// Writes a [`Block`] to a writer, using a [`PcapNgState`].
+    /// Encodes a framed block without semantic validation.
+    /// Call [`Self::validate`] explicitly, or use a strict [`crate::pcapng::PcapNgWriter`].
+    /// Encoding conversions and size limits are checked in either case.
     pub fn write_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
         writer: &mut W,
     ) -> Result<usize, PcapNgWriteError> {
         return match self {
-            Self::SectionHeader(b) => inner_write_to::<B, _, W>(state, b, SECTION_HEADER_BLOCK, writer),
-            Self::InterfaceDescription(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_DESCRIPTION_BLOCK, writer),
-            Self::Packet(b) => inner_write_to::<B, _, W>(state, b, PACKET_BLOCK, writer),
-            Self::SimplePacket(b) => inner_write_to::<B, _, W>(state, b, SIMPLE_PACKET_BLOCK, writer),
-            Self::NameResolution(b) => inner_write_to::<B, _, W>(state, b, NAME_RESOLUTION_BLOCK, writer),
-            Self::InterfaceStatistics(b) => inner_write_to::<B, _, W>(state, b, INTERFACE_STATISTIC_BLOCK, writer),
-            Self::EnhancedPacket(b) => inner_write_to::<B, _, W>(state, b, ENHANCED_PACKET_BLOCK, writer),
-            Self::SystemdJournalExport(b) => inner_write_to::<B, _, W>(state, b, SYSTEMD_JOURNAL_EXPORT_BLOCK, writer),
-            Self::CustomCopiable(b) => inner_write_to::<B, _, W>(state, b, CUSTOM_BLOCK_COPIABLE, writer),
-            Self::CustomNonCopiable(b) => inner_write_to::<B, _, W>(state, b, CUSTOM_BLOCK_NON_COPIABLE, writer),
-            Self::Unknown(b) => inner_write_to::<B, _, W>(state, b, b.type_, writer),
+            Self::SectionHeader(b) => inner_write_to::<B, _, W>(state, b, writer),
+            Self::InterfaceDescription(b) => inner_write_to::<B, _, W>(state, b, writer),
+            Self::Packet(b) => inner_write_to::<B, _, W>(state, b, writer),
+            Self::SimplePacket(b) => inner_write_to::<B, _, W>(state, b, writer),
+            Self::NameResolution(b) => inner_write_to::<B, _, W>(state, b, writer),
+            Self::InterfaceStatistics(b) => inner_write_to::<B, _, W>(state, b, writer),
+            Self::EnhancedPacket(b) => inner_write_to::<B, _, W>(state, b, writer),
+            Self::SystemdJournalExport(b) => inner_write_to::<B, _, W>(state, b, writer),
+            Self::CustomCopiable(b) => inner_write_to::<B, _, W>(state, b, writer),
+            Self::CustomNonCopiable(b) => inner_write_to::<B, _, W>(state, b, writer),
         };
 
         /// Writes a block to the writer, including its header and padding.
         fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(
             state: &PcapNgState,
             block: &BL,
-            block_code: u32,
             writer: &mut W,
         ) -> Result<usize, PcapNgWriteError> {
             // Fake write to compute the data length
-            // It also do all the write checks, so any malformed block will fail before anything is written on the writer
-            let data_len = block.write_to::<B, _>(state, &mut std::io::sink())?;
+            // Required encoding conversions fail before the destination is written.
+            let data_len = block.write_body_to::<B, _>(state, &mut std::io::sink())?;
             let pad_len = (4 - (data_len % 4)) % 4;
 
             // Block length calculation
@@ -327,27 +304,72 @@ impl<'a> Block<'a> {
 
             // Check that there wasn't an overflow
             if block_len < data_len {
-                return Err(PcapNgWriteError::validation_error(
-                    "Block.total_length",
-                    ContentValidationError::BlockContentTooBig(data_len as u64),
-                ));
+                return Err(PcapNgWriteError::from(ContentValidationError::BlockContentTooBig(
+                    data_len as u64,
+                )));
             }
 
             // Check that the block length fits within the u32 limit
-            let block_len: u32 = block_len.try_into().map_err(|_| {
-                PcapNgWriteError::validation_error(
-                    "Block.total_length",
-                    ContentValidationError::BlockContentTooBig(block_len as u64),
-                )
-            })?;
+            let block_len: u32 = block_len
+                .try_into()
+                .map_err(|_| PcapNgWriteError::from(ContentValidationError::BlockContentTooBig(block_len as u64)))?;
 
-            writer.write_u32::<B>(block_code)?;
+            writer.write_u32::<B>(BL::TYPE)?;
             writer.write_u32::<B>(block_len)?;
-            block.write_to::<B, _>(state, writer)?;
+            block.write_body_to::<B, _>(state, writer)?;
             writer.write_all(&[0_u8; 3][..pad_len])?;
             writer.write_u32::<B>(block_len)?;
 
             Ok(block_len as usize)
+        }
+    }
+
+    /// Validates the block's semantic constraints against the current state.
+    pub fn validate(&self, state: &PcapNgState) -> Result<(), ContentValidationError> {
+        match self {
+            Self::SectionHeader(block) => block.validate(state),
+            Self::InterfaceDescription(block) => block.validate(state),
+            Self::Packet(block) => block.validate(state),
+            Self::SimplePacket(block) => block.validate(state),
+            Self::NameResolution(block) => block.validate(state),
+            Self::InterfaceStatistics(block) => block.validate(state),
+            Self::EnhancedPacket(block) => block.validate(state),
+            Self::SystemdJournalExport(block) => block.validate(state),
+            Self::CustomCopiable(block) => block.validate(state),
+            Self::CustomNonCopiable(block) => block.validate(state),
+        }
+    }
+
+    /// Converts this block into a packet view using the current interface state.
+    ///
+    /// See [`crate::pcapng::PcapNgPacket::from_block`] for ownership and errors.
+    pub fn into_pcapng_packet(
+        self,
+        state: &PcapNgState,
+    ) -> Result<crate::pcapng::PcapNgPacket<'a>, crate::pcapng::PacketConversionError<'a>> {
+        crate::pcapng::PcapNgPacket::from_block(self, state)
+    }
+
+    /// Returns the numeric block type.
+    pub fn type_code(&self) -> u32 {
+        match self {
+            Self::SectionHeader(_) => <SectionHeaderBlock as PcapNgBlock>::TYPE,
+            Self::InterfaceDescription(_) => <InterfaceDescriptionBlock as PcapNgBlock>::TYPE,
+            Self::Packet(_) => <PacketBlock as PcapNgBlock>::TYPE,
+            Self::SimplePacket(_) => <SimplePacketBlock as PcapNgBlock>::TYPE,
+            Self::NameResolution(_) => <NameResolutionBlock as PcapNgBlock>::TYPE,
+            Self::InterfaceStatistics(_) => <InterfaceStatisticsBlock as PcapNgBlock>::TYPE,
+            Self::EnhancedPacket(_) => <EnhancedPacketBlock as PcapNgBlock>::TYPE,
+            Self::SystemdJournalExport(_) => <SystemdJournalExportBlock as PcapNgBlock>::TYPE,
+            Self::CustomCopiable(_) => <CustomBlock<'a, true> as PcapNgBlock>::TYPE,
+            Self::CustomNonCopiable(_) => <CustomBlock<'a, false> as PcapNgBlock>::TYPE,
+        }
+    }
+
+    pub(crate) fn conversion_error(&self, source: ContentValidationError) -> BlockConversionError {
+        BlockConversionError {
+            type_: self.type_code(),
+            source: Box::new(source.into()),
         }
     }
 
@@ -512,54 +534,117 @@ impl<'a> Block<'a> {
     }
 }
 
+/* ----- Common block interface ----- */
+
 /// Common interface for the PcapNg blocks
 pub trait PcapNgBlock<'a> {
-    /// Parse a new block from a slice, using a [`PcapNgState`].
-    fn from_slice<B: ByteOrder>(
+    /// Numeric block type stored in the frame.
+    const TYPE: u32;
+    /// Human-readable block name.
+    const NAME: &'static str;
+
+    /// Explicitly validates semantic constraints.
+    /// Low-level decoding and encoding
+    /// do not call this method; strict parsers and writers do.
+    fn validate(&self, _state: &PcapNgState) -> Result<(), ContentValidationError> {
+        Ok(())
+    }
+
+    /// Decodes a block body using the supplied state, without semantic validation.
+    /// Required bounds and representation checks still apply.
+    fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         slice: &'a [u8],
     ) -> Result<(&'a [u8], Self), BlockContentParseError>
     where
         Self: std::marker::Sized;
 
-    /// Write the content of a block into a writer, using a [`PcapNgState`].
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError>;
+    /// Encodes a block body without semantic validation.
+    /// Required conversions return errors even if [`Self::validate`] was not called.
+    fn write_body_to<B: ByteOrder, W: Write>(
+        &self,
+        state: &PcapNgState,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError>;
 
     /// Convert a block into the [`Block`] enumeration
     fn into_block(self) -> Block<'a>;
 }
 
+/* ----- Block names ----- */
+
 /// Convert a block type into its name
 pub fn block_name(type_: u32) -> &'static str {
     match type_ {
-        SECTION_HEADER_BLOCK => "Section Header Block",
-        INTERFACE_DESCRIPTION_BLOCK => "Interface Description Block",
-        PACKET_BLOCK => "Packet Block",
-        SIMPLE_PACKET_BLOCK => "Simple Packet Block",
-        NAME_RESOLUTION_BLOCK => "Name Resolution Block",
-        INTERFACE_STATISTIC_BLOCK => "Interface Statistics Block",
-        ENHANCED_PACKET_BLOCK => "Enhanced Packet Block",
-        SYSTEMD_JOURNAL_EXPORT_BLOCK => "Systemd Journal Export Block",
-        CUSTOM_BLOCK_COPIABLE => "Custom Block (Copiable)",
-        CUSTOM_BLOCK_NON_COPIABLE => "Custom Block (Non-Copiable)",
+        SectionHeaderBlock::TYPE => SectionHeaderBlock::NAME,
+        InterfaceDescriptionBlock::TYPE => InterfaceDescriptionBlock::NAME,
+        PacketBlock::TYPE => PacketBlock::NAME,
+        SimplePacketBlock::TYPE => SimplePacketBlock::NAME,
+        NameResolutionBlock::TYPE => NameResolutionBlock::NAME,
+        InterfaceStatisticsBlock::TYPE => InterfaceStatisticsBlock::NAME,
+        EnhancedPacketBlock::TYPE => EnhancedPacketBlock::NAME,
+        SystemdJournalExportBlock::TYPE => SystemdJournalExportBlock::NAME,
+        CustomBlock::<true>::TYPE => CustomBlock::<true>::NAME,
+        CustomBlock::<false>::TYPE => CustomBlock::<false>::NAME,
         _ => "Unknown Block",
     }
 }
 
+/* ----- Tests ----- */
+
 #[cfg(test)]
 mod tests {
+    /* ----- Imports ----- */
+
     use std::borrow::Cow;
 
     use byteorder_slice::BigEndian;
 
-    use super::{Block, RawBlock, SECTION_HEADER_BLOCK};
+    use super::*;
     use crate::Endianness;
     use crate::pcapng::{PcapNgFormatError, PcapNgState};
+
+    /* ----- Block metadata ----- */
+
+    #[test]
+    fn block_type_codes_and_names_match_wire_format() {
+        let blocks = [
+            (SectionHeaderBlock::TYPE, SectionHeaderBlock::NAME, 0x0A0D0D0A),
+            (
+                InterfaceDescriptionBlock::TYPE,
+                InterfaceDescriptionBlock::NAME,
+                0x00000001,
+            ),
+            (PacketBlock::TYPE, PacketBlock::NAME, 0x00000002),
+            (SimplePacketBlock::TYPE, SimplePacketBlock::NAME, 0x00000003),
+            (NameResolutionBlock::TYPE, NameResolutionBlock::NAME, 0x00000004),
+            (
+                InterfaceStatisticsBlock::TYPE,
+                InterfaceStatisticsBlock::NAME,
+                0x00000005,
+            ),
+            (EnhancedPacketBlock::TYPE, EnhancedPacketBlock::NAME, 0x00000006),
+            (
+                SystemdJournalExportBlock::TYPE,
+                SystemdJournalExportBlock::NAME,
+                0x00000009,
+            ),
+            (CustomBlock::<true>::TYPE, CustomBlock::<true>::NAME, 0x00000BAD),
+            (CustomBlock::<false>::TYPE, CustomBlock::<false>::NAME, 0x40000BAD),
+        ];
+        for (type_code, name, expected) in blocks {
+            assert_eq!(type_code, expected);
+            assert_eq!(block_name(type_code), name);
+        }
+        assert_eq!(block_name(u32::MAX), "Unknown Block");
+    }
+
+    /* ----- Raw block conversion and validation ----- */
 
     #[test]
     fn try_from_raw_block_accepts_owned_bodies() {
         let raw_block = RawBlock {
-            type_: SECTION_HEADER_BLOCK,
+            type_: SectionHeaderBlock::TYPE,
             initial_len: 28,
             body: Cow::Owned(vec![
                 0x1A, 0x2B, 0x3C, 0x4D, // byte-order magic
@@ -570,7 +655,7 @@ mod tests {
             trailer_len: 28,
         };
 
-        let block = Block::try_from_raw_block::<BigEndian>(&PcapNgState::default(), raw_block).unwrap();
+        let block = Block::try_from_raw_block::<BigEndian>(&PcapNgState::default(), &raw_block).unwrap();
 
         match block {
             Block::SectionHeader(block) => {
@@ -586,7 +671,7 @@ mod tests {
     #[test]
     fn raw_block_validation_rejects_body_length_mismatch() {
         let raw_block = RawBlock {
-            type_: SECTION_HEADER_BLOCK,
+            type_: SectionHeaderBlock::TYPE,
             initial_len: 32,
             body: Cow::Owned(vec![0; 16]),
             trailer_len: 32,

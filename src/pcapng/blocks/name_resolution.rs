@@ -18,14 +18,18 @@ use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, Opti
 /// (present in the captured packets) and their corresponding canonical names and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct NameResolutionBlock<'a> {
-    /// Records
+    /// Name-resolution records, excluding the end marker.
+    /// The writer appends exactly one end marker automatically.
     pub records: Vec<Record<'a>>,
     /// Options
     pub options: Vec<NameResolutionOption<'a>>,
 }
 
 impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
-    fn from_slice<B: ByteOrder>(
+    const TYPE: u32 = 0x00000004;
+    const NAME: &'static str = "Name Resolution Block";
+
+    fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
     ) -> Result<(&'a [u8], Self), BlockContentParseError> {
@@ -36,8 +40,8 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
             slice = slice_tmp;
 
             match record {
-                Record::End => break,
-                _ => records.push(record),
+                None => break,
+                Some(record) => records.push(record),
             }
         }
 
@@ -48,13 +52,27 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         Ok((rem, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    fn validate(&self, _state: &PcapNgState) -> Result<(), ContentValidationError> {
+        for record in &self.records {
+            record.validate()?;
+        }
+        Ok(())
+    }
+
+    fn write_body_to<B: ByteOrder, W: Write>(
+        &self,
+        state: &PcapNgState,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError> {
         let mut len = 0;
 
         for record in &self.records {
             len += record.write_to::<B, _>(writer)?;
         }
-        len += Record::End.write_to::<B, _>(writer)?;
+        // The terminator is framing, not a decoded record.
+        writer.write_u16::<B>(0)?;
+        writer.write_u16::<B>(0)?;
+        len += 4;
 
         len += NameResolutionOption::write_opts_to::<B, _>(&self.options, state, None, writer)?;
 
@@ -69,8 +87,6 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
 /// Resolution block record types
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum Record<'a> {
-    /// End of the records
-    End,
     /// Ipv4 records
     Ipv4(Ipv4Record<'a>),
     /// Ipv6 records
@@ -80,8 +96,26 @@ pub enum Record<'a> {
 }
 
 impl<'a> Record<'a> {
-    /// Parse a [`Record`] from a slice
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    /// Validates names and the encoded record size.
+    pub fn validate(&self) -> Result<(), ContentValidationError> {
+        match self {
+            Self::Ipv4(record) => record.validate(),
+            Self::Ipv6(record) => record.validate(),
+            Self::Unknown(record) => {
+                u16::try_from(record.value.len())
+                    .map_err(|_| ContentValidationError::RecordTooBig(record.value.len()))?;
+                // Codes 0, 1 and 2 have known encodings; in particular 0 is the terminator.
+                if record.type_ <= 2 {
+                    return Err(ContentValidationError::InvalidRecordType(record.type_));
+                }
+                Ok(())
+            }
+        }
+    }
+
+    /// Parses a record, returning `None` for the end marker.
+    /// Semantic validation is left to the caller.
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Option<Self>), BlockContentParseError> {
         if slice.len() < 4 {
             return Err(BlockContentParseError::BlockContentTooSmall {
                 needed: 4,
@@ -111,7 +145,7 @@ impl<'a> Record<'a> {
                     .into());
                 }
 
-                Record::End
+                return Ok((&slice[length + pad_len..], None));
             }
 
             1 => {
@@ -132,25 +166,19 @@ impl<'a> Record<'a> {
 
         let len = length + pad_len;
 
-        Ok((&slice[len..], record))
+        Ok((&slice[len..], Some(record)))
     }
 
     /// Write a [`Record`] to a writer
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         match self {
-            Record::End => {
-                writer.write_u16::<B>(0)?;
-                writer.write_u16::<B>(0)?;
-
-                Ok(4)
-            }
             Record::Ipv4(a) => {
                 let len = a.write_to::<B, _>(&mut std::io::sink())?;
                 let pad_len = (4 - len % 4) % 4;
 
-                let len: u16 = len.try_into().map_err(|_| {
-                    PcapNgWriteError::validation_error("Ipv4Record.length", ContentValidationError::RecordTooBig(len))
-                })?;
+                let len: u16 = len
+                    .try_into()
+                    .map_err(|_| PcapNgWriteError::from(ContentValidationError::RecordTooBig(len)))?;
 
                 writer.write_u16::<B>(1)?;
                 writer.write_u16::<B>(len)?;
@@ -163,9 +191,9 @@ impl<'a> Record<'a> {
                 let len = a.write_to::<B, _>(&mut std::io::sink())?;
                 let pad_len = (4 - len % 4) % 4;
 
-                let len: u16 = len.try_into().map_err(|_| {
-                    PcapNgWriteError::validation_error("Ipv6Record.length", ContentValidationError::RecordTooBig(len))
-                })?;
+                let len: u16 = len
+                    .try_into()
+                    .map_err(|_| PcapNgWriteError::from(ContentValidationError::RecordTooBig(len)))?;
 
                 writer.write_u16::<B>(2)?;
                 writer.write_u16::<B>(len)?;
@@ -175,15 +203,17 @@ impl<'a> Record<'a> {
                 Ok(4 + len as usize + pad_len)
             }
             Record::Unknown(a) => {
+                if a.type_ == 0 {
+                    return Err(PcapNgWriteError::from(ContentValidationError::InvalidRecordType(
+                        a.type_,
+                    )));
+                }
                 let len = a.value.len();
                 let pad_len = (4 - len % 4) % 4;
 
-                let len: u16 = len.try_into().map_err(|_| {
-                    PcapNgWriteError::validation_error(
-                        "UnknownRecord.length",
-                        ContentValidationError::RecordTooBig(len),
-                    )
-                })?;
+                let len: u16 = len
+                    .try_into()
+                    .map_err(|_| PcapNgWriteError::from(ContentValidationError::RecordTooBig(len)))?;
 
                 writer.write_u16::<B>(a.type_)?;
                 writer.write_u16::<B>(len)?;
@@ -206,11 +236,30 @@ pub struct Ipv4Record<'a> {
 }
 
 impl<'a> Ipv4Record<'a> {
+    /// Validates names and their total encoded size.
+    pub fn validate(&self) -> Result<(), ContentValidationError> {
+        if self.names.is_empty() {
+            return Err(ContentValidationError::RecordNamesEmpty);
+        }
+        let mut len = 4_usize;
+        for name in &self.names {
+            if name.is_empty() || name.as_bytes().contains(&0) {
+                return Err(ContentValidationError::InvalidRecordName);
+            }
+            len = len
+                .checked_add(name.len())
+                .and_then(|len| len.checked_add(1))
+                .ok_or(ContentValidationError::RecordTooBig(usize::MAX))?;
+        }
+        u16::try_from(len).map_err(|_| ContentValidationError::RecordTooBig(len))?;
+        Ok(())
+    }
+
     /// Parse a [`Ipv4Record`] from a slice
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
-        if slice.len() < 6 {
+        if slice.len() < 4 {
             return Err(ContentValidationError::RecordWrongMinSize {
-                min: 6,
+                min: 4,
                 actual: slice.len(),
             }
             .into());
@@ -227,10 +276,6 @@ impl<'a> Ipv4Record<'a> {
             names.push(Cow::Borrowed(
                 std::str::from_utf8(name).map_err(ContentValidationError::RecordNameNotUtf8)?,
             ));
-        }
-
-        if names.is_empty() {
-            return Err(ContentValidationError::RecordNamesEmpty.into());
         }
 
         let record = Ipv4Record { ip_addr, names };
@@ -266,11 +311,30 @@ pub struct Ipv6Record<'a> {
 }
 
 impl<'a> Ipv6Record<'a> {
+    /// Validates names and their total encoded size.
+    pub fn validate(&self) -> Result<(), ContentValidationError> {
+        if self.names.is_empty() {
+            return Err(ContentValidationError::RecordNamesEmpty);
+        }
+        let mut len = 16_usize;
+        for name in &self.names {
+            if name.is_empty() || name.as_bytes().contains(&0) {
+                return Err(ContentValidationError::InvalidRecordName);
+            }
+            len = len
+                .checked_add(name.len())
+                .and_then(|len| len.checked_add(1))
+                .ok_or(ContentValidationError::RecordTooBig(usize::MAX))?;
+        }
+        u16::try_from(len).map_err(|_| ContentValidationError::RecordTooBig(len))?;
+        Ok(())
+    }
+
     /// Parse a [`Ipv6Record`] from a slice
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
-        if slice.len() < 18 {
+        if slice.len() < 16 {
             return Err(ContentValidationError::RecordWrongMinSize {
-                min: 18,
+                min: 16,
                 actual: slice.len(),
             }
             .into());
@@ -287,10 +351,6 @@ impl<'a> Ipv6Record<'a> {
             names.push(Cow::Borrowed(
                 std::str::from_utf8(name).map_err(ContentValidationError::RecordNameNotUtf8)?,
             ));
-        }
-
-        if names.is_empty() {
-            return Err(ContentValidationError::RecordNamesEmpty.into());
         }
 
         let record = Ipv6Record { ip_addr, names };
@@ -433,15 +493,12 @@ mod tests {
         };
 
         let error = block
-            .write_to::<BigEndian, _>(&PcapNgState::default(), &mut Vec::new())
+            .write_body_to::<BigEndian, _>(&PcapNgState::default(), &mut Vec::new())
             .unwrap_err();
 
         assert!(matches!(
             error,
-            PcapNgWriteError::Validation {
-                field: "OptionEntry.length",
-                source,
-            } if matches!(
+            PcapNgWriteError::Validation(source) if matches!(
                 source.as_ref(),
                 ContentValidationError::OptionTooBig(len) if *len == u16::MAX as usize + 1
             )

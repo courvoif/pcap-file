@@ -1,9 +1,9 @@
 use std::time::Duration;
 
+use super::blocks::PcapNgBlock;
 use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::interface_description::{InterfaceDescriptionBlock, InterfaceTsResolution};
 use super::blocks::section_header::SectionHeaderBlock;
-use super::blocks::{INTERFACE_DESCRIPTION_BLOCK, SECTION_HEADER_BLOCK};
 use crate::Endianness;
 use crate::pcapng::errors::{ContentValidationError, StateUpdateError};
 
@@ -58,8 +58,8 @@ impl PcapNgState {
     /// Returns [`None`] for blocks that don't affect the state.
     pub fn decode_block_if_needed<'a>(&self, raw_block: &RawBlock<'a>) -> Result<Option<Block<'a>>, StateUpdateError> {
         match raw_block.type_ {
-            SECTION_HEADER_BLOCK | INTERFACE_DESCRIPTION_BLOCK => {
-                let block = raw_block.clone().try_into_block(self)?;
+            SectionHeaderBlock::TYPE | InterfaceDescriptionBlock::TYPE => {
+                let block = raw_block.try_into_block(self)?;
                 Ok(Some(block))
             }
             _ => Ok(None),

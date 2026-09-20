@@ -1,12 +1,13 @@
+/* ----- Imports ----- */
+
 use std::io::Read;
 
 use super::blocks::block_common::{Block, RawBlock};
-use super::blocks::enhanced_packet::EnhancedPacketBlock;
-use super::blocks::interface_description::InterfaceDescriptionBlock;
-use super::blocks::section_header::SectionHeaderBlock;
-use super::{PcapNgParser, PcapNgState};
-use crate::pcapng::errors::PcapNgReadError;
+use super::{PcapNgPacket, PcapNgParser, PcapNgState};
+use crate::pcapng::errors::{BlockConversionError, ContentValidationError, PacketConversionError, PcapNgReadError};
 use crate::read_buffer::ReadBuffer;
+
+/* ----- Reader ----- */
 
 /// Reads a PcapNg from a reader.
 ///
@@ -17,7 +18,7 @@ use crate::read_buffer::ReadBuffer;
 /// use pcap_file::pcapng::PcapNgReader;
 ///
 /// let file_in = File::open("test.pcapng").expect("Error opening file");
-/// let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
+/// let mut pcapng_reader = PcapNgReader::new(file_in, true).unwrap();
 ///
 /// // Read test.pcapng
 /// while let Some(block) = pcapng_reader.next_block() {
@@ -36,10 +37,12 @@ pub struct PcapNgReader<R: Read> {
 impl<R: Read> PcapNgReader<R> {
     /// Creates a new [`PcapNgReader`] from a reader.
     ///
-    /// Parses the first block which must be a valid SectionHeaderBlock.
-    pub fn new(reader: R) -> Result<PcapNgReader<R>, PcapNgReadError> {
+    /// Parses the first block, which must be a Section Header Block.
+    /// When `strict` is true, typed blocks are semantically validated.
+    /// Raw operations leave semantic validation to the caller.
+    pub fn new(reader: R, strict: bool) -> Result<Self, PcapNgReadError> {
         let mut reader = ReadBuffer::new(reader);
-        let parser = reader.parse_with(PcapNgParser::new)?;
+        let parser = reader.parse_with(|src| PcapNgParser::new(src, strict))?;
         Ok(Self { parser, reader })
     }
 
@@ -48,14 +51,15 @@ impl<R: Read> PcapNgReader<R> {
     /// Use this when the stream can contain blocks larger than the default
     /// reader buffer.
     ///
-    /// Parses the first block which must be a valid SectionHeaderBlock.
-    pub fn with_capacity(reader: R, capacity: usize) -> Result<PcapNgReader<R>, PcapNgReadError> {
+    /// Parses the initial Section Header Block. `strict` controls semantic
+    /// validation of typed blocks, as in [`Self::new`].
+    pub fn with_capacity(reader: R, capacity: usize, strict: bool) -> Result<Self, PcapNgReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
-        let parser = reader.parse_with(PcapNgParser::new)?;
+        let parser = reader.parse_with(|src| PcapNgParser::new(src, strict))?;
         Ok(Self { parser, reader })
     }
 
-    /// Returns the next [`Block`] and the current [`PcapNgState`].
+    /// Returns the next typed block and state, validating the block in strict mode.
     /// [`None`] means that the reader has reached the EoF.
     /// Won't advance the reader past any malformed packets.
     ///
@@ -67,22 +71,18 @@ impl<R: Read> PcapNgReader<R> {
     #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
     pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
-            Ok(has_data) => {
-                if has_data {
-                    // # SAFETY
-                    // Block must NOT contain a mutable reference to the state.
-                    // Keep the annotations to be sure that only the lifetime is transmuted.
-                    let res: Result<Block<'_>, PcapNgReadError> =
-                        self.reader.parse_with(|src| self.parser.next_block(src));
-                    let res: Result<Block<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
+            Ok(true) => {
+                // # SAFETY
+                // Block must NOT contain a mutable reference to the state.
+                // Keep the annotations to be sure that only the lifetime is transmuted.
+                let res: Result<Block<'_>, PcapNgReadError> = self.reader.parse_with(|src| self.parser.next_block(src));
+                let res: Result<Block<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
 
-                    let state = &self.parser.state;
+                let state = &self.parser.state;
 
-                    Some(res.map(|blk| (blk, state)))
-                } else {
-                    None
-                }
+                Some(res.map(|blk| (blk, state)))
             }
+            Ok(false) => None,
             Err(e) => Some(Err(PcapNgReadError::Io(e))),
         }
     }
@@ -91,7 +91,10 @@ impl<R: Read> PcapNgReader<R> {
     /// [`None`] means that the reader has reached the EoF.
     /// More permissive than [`Self::next_block`].
     ///
-    /// A [`RawBlock`] can be validated using [`RawBlock::try_into_block`].
+    /// Strict mode does not validate raw block contents. Decode with
+    /// [`RawBlock::try_into_block`] and call [`Block::validate`] explicitly.
+    /// Section Header and Interface Description blocks are still decoded to
+    /// maintain state, without semantic validation.
     ///
     /// # Errors
     /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
@@ -100,39 +103,39 @@ impl<R: Read> PcapNgReader<R> {
     #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
     pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {
         match self.reader.has_data_left() {
-            Ok(has_data) => {
-                if has_data {
-                    // # SAFETY
-                    // Block must NOT contain a mutable reference to the state.
-                    // Keep the annotations to be sure that only the lifetime is transmuted.
-                    let res: Result<RawBlock<'_>, PcapNgReadError> =
-                        self.reader.parse_with(|src| self.parser.next_raw_block(src));
-                    let res: Result<RawBlock<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
+            Ok(true) => {
+                // # SAFETY
+                // Block must NOT contain a mutable reference to the state.
+                // Keep the annotations to be sure that only the lifetime is transmuted.
+                let res: Result<RawBlock<'_>, PcapNgReadError> =
+                    self.reader.parse_with(|src| self.parser.next_raw_block(src));
+                let res: Result<RawBlock<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
 
-                    let state = &self.parser.state;
+                let state = &self.parser.state;
 
-                    Some(res.map(|blk| (blk, state)))
-                } else {
-                    None
-                }
+                Some(res.map(|blk| (blk, state)))
             }
+            Ok(false) => None,
             Err(e) => Some(Err(PcapNgReadError::Io(e))),
         }
     }
 
-    /// Returns the current [`SectionHeaderBlock`].
-    pub fn section(&self) -> &SectionHeaderBlock<'static> {
-        self.parser.section()
+    /// Returns whether this reader and its packet iterator validate typed blocks.
+    pub fn strict(&self) -> bool {
+        self.parser.strict()
     }
 
-    /// Returns all the current [`InterfaceDescriptionBlock`].
-    pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
-        self.parser.interfaces()
+    /// Returns the current parsing state.
+    pub fn state(&self) -> &PcapNgState {
+        self.parser.state()
     }
 
-    /// Returns the [`InterfaceDescriptionBlock`] corresponding to the given packet
-    pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock<'_>> {
-        self.interfaces().get(packet.interface_id as usize)
+    /// Consumes the reader and returns an iterator over its packets.
+    pub fn packets(self) -> PcapNgPacketIterator<R> {
+        PcapNgPacketIterator {
+            reader: self,
+            err: false,
+        }
     }
 
     /// Consumes the [`Self`], returning the wrapped reader.
@@ -151,24 +154,16 @@ impl<R: Read> PcapNgReader<R> {
     }
 }
 
-impl<R: Read> IntoIterator for PcapNgReader<R> {
-    type Item = Result<Block<'static>, PcapNgReadError>;
-    type IntoIter = PcapNgReaderIterator<R>;
+/* ----- Packet iteration ----- */
 
-    fn into_iter(self) -> Self::IntoIter {
-        PcapNgReaderIterator {
-            reader: self,
-            err: false,
-        }
-    }
-}
-
-/// Iterator over owned [`Block`] values.
+/// Iterator over owned packets, skipping non-packet blocks.
+/// Uses the reader's strict setting and stops after the first error.
+/// Packet data is copied out of the internal read buffer.
+/// Packets contain datalink, timestamp, original length, and data.
+/// The datalink is resolved from the packet's interface in the current section.
 ///
-/// This is slower than [`PcapNgReader::next_block`] because each block payload
-/// is copied out of the internal read buffer.
-///
-/// Stops after the first error.
+/// Use [`PcapNgReader::next_block`] for typed blocks and their state, or
+/// [`PcapNgReader::next_raw_block`] for unsupported or malformed content.
 ///
 /// # Example
 ///
@@ -178,21 +173,21 @@ impl<R: Read> IntoIterator for PcapNgReader<R> {
 /// use pcap_file::pcapng::PcapNgReader;
 ///
 /// let file_in = File::open("test.pcapng").expect("Error opening file");
-/// let pcapng_reader = PcapNgReader::new(file_in).unwrap();
+/// let pcapng_reader = PcapNgReader::new(file_in, true).unwrap();
 ///
-/// for block in pcapng_reader {
-///     let block = block.unwrap();
+/// for packet in pcapng_reader.packets() {
+///     let packet = packet.unwrap();
 ///
 ///     //Do something
 /// }
 /// ```
 #[derive(Debug)]
-pub struct PcapNgReaderIterator<R: Read> {
+pub struct PcapNgPacketIterator<R: Read> {
     reader: PcapNgReader<R>,
     err: bool,
 }
 
-impl<R: Read> PcapNgReaderIterator<R> {
+impl<R: Read> PcapNgPacketIterator<R> {
     /// Gets a reference to the wrapped [`PcapNgReader`].
     pub fn get_ref(&self) -> &PcapNgReader<R> {
         &self.reader
@@ -204,23 +199,37 @@ impl<R: Read> PcapNgReaderIterator<R> {
     }
 }
 
-impl<R: Read> Iterator for PcapNgReaderIterator<R> {
-    type Item = Result<Block<'static>, PcapNgReadError>;
+impl<R: Read> Iterator for PcapNgPacketIterator<R> {
+    type Item = Result<PcapNgPacket<'static>, PcapNgReadError>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.err {
             return None;
         }
 
-        let block = self
-            .reader
-            .next_block()
-            .map(|block| block.map(|(block, _)| block.into_owned()));
-
-        if matches!(block, Some(Err(_))) {
-            self.err = true;
+        loop {
+            match self.reader.next_block() {
+                Some(Ok((block, state))) => {
+                    let type_ = block.type_code();
+                    match PcapNgPacket::from_block(block, state) {
+                        Ok(packet) => return Some(Ok(packet.into_owned())),
+                        Err(PacketConversionError::NotPacket(_)) => continue,
+                        Err(PacketConversionError::InvalidInterfaceId(id)) => {
+                            self.err = true;
+                            return Some(Err(BlockConversionError {
+                                type_,
+                                source: Box::new(ContentValidationError::InvalidInterfaceId(id).into()),
+                            }
+                            .into()));
+                        }
+                    }
+                }
+                Some(Err(error)) => {
+                    self.err = true;
+                    return Some(Err(error));
+                }
+                None => return None,
+            }
         }
-
-        block
     }
 }

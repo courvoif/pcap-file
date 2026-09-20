@@ -3,7 +3,6 @@ use std::io::Write;
 use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::blocks::block_common::{Block, PcapNgBlock};
-use super::blocks::interface_description::InterfaceDescriptionBlock;
 use super::blocks::section_header::SectionHeaderBlock;
 use super::{PcapNgState, RawBlock};
 use crate::Endianness;
@@ -18,10 +17,10 @@ use crate::pcapng::errors::PcapNgWriteError;
 /// use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 ///
 /// let file_in = File::open("test.pcapng").expect("Error opening file");
-/// let mut pcapng_reader = PcapNgReader::new(file_in).unwrap();
+/// let mut pcapng_reader = PcapNgReader::new(file_in, true).unwrap();
 ///
 /// let out = Vec::new();
-/// let mut pcapng_writer = PcapNgWriter::new(out).unwrap();
+/// let mut pcapng_writer = PcapNgWriter::new(out, true).unwrap();
 ///
 /// // Read test.pcapng
 /// while let Some(block) = pcapng_reader.next_block() {
@@ -37,12 +36,15 @@ pub struct PcapNgWriter<W: Write> {
     state: PcapNgState,
     /// Wrapped writer to which the block are written to.
     writer: W,
+    strict: bool,
 }
 
 impl<W: Write> PcapNgWriter<W> {
     /// Create a new [`PcapNgWriter`] from an existing writer.
     ///
-    /// Default to the native endianness of the CPU.
+    /// Defaults to native byte order. When `strict` is true, typed blocks are
+    /// semantically validated before writing. Raw operations leave semantic
+    /// validation to the caller; framing and required conversions are always checked.
     ///
     /// Writes this section header to the file:
     /// ```rust
@@ -60,39 +62,43 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// # Errors
     /// The writer can't be written to.
-    pub fn new(writer: W) -> Result<Self, PcapNgWriteError> {
-        Self::with_endianness(writer, Endianness::default())
+    pub fn new(writer: W, strict: bool) -> Result<Self, PcapNgWriteError> {
+        Self::with_endianness(writer, Endianness::default(), strict)
     }
 
-    /// Create a new [`PcapNgWriter`] from an existing writer with the given endianness.
-    pub fn with_endianness(writer: W, endianness: Endianness) -> Result<Self, PcapNgWriteError> {
+    /// Creates a writer with the given byte order.
+    /// When `strict` is true, typed blocks are semantically validated before writing.
+    pub fn with_endianness(writer: W, endianness: Endianness, strict: bool) -> Result<Self, PcapNgWriteError> {
         let section = SectionHeaderBlock {
             endianness,
             ..Default::default()
         };
 
-        Self::with_section_header(writer, section)
+        Self::with_section_header(writer, section, strict)
     }
 
-    /// Create a new [`PcapNgWriter`] from an existing writer with the given section header.
-    pub fn with_section_header(mut writer: W, section: SectionHeaderBlock<'_>) -> Result<Self, PcapNgWriteError> {
-        let mut state = PcapNgState::default();
-
-        let endianness = section.endianness;
-
-        let block = section.into_owned().into_block();
-
-        let _ = match endianness {
-            Endianness::Big => block.write_to::<BigEndian, _>(&state, &mut writer),
-            Endianness::Little => block.write_to::<LittleEndian, _>(&state, &mut writer),
-        }?;
-
-        state.update_from_block(&block);
-
-        Ok(Self { state, writer })
+    /// Creates a writer with the given section header.
+    /// `strict` controls semantic validation, including for the initial header.
+    pub fn with_section_header(
+        writer: W,
+        section: SectionHeaderBlock<'_>,
+        strict: bool,
+    ) -> Result<Self, PcapNgWriteError> {
+        let mut writer = Self {
+            state: PcapNgState::default(),
+            writer,
+            strict,
+        };
+        writer.write_block(&section.into_block())?;
+        Ok(writer)
     }
 
-    /// Write a [`Block`].
+    /// Returns whether typed blocks are semantically validated before writing.
+    pub fn strict(&self) -> bool {
+        self.strict
+    }
+
+    /// Writes a typed block, validating its content first in strict mode.
     ///
     /// I/O errors can leave the output stream partially written. After any error,
     /// callers should assume the pcapng stream is no longer usable.
@@ -120,7 +126,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// packet.data = Cow::Borrowed(&data);
     ///
     /// let file = File::create("out.pcapng").expect("Error creating file");
-    /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
+    /// let mut pcap_ng_writer = PcapNgWriter::new(file, true).unwrap();
     ///
     /// pcap_ng_writer.write_block(&interface.into_block()).unwrap();
     /// pcap_ng_writer.write_block(&packet.into_block()).unwrap();
@@ -130,6 +136,9 @@ impl<W: Write> PcapNgWriter<W> {
         // The state is updated only after a successful write.
         // The endianness is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
 
+        if self.strict {
+            block.validate(&self.state)?;
+        }
         let endianess = self.state.block_endianness(Some(block));
 
         let nb_written = match endianess {
@@ -170,7 +179,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// packet.data = Cow::Borrowed(&data);
     ///
     /// let file = File::create("out.pcapng").expect("Error creating file");
-    /// let mut pcap_ng_writer = PcapNgWriter::new(file).unwrap();
+    /// let mut pcap_ng_writer = PcapNgWriter::new(file, true).unwrap();
     ///
     /// pcap_ng_writer.write_pcapng_block(interface).unwrap();
     /// pcap_ng_writer.write_pcapng_block(packet).unwrap();
@@ -184,8 +193,8 @@ impl<W: Write> PcapNgWriter<W> {
     /// I/O errors can leave the output stream partially written. After any error,
     /// callers should assume the pcapng stream is no longer usable.
     ///
-    /// Validates the raw block length fields, but does not validate non-state
-    /// block contents before writing.
+    /// Validates raw framing, but never semantically validates block contents,
+    /// regardless of strict mode. The caller can decode and validate explicitly.
     ///
     /// Section Header and Interface Description raw blocks are decoded before writing
     /// so the writer can update its state after a successful write. If decoding fails,
@@ -194,6 +203,7 @@ impl<W: Write> PcapNgWriter<W> {
         // The order of operation is important to prevent writing invalid files in case of error.
         // The state is updated only after a successful write.
         // The endianness is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
+        raw_block.validate()?;
         let opt_block = self.state.decode_block_if_needed(raw_block)?;
         let endianess = self.state.block_endianness(opt_block.as_ref());
 
@@ -230,15 +240,5 @@ impl<W: Write> PcapNgWriter<W> {
     /// Access the current [`PcapNgState`].
     pub fn state(&self) -> &PcapNgState {
         &self.state
-    }
-
-    /// Return the current [`SectionHeaderBlock`].
-    pub fn section(&self) -> &SectionHeaderBlock<'static> {
-        &self.state.section
-    }
-
-    /// Return all the current [`InterfaceDescriptionBlock`].
-    pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
-        &self.state.interfaces
     }
 }

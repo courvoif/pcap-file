@@ -10,8 +10,8 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
-use crate::pcapng::{ContentValidationError, PcapNgState};
 use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
+use crate::pcapng::{PcapNgState};
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -30,7 +30,10 @@ pub struct InterfaceStatisticsBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
-    fn from_slice<B: ByteOrder>(
+    const TYPE: u32 = 0x00000005;
+    const NAME: &'static str = "Interface Statistics Block";
+
+    fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
     ) -> Result<(&'a [u8], Self), BlockContentParseError> {
@@ -56,17 +59,12 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        if self.interface_id >= (state.interfaces.len() as u32) {
-            return Err(PcapNgWriteError::validation_error(
-                "InterfaceStatisticsBlock.interface_id",
-                ContentValidationError::InvalidInterfaceId(self.interface_id),
-            ));
-        }
-
-        let (timestamp_high, timestamp_low) = state
-            .encode_timestamp(self.interface_id, self.timestamp)
-            .map_err(|source| PcapNgWriteError::validation_error("InterfaceStatisticsBlock.timestamp", source))?;
+    fn write_body_to<B: ByteOrder, W: Write>(
+        &self,
+        state: &PcapNgState,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError> {
+        let (timestamp_high, timestamp_low) = state.encode_timestamp(self.interface_id, self.timestamp)?;
 
         writer.write_u32::<B>(self.interface_id)?;
         writer.write_u32::<B>(timestamp_high)?;
@@ -74,6 +72,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
 
         let opt_len =
             InterfaceStatisticsOption::write_opts_to::<B, _>(&self.options, state, Some(self.interface_id), writer)?;
+
         Ok(12 + opt_len)
     }
 
@@ -266,9 +265,7 @@ fn write_timestamp<B: ByteOrder, W: Write>(
     const TIMESTAMP_LENGTH: u16 = 8;
     const OPTION_LENGTH: usize = 12;
 
-    let (timestamp_high, timestamp_low) = state
-        .encode_timestamp(interface_id.unwrap(), timestamp)
-        .map_err(|source| PcapNgWriteError::validation_error("InterfaceStatisticsOption.timestamp", source))?;
+    let (timestamp_high, timestamp_low) = state.encode_timestamp(interface_id.unwrap(), timestamp)?;
 
     writer.write_u16::<B>(code)?;
     writer.write_u16::<B>(TIMESTAMP_LENGTH)?;

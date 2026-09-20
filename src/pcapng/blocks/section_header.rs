@@ -39,7 +39,10 @@ pub struct SectionHeaderBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
-    fn from_slice<B: ByteOrder>(
+    const TYPE: u32 = 0x0A0D0D0A;
+    const NAME: &'static str = "Section Header Block";
+
+    fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
     ) -> Result<(&'a [u8], Self), BlockContentParseError> {
@@ -80,7 +83,11 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         }
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    fn write_body_to<B: ByteOrder, W: Write>(
+        &self,
+        state: &PcapNgState,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError> {
         match self.endianness {
             Endianness::Big => writer.write_u32::<BigEndian>(0x1A2B3C4D)?,
             Endianness::Little => writer.write_u32::<LittleEndian>(0x1A2B3C4D)?,
@@ -121,7 +128,7 @@ mod tests {
             b'l', b'i', b'n', b'u', b'x', b'-', b'x', b'6', 0x00, 0x00, 0x00, 0x00, // opt_endofopt
         ];
 
-        let (_, block) = SectionHeaderBlock::from_slice::<BigEndian>(&PcapNgState::default(), &body).unwrap();
+        let (_, block) = SectionHeaderBlock::from_body::<BigEndian>(&PcapNgState::default(), &body).unwrap();
 
         assert_eq!(block.endianness, Endianness::Little);
         assert_eq!(block.major_version, 1);

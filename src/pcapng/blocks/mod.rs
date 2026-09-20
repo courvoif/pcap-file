@@ -11,6 +11,5 @@ pub mod packet;
 pub mod section_header;
 pub mod simple_packet;
 pub mod systemd_journal_export;
-pub mod unknown;
 
 pub use block_common::*;

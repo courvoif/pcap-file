@@ -26,7 +26,10 @@ pub struct SimplePacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
-    fn from_slice<B: ByteOrder>(
+    const TYPE: u32 = 0x00000003;
+    const NAME: &'static str = "Simple Packet Block";
+
+    fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
     ) -> Result<(&'a [u8], Self), BlockContentParseError> {
@@ -73,22 +76,15 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         Ok((slice, packet))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        // Check that original_len is always >= self.data.len()
+    fn validate(&self, state: &PcapNgState) -> Result<(), ContentValidationError> {
         if (self.original_len as usize) < self.data.len() {
-            return Err(PcapNgWriteError::validation_error(
-                "SimplePacketBlock.original_len",
-                ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
+            return Err(ContentValidationError::InvalidOriginalLen(
+                self.original_len,
+                self.data.len(),
             ));
         }
-
-        // Check that original_length and data_len take snaplen into account //
-        let Some(interface) = state.interfaces.first() else {
-            return Err(PcapNgWriteError::validation_error(
-                "SimplePacketBlock.interface",
-                ContentValidationError::NoInterface,
-            ));
-        };
+        
+        let interface = state.interfaces.first().ok_or(ContentValidationError::NoInterface)?;
 
         let expected_len = if interface.snaplen == 0 {
             self.original_len as usize
@@ -97,15 +93,20 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         };
 
         if self.data.len() != expected_len {
-            return Err(PcapNgWriteError::validation_error(
-                "SimplePacketBlock.data",
-                ContentValidationError::InvalidCapturedLen {
-                    expected: expected_len,
-                    actual: self.data.len(),
-                },
-            ));
+            return Err(ContentValidationError::InvalidCapturedLen {
+                expected: expected_len,
+                actual: self.data.len(),
+            });
         }
+        
+        Ok(())
+    }
 
+    fn write_body_to<B: ByteOrder, W: Write>(
+        &self,
+        _state: &PcapNgState,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError> {
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
 
@@ -130,7 +131,7 @@ mod tests {
     use crate::DataLink;
     use crate::pcapng::blocks::PcapNgBlock;
     use crate::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-    use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
+    use crate::pcapng::errors::BlockContentParseError;
     use crate::pcapng::{ContentValidationError, PcapNgState};
 
     fn state_with_snaplen(snaplen: u32) -> PcapNgState {
@@ -142,7 +143,7 @@ mod tests {
     #[test]
     fn parse_rejects_simple_packet_without_interface() {
         let data = [0, 0, 0, 4, 0, 1, 2, 3];
-        let err = SimplePacketBlock::from_slice::<BigEndian>(&PcapNgState::default(), &data).unwrap_err();
+        let err = SimplePacketBlock::from_body::<BigEndian>(&PcapNgState::default(), &data).unwrap_err();
 
         assert!(matches!(
             err,
@@ -159,7 +160,7 @@ mod tests {
             0, 0, // padding
         ];
 
-        let (rem, packet) = SimplePacketBlock::from_slice::<BigEndian>(&state, &data).unwrap();
+        let (rem, packet) = SimplePacketBlock::from_body::<BigEndian>(&state, &data).unwrap();
 
         assert_eq!(packet.original_len, 4);
         assert_eq!(&packet.data[..], &[0, 1]);
@@ -167,42 +168,28 @@ mod tests {
     }
 
     #[test]
-    fn write_rejects_simple_packet_without_interface() {
+    fn validate_rejects_simple_packet_without_interface() {
         let packet = SimplePacketBlock {
             original_len: 4,
             data: Cow::Borrowed(&[0, 1, 2, 3]),
         };
-        let err = packet
-            .write_to::<BigEndian, _>(&PcapNgState::default(), &mut Vec::new())
-            .unwrap_err();
+        let err = packet.validate(&PcapNgState::default()).unwrap_err();
 
-        assert!(matches!(
-            err,
-            PcapNgWriteError::Validation {
-                field: "SimplePacketBlock.interface",
-                source,
-            } if matches!(source.as_ref(), ContentValidationError::NoInterface)
-        ));
+        assert!(matches!(err, ContentValidationError::NoInterface));
     }
 
     #[test]
-    fn write_rejects_simple_packet_shorter_than_expected_with_unlimited_snaplen() {
+    fn validate_rejects_simple_packet_shorter_than_expected_with_unlimited_snaplen() {
         let state = state_with_snaplen(0);
         let packet = SimplePacketBlock {
             original_len: 4,
             data: Cow::Borrowed(&[0, 1]),
         };
-        let err = packet.write_to::<BigEndian, _>(&state, &mut Vec::new()).unwrap_err();
+        let err = packet.validate(&state).unwrap_err();
 
         assert!(matches!(
             err,
-            PcapNgWriteError::Validation {
-                field: "SimplePacketBlock.data",
-                source,
-            } if matches!(
-                source.as_ref(),
-                ContentValidationError::InvalidCapturedLen { expected: 4, actual: 2 }
-            )
+            ContentValidationError::InvalidCapturedLen { expected: 4, actual: 2 }
         ));
     }
 
@@ -214,27 +201,24 @@ mod tests {
             data: Cow::Borrowed(&[0, 1]),
         };
 
-        assert_eq!(packet.write_to::<BigEndian, _>(&state, &mut Vec::new()).unwrap(), 8);
+        assert_eq!(
+            packet.write_body_to::<BigEndian, _>(&state, &mut Vec::new()).unwrap(),
+            8
+        );
     }
 
     #[test]
-    fn write_rejects_simple_packet_longer_than_snaplen() {
+    fn validate_rejects_simple_packet_longer_than_snaplen() {
         let state = state_with_snaplen(2);
         let packet = SimplePacketBlock {
             original_len: 4,
             data: Cow::Borrowed(&[0, 1, 2]),
         };
-        let err = packet.write_to::<BigEndian, _>(&state, &mut Vec::new()).unwrap_err();
+        let err = packet.validate(&state).unwrap_err();
 
         assert!(matches!(
             err,
-            PcapNgWriteError::Validation {
-                field: "SimplePacketBlock.data",
-                source,
-            } if matches!(
-                source.as_ref(),
-                ContentValidationError::InvalidCapturedLen { expected: 2, actual: 3 }
-            )
+            ContentValidationError::InvalidCapturedLen { expected: 2, actual: 3 }
         ));
     }
 }

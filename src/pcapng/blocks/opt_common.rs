@@ -225,9 +225,9 @@ fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
 ) -> Result<usize, PcapNgWriteError> {
     let pad_len = (4 - len % 4) % 4;
 
-    let len: u16 = len.try_into().map_err(|_| {
-        PcapNgWriteError::validation_error("OptionEntry.length", ContentValidationError::OptionTooBig(len))
-    })?;
+    let len: u16 = len
+        .try_into()
+        .map_err(|_| PcapNgWriteError::from(ContentValidationError::OptionTooBig(len)))?;
 
     writer.write_u16::<B>(code)?;
     writer.write_u16::<B>(len)?;

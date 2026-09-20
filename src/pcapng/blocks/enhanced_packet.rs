@@ -40,7 +40,10 @@ pub struct EnhancedPacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
-    fn from_slice<B: ByteOrder>(
+    const TYPE: u32 = 0x00000006;
+    const NAME: &'static str = "Enhanced Packet Block";
+
+    fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
     ) -> Result<(&'a [u8], Self), BlockContentParseError> {
@@ -52,20 +55,12 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         }
 
         let interface_id = slice.read_u32::<B>().expect("slice length checked above");
-        if (interface_id as usize) >= state.interfaces.len() {
-            return Err(ContentValidationError::InvalidInterfaceId(interface_id).into());
-        }
-
         let timestamp_high = slice.read_u32::<B>().expect("slice length checked above");
         let timestamp_low = slice.read_u32::<B>().expect("slice length checked above");
         let timestamp = state.decode_timestamp(interface_id, timestamp_high, timestamp_low)?;
 
         let captured_len = slice.read_u32::<B>().expect("slice length checked above");
         let original_len = slice.read_u32::<B>().expect("slice length checked above");
-
-        if original_len < captured_len {
-            return Err(ContentValidationError::InvalidOriginalLen(original_len, captured_len as usize).into());
-        }
 
         let pad_len = (4 - (captured_len as usize % 4)) % 4;
         let tot_len = captured_len as usize + pad_len;
@@ -92,32 +87,48 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        // Integrity checks are done before any writing to prevent invalid state in the file
-        if (self.interface_id as usize) >= state.interfaces.len() {
-            return Err(PcapNgWriteError::validation_error(
-                "EnhancedPacketBlock.interface_id",
-                crate::pcapng::ContentValidationError::InvalidInterfaceId(self.interface_id),
+    fn validate(&self, state: &PcapNgState) -> Result<(), ContentValidationError> {
+        let interface = state
+            .interfaces
+            .get(self.interface_id as usize)
+            .ok_or(ContentValidationError::InvalidInterfaceId(self.interface_id))?;
+
+        let captured_len = u32::try_from(self.data.len())
+            .map_err(|_| ContentValidationError::BlockContentTooBig(self.data.len() as u64))?;
+
+        if self.original_len < captured_len {
+            return Err(ContentValidationError::InvalidOriginalLen(
+                self.original_len,
+                self.data.len(),
             ));
         }
 
-        if (self.original_len as usize) < self.data.len() {
-            return Err(PcapNgWriteError::validation_error(
-                "EnhancedPacketBlock.original_len",
-                crate::pcapng::ContentValidationError::InvalidOriginalLen(self.original_len, self.data.len()),
-            ));
+        if interface.snaplen != 0 && captured_len > interface.snaplen {
+            return Err(ContentValidationError::CapturedLengthExceedsSnaplen {
+                captured_len: self.data.len(),
+                snaplen: interface.snaplen,
+            });
         }
 
-        let (timestamp_high, timestamp_low) = state
-            .encode_timestamp(self.interface_id, self.timestamp)
-            .map_err(|source| PcapNgWriteError::validation_error("EnhancedPacketBlock.timestamp", source))?;
+        Ok(())
+    }
+
+    fn write_body_to<B: ByteOrder, W: Write>(
+        &self,
+        state: &PcapNgState,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError> {
+        let captured_len = u32::try_from(self.data.len())
+            .map_err(|_| PcapNgWriteError::from(ContentValidationError::BlockContentTooBig(self.data.len() as u64)))?;
+
+        let (timestamp_high, timestamp_low) = state.encode_timestamp(self.interface_id, self.timestamp)?;
 
         let pad_len = (4 - (&self.data.len() % 4)) % 4;
 
         writer.write_u32::<B>(self.interface_id)?;
         writer.write_u32::<B>(timestamp_high)?;
         writer.write_u32::<B>(timestamp_low)?;
-        writer.write_u32::<B>(self.data.len() as u32)?;
+        writer.write_u32::<B>(captured_len)?;
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
         writer.write_all(&[0_u8; 3][..pad_len])?;

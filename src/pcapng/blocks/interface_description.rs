@@ -42,7 +42,10 @@ pub struct InterfaceDescriptionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
-    fn from_slice<B: ByteOrder>(
+    const TYPE: u32 = 0x00000001;
+    const NAME: &'static str = "Interface Description Block";
+
+    fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
     ) -> Result<(&'a [u8], Self), BlockContentParseError> {
@@ -55,10 +58,8 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
 
         let linktype = (slice.read_u16::<B>().unwrap() as u32).into();
 
-        let reserved = slice.read_u16::<B>().unwrap();
-        if reserved != 0 {
-            return Err(ContentValidationError::InvalidReservedField(reserved).into());
-        }
+        // The reserved field is ignored by readers and written as zero.
+        let _reserved = slice.read_u16::<B>().unwrap();
 
         let snaplen = slice.read_u32::<B>().unwrap();
         let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(state, None, slice)?;
@@ -72,13 +73,15 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         Ok((slice, block))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<usize, PcapNgWriteError> {
-        let datalink: u16 = u32::from(self.linktype).try_into().map_err(|_| {
-            PcapNgWriteError::validation_error(
-                "InterfaceDescriptionBlock.linktype",
-                ContentValidationError::InvalidLinktype(self.linktype),
-            )
-        })?;
+
+    fn write_body_to<B: ByteOrder, W: Write>(
+        &self,
+        state: &PcapNgState,
+        writer: &mut W,
+    ) -> Result<usize, PcapNgWriteError> {
+        let datalink: u16 = u32::from(self.linktype)
+            .try_into()
+            .map_err(|_| PcapNgWriteError::from(ContentValidationError::InvalidLinktype(self.linktype)))?;
 
         writer.write_u16::<B>(datalink)?;
         writer.write_u16::<B>(0)?;

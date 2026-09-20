@@ -72,20 +72,69 @@ use std::fs::File;
 use pcap_file::pcapng::PcapNgReader;
 
 let file_in = File::open("test.pcapng").expect("Error opening file");
-let pcapng_reader = PcapNgReader::new(file_in).unwrap();
+let mut pcapng_reader = PcapNgReader::new(file_in, true).unwrap();
 
 // Read test.pcapng
-for block in pcapng_reader {
+while let Some(result) = pcapng_reader.next_block() {
     // Check if there is no error
-    let block = block.unwrap();
+    let (block, state) = result.unwrap();
 
     // Do something
 }
 ```
 
-The iterator API returns owned blocks and is slower than `next_block()`, which
-can borrow block data directly from the internal read buffer and also exposes
-the current `PcapNgState`. It stops after the first error.
+Use `next_block()` to borrow typed blocks and access their `PcapNgState`, or
+`next_raw_block()` to preserve unknown blocks and inspect undecodable content.
+
+Migration: replace `PcapNgPacket` variant matching with access to its fields.
+Block-only `From`/`TryFrom` conversions are replaced by
+`PcapNgPacket::from_block(block, state)` (or `block.into_pcapng_packet(state)`),
+because resolving the datalink requires interface state.
+Non-packet blocks are returned unchanged in `PacketConversionError::NotPacket(block)`;
+missing interfaces return `PacketConversionError::InvalidInterfaceId(id)`.
+Struct literals must now supply `datalink`.
+
+Standalone block-type constants have been removed.
+Import `PcapNgBlock` and use the block type's associated constant, for example
+`EnhancedPacketBlock::TYPE` or `CustomBlock::<true>::TYPE`.
+
+`PcapNgWriteError::Validation` now contains only a boxed `ContentValidationError`.
+Match `Validation(source)` instead of `Validation { field, source }`;
+the separate field-name context has been removed.
+
+Pass `strict: bool` as the last argument to parser, reader, and writer
+constructors. For example, `PcapNgReader::new(input, true)` enables semantic
+validation; `PcapNgReader::new(input, false)` disables it.
+Bounds, framing, and required encoding/decoding conversions are always checked;
+option decoding and encoding retain their own checks. Raw operations do not
+perform semantic validation: callers can decode a raw block with
+`try_into_block(state)` and explicitly call `block.validate(state)`.
+Section Header and Interface Description raw blocks are decoded to maintain
+state, without semantic validation.
+
+### PcapNgReader packet iterator
+
+```rust,no_run
+use std::fs::File;
+use pcap_file::pcapng::PcapNgReader;
+
+let file_in = File::open("test.pcapng").expect("Error opening file");
+let pcapng_reader = PcapNgReader::new(file_in, true).unwrap();
+
+// Read packets from test.pcapng
+for packet in pcapng_reader.packets() {
+    // Check if there is no error
+    let packet = packet.unwrap();
+
+    // Do something with packet.datalink, packet.timestamp,
+    // packet.original_len, and packet.data
+}
+```
+
+The iterator returns owned packets, skips non-packet blocks, and stops after
+the first error. Each packet includes its interface's datalink.
+Simple Packet Blocks have no timestamp.
+Use `next_block()` when you need interface IDs, options, or other block metadata.
 
 ### PcapNgWriter
 
@@ -94,14 +143,14 @@ use std::fs::File;
 use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 
 let file_in = File::open("test.pcapng").expect("Error opening file");
-let pcapng_reader = PcapNgReader::new(file_in).unwrap();
+let mut pcapng_reader = PcapNgReader::new(file_in, true).unwrap();
 
 let file_out = File::create("out.pcapng").expect("Error creating file");
 let mut pcapng_writer =
-    PcapNgWriter::with_section_header(file_out, pcapng_reader.section().clone()).unwrap();
+    PcapNgWriter::with_section_header(file_out, pcapng_reader.state().section().clone(), true).unwrap();
 
-for block in pcapng_reader {
-    let block = block.unwrap();
+while let Some(result) = pcapng_reader.next_block() {
+    let (block, _) = result.unwrap();
     pcapng_writer.write_block(&block).unwrap();
 }
 ```

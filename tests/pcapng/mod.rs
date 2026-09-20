@@ -1,3 +1,5 @@
+/* ----- Imports ----- */
+
 use std::fs::File;
 use std::io::Read;
 use std::time::Duration;
@@ -6,13 +8,15 @@ use byteorder_slice::ByteOrder;
 use glob::glob;
 use pcap_file::pcapng::{ContentValidationError, PcapNgParser, PcapNgReader, PcapNgWriter};
 
+/* ----- Reader, parser, and writer tests ----- */
+
 #[test]
 fn reader() {
     for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
         let entry = entry.unwrap();
 
         let file = File::open(&entry).unwrap();
-        let mut pcapng_reader = PcapNgReader::new(file).unwrap();
+        let mut pcapng_reader = PcapNgReader::new(file, true).unwrap();
 
         let mut i = 0;
         while let Some(block) = pcapng_reader.next_block() {
@@ -28,9 +32,9 @@ fn reader_iterator() {
         let entry = entry.unwrap();
 
         let file = File::open(&entry).unwrap();
-        let pcapng_reader = PcapNgReader::new(file).unwrap();
+        let pcapng_reader = PcapNgReader::new(file, true).unwrap();
 
-        for (i, block) in pcapng_reader.into_iter().enumerate() {
+        for (i, block) in pcapng_reader.packets().enumerate() {
             let _block = block.unwrap_or_else(|_| panic!("Error on block {i} on file: {entry:?}"));
         }
     }
@@ -46,7 +50,7 @@ fn parser() {
         file.read_to_end(&mut data).unwrap();
 
         let mut src = &data[..];
-        let (rem, mut pcapng_parser) = PcapNgParser::new(src).unwrap();
+        let (rem, mut pcapng_parser) = PcapNgParser::new(src, true).unwrap();
         src = rem;
 
         let mut i = 0;
@@ -71,8 +75,9 @@ fn writer() {
         let entry = entry.unwrap();
 
         let pcapng_in = std::fs::read(&entry).unwrap();
-        let mut pcapng_reader = PcapNgReader::new(&pcapng_in[..]).unwrap();
-        let mut pcapng_writer = PcapNgWriter::with_section_header(Vec::new(), pcapng_reader.section().clone()).unwrap();
+        let mut pcapng_reader = PcapNgReader::new(&pcapng_in[..], true).unwrap();
+        let mut pcapng_writer =
+            PcapNgWriter::with_section_header(Vec::new(), pcapng_reader.state().section().clone(), true).unwrap();
 
         let mut idx = 0;
         while let Some(block) = pcapng_reader.next_block() {
@@ -87,8 +92,8 @@ fn writer() {
         let actual = pcapng_writer.get_ref();
 
         if expected != actual {
-            let mut expected_reader = PcapNgReader::new(&expected[..]).unwrap();
-            let mut actual_reader = PcapNgReader::new(&actual[..]).unwrap();
+            let mut expected_reader = PcapNgReader::new(&expected[..], true).unwrap();
+            let mut actual_reader = PcapNgReader::new(&actual[..], true).unwrap();
 
             let mut idx = 0;
             while let (Some(expected), Some(actual)) = (expected_reader.next_block(), actual_reader.next_block()) {
@@ -111,45 +116,52 @@ fn writer() {
 }
 
 #[test]
-fn writer_iterator() {
-    for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
-        let entry = entry.unwrap();
-
-        let pcapng_in = std::fs::read(&entry).unwrap();
-        let pcapng_reader = PcapNgReader::new(&pcapng_in[..]).unwrap();
-        let mut pcapng_writer = PcapNgWriter::with_section_header(Vec::new(), pcapng_reader.section().clone()).unwrap();
-
-        for (idx, block) in pcapng_reader.into_iter().enumerate() {
-            let block = block.unwrap();
-            pcapng_writer
-                .write_block(&block)
-                .unwrap_or_else(|_| panic!("Error writing block, file: {entry:?}, block n°{idx}, block: {block:?}"));
+fn packet_iterator_matches_typed_packet_traversal() {
+    use pcap_file::pcapng::{PacketConversionError, PcapNgPacket};
+    for entry in glob("tests/pcapng/**/**/*.pcapng").unwrap() {
+        let data = std::fs::read(entry.unwrap()).unwrap();
+        let mut reader = PcapNgReader::new(&data[..], true).unwrap();
+        let mut expected = Vec::new();
+        while let Some(result) = reader.next_block() {
+            let (block, state) = result.unwrap();
+            match PcapNgPacket::from_block(block, state) {
+                Ok(packet) => expected.push(packet.into_owned()),
+                Err(PacketConversionError::NotPacket(_)) => {}
+                Err(error) => panic!("{error}"),
+            }
         }
-
-        assert_eq!(&pcapng_in, pcapng_writer.get_ref());
+        let actual = PcapNgReader::new(&data[..], true)
+            .unwrap()
+            .packets()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(actual, expected);
     }
 }
 
 #[test]
 fn iterator_stops_after_error() {
     let pcapng = pcapng_with_invalid_packet_block();
-    let mut blocks = PcapNgReader::new(&pcapng[..]).unwrap().into_iter();
+    for strict in [false, true] {
+        let mut packets = PcapNgReader::new(&pcapng[..], strict).unwrap().packets();
 
-    assert!(blocks.next().unwrap().is_ok());
-    assert!(blocks.next().unwrap().is_err());
-    assert!(blocks.next().is_none());
+        // Interface lookup is required even without semantic validation.
+        assert!(packets.next().unwrap().is_err());
+        assert!(packets.next().is_none());
+    }
 }
 
 fn pcapng_with_invalid_packet_block() -> Vec<u8> {
     use byteorder_slice::BigEndian;
     use pcap_file::DataLink;
     use pcap_file::pcapng::blocks::PcapNgBlock;
-    use pcap_file::pcapng::blocks::block_common::{ENHANCED_PACKET_BLOCK, RawBlock};
+    use pcap_file::pcapng::blocks::block_common::RawBlock;
+    use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
 
     let interface = InterfaceDescriptionBlock::new(DataLink::ETHERNET, 0xFFFF);
     let invalid_packet = RawBlock {
-        type_: ENHANCED_PACKET_BLOCK,
+        type_: EnhancedPacketBlock::TYPE,
         initial_len: 32,
         body: vec![
             0x00, 0x00, 0x00, 0x07, // invalid interface_id
@@ -162,7 +174,7 @@ fn pcapng_with_invalid_packet_block() -> Vec<u8> {
         trailer_len: 32,
     };
 
-    let mut writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big).unwrap();
+    let mut writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big, true).unwrap();
     writer.write_block(&interface.into_block()).unwrap();
     invalid_packet.write_to::<BigEndian, _>(writer.get_mut()).unwrap();
     writer.into_inner()
@@ -171,14 +183,16 @@ fn pcapng_with_invalid_packet_block() -> Vec<u8> {
 #[test]
 fn raw_writer_rejects_invalid_state_block_lengths_without_state_update() {
     use pcap_file::Endianness;
-    use pcap_file::pcapng::blocks::block_common::{INTERFACE_DESCRIPTION_BLOCK, RawBlock};
+    use pcap_file::pcapng::PcapNgBlock;
+    use pcap_file::pcapng::blocks::block_common::RawBlock;
+    use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
     use pcap_file::pcapng::{PcapNgFormatError, PcapNgWriteError};
 
-    let mut writer = PcapNgWriter::with_endianness(Vec::new(), Endianness::Big).unwrap();
+    let mut writer = PcapNgWriter::with_endianness(Vec::new(), Endianness::Big, true).unwrap();
     let len_before = writer.get_ref().len();
 
     let raw_interface = RawBlock {
-        type_: INTERFACE_DESCRIPTION_BLOCK,
+        type_: InterfaceDescriptionBlock::TYPE,
         initial_len: 24,
         body: vec![
             0x00, 0x01, // linktype: Ethernet
@@ -198,7 +212,7 @@ fn raw_writer_rejects_invalid_state_block_lengths_without_state_update() {
             actual: 24,
         })
     ));
-    assert!(writer.interfaces().is_empty());
+    assert!(writer.state().interfaces().is_empty());
     assert_eq!(writer.get_ref().len(), len_before);
 }
 
@@ -255,7 +269,8 @@ fn test_custom_block() {
     };
 
     let mut buffer = Vec::new();
-    let mut pcapng_writer = PcapNgWriter::with_section_header(&mut buffer, section).expect("Failed to create writer");
+    let mut pcapng_writer =
+        PcapNgWriter::with_section_header(&mut buffer, section, true).expect("Failed to create writer");
 
     let block_to_write = original_payload
         .clone()
@@ -268,7 +283,7 @@ fn test_custom_block() {
         .expect("Failed to write custom block");
 
     // --- READING ---
-    let (rem, mut pcapng_parser) = PcapNgParser::new(&buffer).expect("Failed to create parser");
+    let (rem, mut pcapng_parser) = PcapNgParser::new(&buffer, true).expect("Failed to create parser");
     let mut remaining_data = rem;
 
     // Read the next block, which should be our custom block
@@ -299,6 +314,7 @@ fn test_custom_block() {
 
     // Verify that our custom option in the header was also read correctly.
     match pcapng_parser
+        .state()
         .section()
         .options
         .first()
@@ -332,7 +348,7 @@ fn parser_handles_section_endianness_switch() {
         0x00, 0x00, 0x00, 0x00, 0x2C, 0x00, 0x00, 0x00,
     ];
 
-    let (rem, mut parser) = PcapNgParser::new(&data).unwrap();
+    let (rem, mut parser) = PcapNgParser::new(&data, true).unwrap();
     let (rem, block) = parser.next_block(rem).unwrap();
 
     assert!(rem.is_empty());
@@ -368,21 +384,21 @@ fn writer_handles_section_endianness_switch() {
         options: vec![],
     };
 
-    let mut writer = PcapNgWriter::with_section_header(Vec::new(), little_section.clone()).unwrap();
+    let mut writer = PcapNgWriter::with_section_header(Vec::new(), little_section.clone(), true).unwrap();
     writer.write_block(&little_interface.clone().into_block()).unwrap();
     writer.write_block(&big_section.clone().into_block()).unwrap();
     writer.write_block(&big_interface.clone().into_block()).unwrap();
 
     // Check each block value //
-    let (rem, mut parser) = PcapNgParser::new(writer.get_ref()).unwrap();
-    assert_eq!(parser.section(), &little_section);
+    let (rem, mut parser) = PcapNgParser::new(writer.get_ref(), true).unwrap();
+    assert_eq!(parser.state().section(), &little_section);
 
     let (rem, block) = parser.next_block(rem).unwrap();
     assert_eq!(block, Block::InterfaceDescription(little_interface));
 
     let (rem, block) = parser.next_block(rem).unwrap();
     assert_eq!(block, Block::SectionHeader(big_section.clone()));
-    assert_eq!(parser.section(), &big_section);
+    assert_eq!(parser.state().section(), &big_section);
 
     let (rem, block) = parser.next_block(rem).unwrap();
     assert_eq!(block, Block::InterfaceDescription(big_interface));
@@ -409,12 +425,12 @@ fn reader_with_capacity_handles_large_blocks() {
         options: vec![],
     };
 
-    let mut writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big).unwrap();
+    let mut writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big, true).unwrap();
     writer.write_block(&interface.into_block()).unwrap();
     writer.write_block(&packet.into_block()).unwrap();
     let pcapng = writer.into_inner();
 
-    let mut reader = PcapNgReader::with_capacity(&pcapng[..], pcapng.len()).unwrap();
+    let mut reader = PcapNgReader::with_capacity(&pcapng[..], pcapng.len(), true).unwrap();
     let _ = reader.next_block().unwrap().unwrap();
     let (block, _) = reader.next_block().unwrap().unwrap();
     let packet = block.as_enhanced_packet().unwrap();
@@ -429,13 +445,14 @@ fn raw_reader_recovers_after_typed_block_validation_error() {
     use byteorder_slice::BigEndian;
     use pcap_file::DataLink;
     use pcap_file::pcapng::blocks::PcapNgBlock;
-    use pcap_file::pcapng::blocks::block_common::{ENHANCED_PACKET_BLOCK, RawBlock};
+    use pcap_file::pcapng::blocks::block_common::RawBlock;
+    use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
     use pcap_file::pcapng::{ContentValidationError, PcapNgReadError};
 
     let interface = InterfaceDescriptionBlock::new(DataLink::ETHERNET, 0xFFFF);
     let invalid_packet = RawBlock {
-        type_: ENHANCED_PACKET_BLOCK,
+        type_: EnhancedPacketBlock::TYPE,
         initial_len: 32,
         body: vec![
             0x00, 0x00, 0x00, 0x07, // invalid interface_id
@@ -448,12 +465,12 @@ fn raw_reader_recovers_after_typed_block_validation_error() {
         trailer_len: 32,
     };
 
-    let mut writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big).unwrap();
+    let mut writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big, true).unwrap();
     writer.write_block(&interface.into_block()).unwrap();
     invalid_packet.write_to::<BigEndian, _>(writer.get_mut()).unwrap();
     let pcapng = writer.into_inner();
 
-    let mut reader = PcapNgReader::new(&pcapng[..]).unwrap();
+    let mut reader = PcapNgReader::new(&pcapng[..], true).unwrap();
     let _ = reader.next_block().unwrap().unwrap();
 
     let typed_error = reader.next_block().unwrap().unwrap_err();
@@ -468,7 +485,7 @@ fn raw_reader_recovers_after_typed_block_validation_error() {
     }
 
     let (raw_block, _) = reader.next_raw_block().unwrap().unwrap();
-    assert_eq!(raw_block.type_, ENHANCED_PACKET_BLOCK);
+    assert_eq!(raw_block.type_, EnhancedPacketBlock::TYPE);
     assert_eq!(raw_block.body.len(), 20);
     assert!(reader.next_raw_block().is_none());
 }
@@ -569,7 +586,7 @@ fn test_stateful_custom_block() {
     };
 
     let mut buffer = Vec::new();
-    let mut pcapng_writer = PcapNgWriter::new(&mut buffer).expect("Failed to create writer");
+    let mut pcapng_writer = PcapNgWriter::new(&mut buffer, true).expect("Failed to create writer");
 
     // Write an interface description block that sets the timestamp format.
     let interface_description = InterfaceDescriptionBlock {
@@ -611,7 +628,7 @@ fn test_stateful_custom_block() {
         .expect("Failed to write packet block");
 
     // --- READING ---
-    let mut pcapng_reader = PcapNgReader::new(&buffer[..]).expect("Failed to create reader");
+    let mut pcapng_reader = PcapNgReader::new(&buffer[..], true).expect("Failed to create reader");
 
     // Read the first block, which should be the interface description
     let (first_block, _) = pcapng_reader

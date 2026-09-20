@@ -67,7 +67,7 @@ pub fn pcapng(c: &mut Criterion) {
 
     group.bench_function("Parser", |b| {
         b.iter(|| {
-            let (mut src, mut parser) = PcapNgParser::new(&pcapng).unwrap();
+            let (mut src, mut parser) = PcapNgParser::new(&pcapng, true).unwrap();
             loop {
                 match parser.next_block(src) {
                     Ok((rem, _)) => src = rem,
@@ -80,7 +80,7 @@ pub fn pcapng(c: &mut Criterion) {
 
     group.bench_function("ParserRaw", |b| {
         b.iter(|| {
-            let (mut src, mut parser) = PcapNgParser::new(&pcapng).unwrap();
+            let (mut src, mut parser) = PcapNgParser::new(&pcapng, true).unwrap();
             loop {
                 match parser.next_raw_block(src) {
                     Ok((rem, _)) => src = rem,
@@ -94,7 +94,7 @@ pub fn pcapng(c: &mut Criterion) {
     group.bench_function("Reader", |b| {
         b.iter(|| {
             let mut src = &pcapng[..];
-            let mut reader = PcapNgReader::new(&mut src).unwrap();
+            let mut reader = PcapNgReader::new(&mut src, true).unwrap();
             while let Some(pkt) = reader.next_block() {
                 pkt.unwrap();
             }
@@ -104,7 +104,7 @@ pub fn pcapng(c: &mut Criterion) {
     group.bench_function("ReaderRaw", |b| {
         b.iter(|| {
             let mut src = &pcapng[..];
-            let mut reader = PcapNgReader::new(&mut src).unwrap();
+            let mut reader = PcapNgReader::new(&mut src, true).unwrap();
             while let Some(pkt) = reader.next_raw_block() {
                 pkt.unwrap();
             }

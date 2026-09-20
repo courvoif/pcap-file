@@ -241,7 +241,14 @@ impl<'a> CustomBlock<'a, false> {
 }
 
 impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
-    fn from_slice<B: ByteOrder>(
+    const TYPE: u32 = if COPIABLE { 0x00000BAD } else { 0x40000BAD };
+    const NAME: &'static str = if COPIABLE {
+        "Custom Block (Copiable)"
+    } else {
+        "Custom Block (Non-Copiable)"
+    };
+
+    fn from_body<B: ByteOrder>(
         _state: &PcapNgState,
         mut slice: &'a [u8],
     ) -> Result<(&'a [u8], Self), BlockContentParseError>
@@ -265,7 +272,7 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
         ))
     }
 
-    fn write_to<B: ByteOrder, W: Write>(
+    fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         _state: &PcapNgState,
         writer: &mut W,

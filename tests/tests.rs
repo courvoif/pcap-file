@@ -15,7 +15,7 @@ mod pcapng;
 #[test]
 fn timestamp_resolution() {
     let file = File::open("tests/test_multiple_interfaces.pcapng").unwrap();
-    let mut pcapng_reader = PcapNgReader::new(file).unwrap();
+    let mut pcapng_reader = PcapNgReader::new(file, true).unwrap();
 
     let mut i = 0;
     while let Some(block) = pcapng_reader.next_block() {
