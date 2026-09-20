@@ -10,7 +10,8 @@ use pcap_file::pcapng::blocks::interface_description::{
     InterfaceDescriptionBlock, InterfaceDescriptionOption, InterfaceTsResolution,
 };
 use pcap_file::pcapng::{
-    BlockContentParseError, ContentValidationError, PcapNgReadError, PcapNgReader, PcapNgWriteError, PcapNgWriter,
+    Block, BlockContentParseError, ContentValidationError, PcapNgReadError, PcapNgReader, PcapNgWriteError,
+    PcapNgWriter,
 };
 
 #[test]
@@ -67,8 +68,11 @@ fn negative_offset_roundtrip_accepts_timestamp_at_unix_epoch() {
     let mut reader = PcapNgReader::new(&buffer[..], true).unwrap();
     reader.next_block().unwrap().unwrap();
     let (block, _) = reader.next_block().unwrap().unwrap();
+    let Block::EnhancedPacket(packet) = block else {
+        panic!("Expected an Enhanced Packet Block");
+    };
 
-    assert_eq!(block.as_enhanced_packet().unwrap().timestamp, Duration::ZERO);
+    assert_eq!(packet.timestamp, Duration::ZERO);
 }
 
 #[test]

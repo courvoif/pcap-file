@@ -83,34 +83,16 @@ while let Some(result) = pcapng_reader.next_block() {
 }
 ```
 
-Use `next_block()` to borrow typed blocks and access their `PcapNgState`, or
-`next_raw_block()` to preserve unknown blocks and inspect undecodable content.
+Use `next_block()` to borrow typed blocks and access their `PcapNgState`.
+After a non-fatal error, the next call continues with the following block.
 
-Migration: replace `PcapNgPacket` variant matching with access to its fields.
-Block-only `From`/`TryFrom` conversions are replaced by
-`PcapNgPacket::from_block(block, state)` (or `block.into_pcapng_packet(state)`),
-because resolving the datalink requires interface state.
-Non-packet blocks are returned unchanged in `PacketConversionError::NotPacket(block)`;
-missing interfaces return `PacketConversionError::InvalidInterfaceId(id)`.
-Struct literals must now supply `datalink`.
+Use `next_raw_block()` to inspect blocks in their raw representation.
 
-Standalone block-type constants have been removed.
-Import `PcapNgBlock` and use the block type's associated constant, for example
-`EnhancedPacketBlock::TYPE` or `CustomBlock::<true>::TYPE`.
-
-`PcapNgWriteError::Validation` now contains only a boxed `ContentValidationError`.
-Match `Validation(source)` instead of `Validation { field, source }`;
-the separate field-name context has been removed.
+Fatal errors stop the reader. Use `PcapNgReadError::is_fatal()` to distinguish
+fatal errors from errors after which reading can continue.
 
 Pass `strict: bool` as the last argument to parser, reader, and writer
-constructors. For example, `PcapNgReader::new(input, true)` enables semantic
-validation; `PcapNgReader::new(input, false)` disables it.
-Bounds, framing, and required encoding/decoding conversions are always checked;
-option decoding and encoding retain their own checks. Raw operations do not
-perform semantic validation: callers can decode a raw block with
-`try_into_block(state)` and explicitly call `block.validate(state)`.
-Section Header and Interface Description raw blocks are decoded to maintain
-state, without semantic validation.
+constructors for strict validation.
 
 ### PcapNgReader packet iterator
 
@@ -121,7 +103,7 @@ use pcap_file::pcapng::PcapNgReader;
 let file_in = File::open("test.pcapng").expect("Error opening file");
 let pcapng_reader = PcapNgReader::new(file_in, true).unwrap();
 
-// Read packets from test.pcapng
+// Read packets from a valid test.pcapng
 for packet in pcapng_reader.packets() {
     // Check if there is no error
     let packet = packet.unwrap();
@@ -131,9 +113,8 @@ for packet in pcapng_reader.packets() {
 }
 ```
 
-The iterator returns owned packets, skips non-packet blocks, and stops after
-the first error. Each packet includes its interface's datalink.
-Simple Packet Blocks have no timestamp.
+The iterator returns owned packets and skips non-packet blocks. Reading can
+continue after non-fatal errors, while fatal errors stop the iterator.
 Use `next_block()` when you need interface IDs, options, or other block metadata.
 
 ### PcapNgWriter
@@ -159,7 +140,7 @@ Packet blocks in pcapng refer to interface blocks by index. When creating a
 pcapng file from scratch, write an `InterfaceDescriptionBlock` before any packet
 block that uses that interface.
 
-More complete read, write, raw recovery, and custom block examples are available
+More complete read, write, raw block, and custom block examples are available
 in [`tests/pcap/mod.rs`](tests/pcap/mod.rs) and
 [`tests/pcapng/mod.rs`](tests/pcapng/mod.rs).
 

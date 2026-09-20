@@ -23,9 +23,12 @@ use {
 /// Normally this state is maintained internally by a [`PcapNgReader`] or
 /// [`PcapNgWriter`], but it's also possible to create a new [`PcapNgState`]
 /// with [`PcapNgState::default`], and then update it by calling
-/// [`PcapNgState::update_from_block`]. For raw blocks, call
-/// [`PcapNgState::decode_block_if_needed`] first, then update the state with
-/// the decoded block when one is returned.
+/// [`PcapNgState::update_from_block`]. Validate state-changing blocks before
+/// applying them.
+///
+/// For raw blocks, call [`PcapNgState::decode_block_if_needed`] first. When it
+/// returns a block, validate it against the current state before calling
+/// [`PcapNgState::update_from_block`].
 ///
 #[derive(Debug, Default)]
 pub struct PcapNgState {
@@ -53,9 +56,16 @@ impl PcapNgState {
         self.section.endianness
     }
 
+    /// Returns whether decoding subsequent blocks requires this block's state.
+    pub(crate) fn block_is_needed(block: &Block<'_>) -> bool {
+        matches!(block, Block::SectionHeader(_) | Block::InterfaceDescription(_))
+    }
+
     /// Decode the given [`RawBlock`] if it contains state information.
     ///
     /// Returns [`None`] for blocks that don't affect the state.
+    /// The returned block is decoded but not semantically validated.
+    /// Call [`Block::validate`] before passing it to [`Self::update_from_block`].
     pub fn decode_block_if_needed<'a>(&self, raw_block: &RawBlock<'a>) -> Result<Option<Block<'a>>, StateUpdateError> {
         match raw_block.type_ {
             SectionHeaderBlock::TYPE | InterfaceDescriptionBlock::TYPE => {
@@ -66,7 +76,10 @@ impl PcapNgState {
         }
     }
 
-    /// Update the state based on the next [`Block`].
+    /// Updates the state based on the next [`Block`].
+    ///
+    /// This method does not validate the block. Call [`Block::validate`] first
+    /// when the block comes from an untrusted or raw source.
     pub fn update_from_block(&mut self, block: &Block) {
         match block {
             Block::SectionHeader(blk) => {

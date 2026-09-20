@@ -182,7 +182,19 @@ impl<'a> RawBlock<'a> {
 
 /* ----- Parsed blocks ----- */
 
-/// PcapNg parsed blocks
+/// A typed PcapNg block.
+///
+/// Match variants directly to access their typed contents:
+///
+/// ```rust
+/// use pcap_file::pcapng::Block;
+///
+/// fn inspect(block: &Block<'_>) {
+///     if let Block::EnhancedPacket(packet) = block {
+///         println!("captured {} bytes", packet.data.len());
+///     }
+/// }
+/// ```
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum Block<'a> {
     /// Section Header block
@@ -370,166 +382,6 @@ impl<'a> Block<'a> {
         BlockConversionError {
             type_: self.type_code(),
             source: Box::new(source.into()),
-        }
-    }
-
-    /// Tries to downcasts the current block into an [`EnhancedPacketBlock`]
-    pub fn into_enhanced_packet(self) -> Option<EnhancedPacketBlock<'a>> {
-        match self {
-            Block::EnhancedPacket(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcasts the current block as an [`EnhancedPacketBlock`]
-    pub fn as_enhanced_packet(&self) -> Option<&EnhancedPacketBlock<'a>> {
-        match self {
-            Block::EnhancedPacket(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcasts the current block into an [`InterfaceDescriptionBlock`]
-    pub fn into_interface_description(self) -> Option<InterfaceDescriptionBlock<'a>> {
-        match self {
-            Block::InterfaceDescription(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcasts the current block as an [`InterfaceDescriptionBlock`]
-    pub fn as_interface_description(&self) -> Option<&InterfaceDescriptionBlock<'a>> {
-        match self {
-            Block::InterfaceDescription(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcasts the current block into an [`InterfaceStatisticsBlock`]
-    pub fn into_interface_statistics(self) -> Option<InterfaceStatisticsBlock<'a>> {
-        match self {
-            Block::InterfaceStatistics(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcasts the current block as an [`InterfaceStatisticsBlock`]
-    pub fn as_interface_statistics(&self) -> Option<&InterfaceStatisticsBlock<'a>> {
-        match self {
-            Block::InterfaceStatistics(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block into a [`NameResolutionBlock`], if possible
-    pub fn into_name_resolution(self) -> Option<NameResolutionBlock<'a>> {
-        match self {
-            Block::NameResolution(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block as a [`NameResolutionBlock`], if possible
-    pub fn as_name_resolution(&self) -> Option<&NameResolutionBlock<'a>> {
-        match self {
-            Block::NameResolution(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block into a [`PacketBlock`], if possible
-    pub fn into_packet(self) -> Option<PacketBlock<'a>> {
-        match self {
-            Block::Packet(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block as a [`PacketBlock`], if possible
-    pub fn as_packet(&self) -> Option<&PacketBlock<'a>> {
-        match self {
-            Block::Packet(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block into a [`SectionHeaderBlock`], if possible
-    pub fn into_section_header(self) -> Option<SectionHeaderBlock<'a>> {
-        match self {
-            Block::SectionHeader(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block as a [`SectionHeaderBlock`], if possible
-    pub fn as_section_header(&self) -> Option<&SectionHeaderBlock<'a>> {
-        match self {
-            Block::SectionHeader(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block into a [`SimplePacketBlock`], if possible
-    pub fn into_simple_packet(self) -> Option<SimplePacketBlock<'a>> {
-        match self {
-            Block::SimplePacket(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block as a [`SimplePacketBlock`], if possible
-    pub fn as_simple_packet(&self) -> Option<&SimplePacketBlock<'a>> {
-        match self {
-            Block::SimplePacket(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block into a [`SystemdJournalExportBlock`], if possible
-    pub fn into_systemd_journal_export(self) -> Option<SystemdJournalExportBlock<'a>> {
-        match self {
-            Block::SystemdJournalExport(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block as a [`SystemdJournalExportBlock`], if possible
-    pub fn as_systemd_journal_export(&self) -> Option<&SystemdJournalExportBlock<'a>> {
-        match self {
-            Block::SystemdJournalExport(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block into a copiable [`CustomBlock`], if possible
-    pub fn into_custom_copiable(self) -> Option<CustomBlock<'a, true>> {
-        match self {
-            Block::CustomCopiable(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block as a copiable [`CustomBlock`], if possible
-    pub fn as_custom_copiable(&self) -> Option<&CustomBlock<'a, true>> {
-        match self {
-            Block::CustomCopiable(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block into a non-copiable [`CustomBlock`], if possible
-    pub fn into_custom_non_copiable(self) -> Option<CustomBlock<'a, false>> {
-        match self {
-            Block::CustomNonCopiable(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    /// Tries to downcast the current block as a non-copiable [`CustomBlock`], if possible
-    pub fn as_custom_non_copiable(&self) -> Option<&CustomBlock<'a, false>> {
-        match self {
-            Block::CustomNonCopiable(a) => Some(a),
-            _ => None,
         }
     }
 }

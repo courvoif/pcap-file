@@ -91,10 +91,13 @@ impl<R: Read> ReadBuffer<R> {
             self.len - self.pos
         };
 
-        let nb_read = self.reader.read(&mut self.buffer[rem_len..])?;
-
-        self.len = rem_len + nb_read;
         self.pos = 0;
+        self.len = rem_len;
+
+
+        let nb_read = self.reader.read(&mut self.buffer[rem_len..])?;
+        self.len += nb_read;
+
 
         Ok(nb_read)
     }

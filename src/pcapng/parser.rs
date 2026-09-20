@@ -5,6 +5,7 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use super::PcapNgState;
 use super::blocks::block_common::{Block, RawBlock};
 use crate::Endianness;
+use crate::pcapng::StateUpdateError;
 use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
 
 /* ----- Parser ----- */
@@ -50,8 +51,10 @@ pub struct PcapNgParser {
 impl PcapNgParser {
     /// Creates a parser and decodes the initial Section Header Block.
     ///
-    /// When `strict` is true, typed blocks are semantically validated after
-    /// decoding. Raw operations leave semantic validation to the caller.
+    /// When `strict` is true, every typed block is semantically validated after
+    /// decoding. Section Header and Interface Description blocks are always
+    /// validated because the parser needs them to maintain its state.
+    /// Raw operations leave validation of all other block types to the caller.
     /// Framing, bounds, and required conversions are checked in either mode.
     pub fn new(src: &[u8], strict: bool) -> Result<(&[u8], Self), PcapNgParseError> {
         // Always use BigEndian here because we can't know the SectionHeaderBlock endianness
@@ -75,12 +78,20 @@ impl PcapNgParser {
         Ok((rem, parser))
     }
 
-    /// Returns the remainder and the next typed block, validating it in strict mode.
+    /// Returns the remainder and the next typed block.
+    ///
+    /// Strict mode validates every block. Section Header and Interface
+    /// Description blocks are validated regardless of strict mode before they
+    /// are applied to the parser state.
     ///
     /// # Errors
     /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
-    /// - Other errors will prevent the parser from advancing further.
-    ///   Some of these can be recovered by calling [`Self::next_raw_block`].
+    /// - The parser does not own an input cursor, so an error returns no remainder
+    ///   and leaves the caller's input slice unchanged.
+    /// - A non-state conversion error can be skipped by calling
+    ///   [`Self::next_raw_block`] with the same input slice.
+    /// - State conversion or validation errors must not be skipped because the
+    ///   parser cannot decode subsequent blocks without valid state.
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
         // This function doesn't call `self::next_raw_block()` because converting the Block before updating the state is faster and better for error handling.
 
@@ -99,11 +110,16 @@ impl PcapNgParser {
             let state = &parser.state;
             let block = raw_block.try_into_block(state)?;
 
-            if parser.strict {
+            if PcapNgState::block_is_needed(&block) {
+                block
+                    .validate(&parser.state)
+                    .map_err(|e| StateUpdateError::BlockConversion(block.conversion_error(e)))?;
+
+                parser.state.update_from_block(&block);
+            } else if parser.strict {
                 block.validate(state).map_err(|source| block.conversion_error(source))?;
             }
 
-            parser.state.update_from_block(&block);
             Ok((rem, block))
         }
     }
@@ -111,17 +127,19 @@ impl PcapNgParser {
     /// Returns the remainder and the next [`RawBlock`].
     /// More permissive than [`Self::next_block`].
     ///
-    /// Strict mode does not apply to raw block contents. Decode with
-    /// [`RawBlock::try_into_block`] and call [`Block::validate`] explicitly
-    /// when semantic validation is wanted.
-    /// Section Header and Interface Description blocks are still decoded before
-    /// returning so the parser can keep its state consistent. If decoding one of
-    /// those state-changing blocks fails, the error is not recoverable by this
-    /// parser and no raw block is returned.
+    /// Strict mode does not validate non-state raw block contents. Decode with
+    /// [`RawBlock::try_into_block`] and call [`Block::validate`] explicitly when
+    /// semantic validation is wanted.
+    ///
+    /// Section Header and Interface Description blocks are decoded and validated
+    /// before returning so the parser can update its state safely. Failure to
+    /// decode or validate either state-changing block is not recoverable, and no
+    /// raw block is returned.
     ///
     /// # Errors
     /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
-    /// - [`PcapNgParseError::StateUpdate`] can happen when a state-changing raw block cannot be decoded.
+    /// - [`PcapNgParseError::StateUpdate`] occurs when a state-changing raw block
+    ///   cannot be decoded or validated.
     /// - All other errors will prevent the parser from advancing further.
     pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
         // Read next RawBlock
@@ -138,6 +156,9 @@ impl PcapNgParser {
             let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
 
             if let Some(block) = parser.state.decode_block_if_needed(&raw_block)? {
+                block
+                    .validate(&parser.state)
+                    .map_err(|e| StateUpdateError::BlockConversion(block.conversion_error(e)))?;
                 parser.state.update_from_block(&block);
             }
 
@@ -145,7 +166,9 @@ impl PcapNgParser {
         }
     }
 
-    /// Returns whether typed blocks are semantically validated.
+    /// Returns whether non-state typed blocks are semantically validated.
+    ///
+    /// State-changing blocks are always validated.
     pub fn strict(&self) -> bool {
         self.strict
     }

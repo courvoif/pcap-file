@@ -87,6 +87,22 @@ pub enum PcapNgReadError {
     StateUpdate(#[from] StateUpdateError),
 }
 
+impl PcapNgReadError {
+    /// Indicates whether the error is fatal and the reader cannot continue.
+    pub fn is_fatal(&self) -> bool {
+        match self {
+            Self::BlockConversion(_) => false,
+
+            Self::InvalidFormat(_) | Self::StateUpdate(_) => true,
+
+            Self::Io(error) => !matches!(
+                error.kind(),
+                std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+            ),
+        }
+    }
+}
+
 impl From<PcapNgParseError> for PcapNgReadError {
     fn from(value: PcapNgParseError) -> Self {
         match value {

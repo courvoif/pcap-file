@@ -4,7 +4,9 @@ use std::io::Read;
 
 use super::blocks::block_common::{Block, RawBlock};
 use super::{PcapNgPacket, PcapNgParser, PcapNgState};
-use crate::pcapng::errors::{BlockConversionError, ContentValidationError, PacketConversionError, PcapNgReadError};
+use crate::pcapng::errors::{
+    BlockConversionError, ContentValidationError, PacketConversionError, PcapNgReadError, StateUpdateError,
+};
 use crate::read_buffer::ReadBuffer;
 
 /* ----- Reader ----- */
@@ -32,18 +34,25 @@ use crate::read_buffer::ReadBuffer;
 pub struct PcapNgReader<R: Read> {
     parser: PcapNgParser,
     reader: ReadBuffer<R>,
+    poisoned: bool,
 }
 
 impl<R: Read> PcapNgReader<R> {
     /// Creates a new [`PcapNgReader`] from a reader.
     ///
     /// Parses the first block, which must be a Section Header Block.
-    /// When `strict` is true, typed blocks are semantically validated.
-    /// Raw operations leave semantic validation to the caller.
+    /// When `strict` is true, every typed block is semantically validated.
+    /// Section Header and Interface Description blocks are always validated
+    /// because the reader needs them to maintain its state.
+    /// Raw operations leave validation of all other block types to the caller.
     pub fn new(reader: R, strict: bool) -> Result<Self, PcapNgReadError> {
         let mut reader = ReadBuffer::new(reader);
         let parser = reader.parse_with(|src| PcapNgParser::new(src, strict))?;
-        Ok(Self { parser, reader })
+        Ok(Self {
+            parser,
+            reader,
+            poisoned: false,
+        })
     }
 
     /// Creates a new [`PcapNgReader`] with a custom internal buffer capacity.
@@ -56,71 +65,126 @@ impl<R: Read> PcapNgReader<R> {
     pub fn with_capacity(reader: R, capacity: usize, strict: bool) -> Result<Self, PcapNgReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
         let parser = reader.parse_with(|src| PcapNgParser::new(src, strict))?;
-        Ok(Self { parser, reader })
+        Ok(Self {
+            parser,
+            reader,
+            poisoned: false,
+        })
     }
 
-    /// Returns the next typed block and state, validating the block in strict mode.
-    /// [`None`] means that the reader has reached the EoF.
-    /// Won't advance the reader past any malformed packets.
+    /// Returns the next typed block and the state after applying that block.
+    ///
+    /// A well-framed non-state block is consumed before typed conversion and
+    /// semantic validation. If either step returns
+    /// [`PcapNgReadError::BlockConversion`], the block has already been skipped
+    /// and the next call continues with the following block.
+    ///
+    /// [`None`] means that the reader has reached the end of input or was
+    /// previously poisoned by a fatal error.
     ///
     /// # Errors
-    /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
-    /// - [`PcapNgReadError::BlockConversion`] for non-state blocks can be recovered by calling [`Self::next_raw_block`].
-    ///   Malformed Section Header or Interface Description blocks may still fail there because the reader must decode them to keep its state consistent.
-    /// - Other errors will prevent the reader from advancing further.
-    #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
+    /// - [`PcapNgReadError::BlockConversion`] is non-fatal and consumes the
+    ///   rejected block.
+    /// - I/O errors with [`std::io::ErrorKind::Interrupted`],
+    ///   [`std::io::ErrorKind::WouldBlock`], or
+    ///   [`std::io::ErrorKind::TimedOut`] are non-fatal. Calling this method
+    ///   again retries without losing buffered input.
+    /// - Invalid framing, state update errors, and all other I/O errors are
+    ///   fatal. The reader returns the error once and then becomes poisoned.
+    #[must_use = "the result contains either the next block or a read error"]
     pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
-        match self.reader.has_data_left() {
-            Ok(true) => {
-                // # SAFETY
-                // Block must NOT contain a mutable reference to the state.
-                // Keep the annotations to be sure that only the lifetime is transmuted.
-                let res: Result<Block<'_>, PcapNgReadError> = self.reader.parse_with(|src| self.parser.next_block(src));
-                let res: Result<Block<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
-
-                let state = &self.parser.state;
-
-                Some(res.map(|blk| (blk, state)))
-            }
-            Ok(false) => None,
-            Err(e) => Some(Err(PcapNgReadError::Io(e))),
+        if self.poisoned {
+            return None;
         }
+
+        let res = match self.reader.has_data_left() {
+            Ok(true) => {
+                let res: Result<RawBlock<'_>, PcapNgReadError> =
+                    self.reader.parse_with(|src| self.parser.next_raw_block(src));
+                // # SAFETY
+                // The raw block borrows only from the reader's internal buffer.
+                // The returned lifetime is tied to `&'a mut self`, which prevents that buffer from being mutated.
+                let res: Result<RawBlock<'a>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
+
+                res.and_then(|raw_block| {
+                    let block = raw_block.try_into_block(&self.parser.state)?;
+
+                    if self.parser.strict() {
+                        if let Err(source) = block.validate(&self.parser.state) {
+                            let state_block = matches!(&block, Block::SectionHeader(_) | Block::InterfaceDescription(_));
+                            let error = block.conversion_error(source);
+
+                            if state_block {
+                                return Err(StateUpdateError::BlockConversion(error).into());
+                            }
+
+                            return Err(error.into());
+                        }
+                    }
+
+                    Ok((block, &self.parser.state))
+                })
+            }
+            Ok(false) => return None,
+            Err(e) => Err(PcapNgReadError::Io(e)),
+        }
+        .inspect_err(|error| {
+            self.poisoned |= error.is_fatal();
+        });
+
+        Some(res)
     }
 
     /// Returns the next [`RawBlock`] and the current [`PcapNgState`].
-    /// [`None`] means that the reader has reached the EoF.
     /// More permissive than [`Self::next_block`].
     ///
-    /// Strict mode does not validate raw block contents. Decode with
-    /// [`RawBlock::try_into_block`] and call [`Block::validate`] explicitly.
-    /// Section Header and Interface Description blocks are still decoded to
-    /// maintain state, without semantic validation.
+    /// Strict mode does not validate non-state raw block contents. Decode with
+    /// [`RawBlock::try_into_block`] and call [`Block::validate`] explicitly when
+    /// semantic validation is wanted.
+    ///
+    /// Section Header and Interface Description blocks are always decoded and
+    /// validated before the reader updates its state.
+    ///
+    /// [`None`] means that the reader has reached the end of input or was
+    /// previously poisoned by a fatal error.
     ///
     /// # Errors
-    /// - Only some variants of [`PcapNgReadError::Io`] are directly recoverable.
-    /// - [`PcapNgReadError::StateUpdate`] can happen when a state-changing raw block cannot be decoded.
-    /// - All other errors will prevent the reader from advancing further.
-    #[must_use = "Not checking the result can lead to an infinite loop because the reader may not advance on error"]
+    /// - I/O errors with [`std::io::ErrorKind::Interrupted`],
+    ///   [`std::io::ErrorKind::WouldBlock`], or
+    ///   [`std::io::ErrorKind::TimedOut`] are non-fatal. Calling this method
+    ///   again retries without losing buffered input.
+    /// - Invalid framing, state update errors, and all other I/O errors are
+    ///   fatal. The reader returns the error once and then becomes poisoned.
+    #[must_use = "the result contains either the next raw block or a read error"]
     pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {
-        match self.reader.has_data_left() {
+        if self.poisoned {
+            return None;
+        }
+
+        let res = match self.reader.has_data_left() {
             Ok(true) => {
-                // # SAFETY
-                // Block must NOT contain a mutable reference to the state.
-                // Keep the annotations to be sure that only the lifetime is transmuted.
                 let res: Result<RawBlock<'_>, PcapNgReadError> =
                     self.reader.parse_with(|src| self.parser.next_raw_block(src));
-                let res: Result<RawBlock<'_>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
+                // # SAFETY
+                // The raw block borrows only from the reader's internal buffer.
+                // The returned lifetime is tied to `&'a mut self`, which prevents that buffer from being mutated.
+                let res: Result<RawBlock<'a>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
 
-                let state = &self.parser.state;
-
-                Some(res.map(|blk| (blk, state)))
+                res.map(|blk| (blk, &self.parser.state))
             }
-            Ok(false) => None,
-            Err(e) => Some(Err(PcapNgReadError::Io(e))),
+            Ok(false) => return None,
+            Err(e) => Err(PcapNgReadError::Io(e)),
         }
+        .inspect_err(|error| {
+            self.poisoned |= error.is_fatal();
+        });
+
+        Some(res)
     }
 
-    /// Returns whether this reader and its packet iterator validate typed blocks.
+    /// Returns whether this reader and its packet iterator validate non-state typed blocks.
+    ///
+    /// State-changing blocks are always validated.
     pub fn strict(&self) -> bool {
         self.parser.strict()
     }
@@ -130,12 +194,13 @@ impl<R: Read> PcapNgReader<R> {
         self.parser.state()
     }
 
-    /// Consumes the reader and returns an iterator over its packets.
+    /// Consumes the reader and returns an iterator over owned packets.
+    ///
+    /// Non-packet blocks are skipped. Non-fatal errors are yielded without
+    /// stopping the iterator; polling it again continues reading. A fatal error
+    /// is yielded once, after which the poisoned reader returns [`None`].
     pub fn packets(self) -> PcapNgPacketIterator<R> {
-        PcapNgPacketIterator {
-            reader: self,
-            err: false,
-        }
+        PcapNgPacketIterator { reader: self }
     }
 
     /// Consumes the [`Self`], returning the wrapped reader.
@@ -157,13 +222,19 @@ impl<R: Read> PcapNgReader<R> {
 /* ----- Packet iteration ----- */
 
 /// Iterator over owned packets, skipping non-packet blocks.
-/// Uses the reader's strict setting and stops after the first error.
+///
+/// Uses the reader's strict setting for non-state blocks. State-changing blocks
+/// are always validated. Non-fatal errors are yielded and iteration can continue
+/// when polled again. A fatal error is yielded once, then the poisoned reader
+/// ends the iterator.
+///
 /// Packet data is copied out of the internal read buffer.
 /// Packets contain datalink, timestamp, original length, and data.
 /// The datalink is resolved from the packet's interface in the current section.
 ///
-/// Use [`PcapNgReader::next_block`] for typed blocks and their state, or
-/// [`PcapNgReader::next_raw_block`] for unsupported or malformed content.
+/// Use [`PcapNgReader::next_block`] for typed blocks and their state.
+/// Use [`PcapNgReader::next_raw_block`] from the start when unsupported or
+/// malformed non-state content must be preserved.
 ///
 /// # Example
 ///
@@ -184,7 +255,6 @@ impl<R: Read> PcapNgReader<R> {
 #[derive(Debug)]
 pub struct PcapNgPacketIterator<R: Read> {
     reader: PcapNgReader<R>,
-    err: bool,
 }
 
 impl<R: Read> PcapNgPacketIterator<R> {
@@ -203,10 +273,6 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
     type Item = Result<PcapNgPacket<'static>, PcapNgReadError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.err {
-            return None;
-        }
-
         loop {
             match self.reader.next_block() {
                 Some(Ok((block, state))) => {
@@ -215,7 +281,6 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
                         Ok(packet) => return Some(Ok(packet.into_owned())),
                         Err(PacketConversionError::NotPacket(_)) => continue,
                         Err(PacketConversionError::InvalidInterfaceId(id)) => {
-                            self.err = true;
                             return Some(Err(BlockConversionError {
                                 type_,
                                 source: Box::new(ContentValidationError::InvalidInterfaceId(id).into()),
@@ -224,10 +289,7 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
                         }
                     }
                 }
-                Some(Err(error)) => {
-                    self.err = true;
-                    return Some(Err(error));
-                }
+                Some(Err(error)) => return Some(Err(error)),
                 None => return None,
             }
         }
