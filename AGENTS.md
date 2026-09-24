@@ -120,6 +120,7 @@ Check:
 ### Documentation
 
 * Documentation matches the actual behavior.
+* Don't describe the code.
 * Public APIs, configuration, examples, and setup instructions are updated when needed.
 * Deprecated or removed behavior is not still documented as supported.
 * Breaking changes and migrations are documented.
