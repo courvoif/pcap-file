@@ -36,7 +36,7 @@ let file_in = File::open("test.pcap").expect("Error opening file");
 let pcap_reader = PcapReader::new(file_in).unwrap();
 
 // Read test.pcap
-for pkt in pcap_reader {
+for pkt in pcap_reader.packets() {
     // Check if there is no error
     let pkt = pkt.unwrap();
 
@@ -45,8 +45,8 @@ for pkt in pcap_reader {
 ```
 
 The iterator API returns owned packets and is slower than `next_packet()`,
-which can borrow packet data directly from the internal read buffer. It stops
-after the first error.
+which can borrow packet data directly from the internal read buffer. It yields
+non-fatal errors and continues when polled again. Fatal errors stop iteration.
 
 ### PcapWriter
 
@@ -60,7 +60,7 @@ let pcap_reader = PcapReader::new(file_in).unwrap();
 let file_out = File::create("out.pcap").expect("Error creating file");
 let mut pcap_writer = PcapWriter::with_header(file_out, pcap_reader.header()).unwrap();
 
-for pkt in pcap_reader {
+for pkt in pcap_reader.packets() {
     pcap_writer.write_packet(&pkt.unwrap()).unwrap();
 }
 ```

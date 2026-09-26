@@ -52,6 +52,20 @@ pub enum PcapReadError {
     Validation(#[from] PcapValidationError),
 }
 
+impl PcapReadError {
+    /// Indicates whether the error is fatal and the reader cannot continue.
+    pub fn is_fatal(&self) -> bool {
+        match self {
+            Self::Validation(PcapValidationError::InvalidMagicNumber(_)) => true,
+            Self::Validation(_) => false,
+            Self::Io(error) => !matches!(
+                error.kind(),
+                std::io::ErrorKind::Interrupted | std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+            ),
+        }
+    }
+}
+
 /* ----- enum PcapWriteError ----- */
 
 /// Errors that can occur while writing pcap data.

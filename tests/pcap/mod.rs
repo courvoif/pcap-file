@@ -1,6 +1,7 @@
 extern crate pcap_file;
 
 use std::borrow::Cow;
+use std::io::Read;
 use std::time::Duration;
 
 use pcap_file::pcap::{
@@ -32,7 +33,7 @@ fn read_with_iterator() {
 
     //Global header len
     let mut data_len = 24;
-    for pkt in pcap_reader {
+    for pkt in pcap_reader.packets() {
         let pkt = pkt.unwrap();
 
         //Packet header len
@@ -68,7 +69,7 @@ fn read_write_with_iterator() {
     let mut out = Vec::new();
     let mut pcap_writer = PcapWriter::with_header(out, header).unwrap();
 
-    for pkt in pcap_reader {
+    for pkt in pcap_reader.packets() {
         pcap_writer.write_packet(&pkt.unwrap()).unwrap();
     }
 
@@ -78,22 +79,25 @@ fn read_write_with_iterator() {
 }
 
 #[test]
-fn iterator_stops_after_error() {
-    let packet = RawPcapPacket {
+fn iterator_continues_after_non_fatal_error() {
+    let invalid_packet = RawPcapPacket {
         ts_sec: 1,
         ts_frac: 0,
         incl_len: 4,
         orig_len: 2,
         data: Cow::Borrowed(&[1, 2, 3, 4]),
     };
+    let valid_packet = PcapPacket::new(Duration::new(2, 0), 2, &[5, 6]).unwrap();
 
     let mut writer = PcapWriter::new(Vec::new()).unwrap();
-    writer.write_raw_packet(&packet).unwrap();
+    writer.write_raw_packet(&invalid_packet).unwrap();
+    writer.write_packet(&valid_packet).unwrap();
     let pcap = writer.into_inner();
 
-    let mut packets = PcapReader::new(&pcap[..]).unwrap().into_iter();
+    let mut packets = PcapReader::new(&pcap[..]).unwrap().packets();
 
     assert!(packets.next().unwrap().is_err());
+    assert_eq!(packets.next().unwrap().unwrap().data(), [5, 6]);
     assert!(packets.next().is_none());
 }
 
@@ -225,17 +229,19 @@ fn reader_with_capacity_handles_large_packets() {
 }
 
 #[test]
-fn raw_reader_recovers_after_typed_packet_validation_error() {
-    let packet = RawPcapPacket {
+fn typed_reader_continues_after_packet_validation_error() {
+    let invalid_packet = RawPcapPacket {
         ts_sec: 1,
         ts_frac: 0,
         incl_len: 4,
         orig_len: 2,
         data: Cow::Borrowed(&[1, 2, 3, 4]),
     };
+    let valid_packet = PcapPacket::new(Duration::new(2, 0), 2, &[5, 6]).unwrap();
 
     let mut writer = PcapWriter::new(Vec::new()).unwrap();
-    writer.write_raw_packet(&packet).unwrap();
+    writer.write_raw_packet(&invalid_packet).unwrap();
+    writer.write_packet(&valid_packet).unwrap();
     let pcap = writer.into_inner();
 
     let mut reader = PcapReader::new(&pcap[..]).unwrap();
@@ -245,9 +251,84 @@ fn raw_reader_recovers_after_typed_packet_validation_error() {
         pcap_file::pcap::PcapReadError::Validation(PcapValidationError::OriginLenTooSmall(2, 4))
     ));
 
-    let raw_packet = reader.next_raw_packet().unwrap().unwrap();
-    assert_eq!(raw_packet.incl_len, 4);
-    assert_eq!(raw_packet.orig_len, 2);
-    assert_eq!(&*raw_packet.data, &[1, 2, 3, 4]);
+    let packet = reader.next_packet().unwrap().unwrap();
+    assert_eq!(packet.data(), [5, 6]);
+    assert!(reader.next_packet().is_none());
+}
+
+/* ----- Reader I/O behavior tests ----- */
+
+#[derive(Debug)]
+struct ReadErrorOnce {
+    data: Vec<u8>,
+    pos: usize,
+    split: usize,
+    error: Option<std::io::ErrorKind>,
+}
+
+impl ReadErrorOnce {
+    fn new(data: Vec<u8>, split: usize, error: std::io::ErrorKind) -> Self {
+        Self {
+            data,
+            pos: 0,
+            split,
+            error: Some(error),
+        }
+    }
+}
+
+impl Read for ReadErrorOnce {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.pos == self.split {
+            if let Some(error) = self.error.take() {
+                return Err(error.into());
+            }
+        }
+
+        let end = if self.pos < self.split {
+            self.split
+        } else {
+            self.data.len()
+        };
+        let len = buf.len().min(end - self.pos);
+        buf[..len].copy_from_slice(&self.data[self.pos..self.pos + len]);
+        self.pos += len;
+        Ok(len)
+    }
+}
+
+fn pcap_with_partially_buffered_packet() -> (Vec<u8>, usize) {
+    let packet = PcapPacket::new(Duration::new(1, 0), 2, &[1, 2]).unwrap();
+    let mut writer = PcapWriter::new(Vec::new()).unwrap();
+    let split = 24 + 5;
+    writer.write_packet(&packet).unwrap();
+    (writer.into_inner(), split)
+}
+
+#[test]
+fn reader_retries_retryable_io_error_without_losing_buffered_data() {
+    let (pcap, split) = pcap_with_partially_buffered_packet();
+    let source = ReadErrorOnce::new(pcap, split, std::io::ErrorKind::WouldBlock);
+    let mut reader = PcapReader::new(source).unwrap();
+
+    let error = reader.next_packet().unwrap().unwrap_err();
+    assert!(
+        matches!(error, pcap_file::pcap::PcapReadError::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+    );
+    assert_eq!(reader.next_packet().unwrap().unwrap().data(), [1, 2]);
+    assert!(reader.next_packet().is_none());
+}
+
+#[test]
+fn reader_is_poisoned_after_fatal_io_error() {
+    let (pcap, split) = pcap_with_partially_buffered_packet();
+    let source = ReadErrorOnce::new(pcap, split, std::io::ErrorKind::ConnectionReset);
+    let mut reader = PcapReader::new(source).unwrap();
+
+    let error = reader.next_packet().unwrap().unwrap_err();
+    assert!(
+        matches!(error, pcap_file::pcap::PcapReadError::Io(error) if error.kind() == std::io::ErrorKind::ConnectionReset)
+    );
+    assert!(reader.next_packet().is_none());
     assert!(reader.next_raw_packet().is_none());
 }
