@@ -8,9 +8,9 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
+use crate::pcapng::PcapNgState;
 use crate::pcapng::blocks::custom::{CustomBinaryOption, CustomUtf8Option};
-use crate::pcapng::errors::{OptionEntryError, OptionParseError, PcapNgWriteError};
-use crate::pcapng::{ContentValidationError, PcapNgState};
+use crate::pcapng::errors::{BlockValidationError, OptionEntryError, OptionError, WriteError};
 
 /// Comment
 pub const COMMENT: u16 = 0x0001;
@@ -106,7 +106,7 @@ pub(crate) trait PcapNgOption<'a> {
         state: &PcapNgState,
         interface_id: Option<u32>,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Vec<Self>), OptionParseError>
+    ) -> Result<(&'a [u8], Vec<Self>), BlockValidationError>
     where
         Self: std::marker::Sized,
     {
@@ -119,10 +119,10 @@ pub(crate) trait PcapNgOption<'a> {
 
         while !slice.is_empty() {
             if slice.len() < 4 {
-                return Err(OptionParseError::ContentTooSmall {
+                return Err(BlockValidationError::Option(OptionError::ContentTooSmall {
                     needed: 4,
                     actual: slice.len(),
-                });
+                }));
             }
 
             let code = slice.read_u16::<B>().expect("available length checked before");
@@ -134,19 +134,19 @@ pub(crate) trait PcapNgOption<'a> {
             }
 
             if slice.len() < length + pad_len {
-                return Err(OptionParseError::ContentTooSmall {
+                return Err(BlockValidationError::Option(OptionError::ContentTooSmall {
                     needed: length + pad_len,
                     actual: slice.len(),
-                });
+                }));
             }
 
             let tmp_slice = &slice[..length];
             let opt = Self::from_slice::<B>(state, interface_id, code, tmp_slice).map_err(|e| {
-                OptionParseError::InvalidEntry {
+                BlockValidationError::Option(OptionError::InvalidEntry {
                     code,
                     name: Self::code_name(code),
                     source: Box::new(e),
-                }
+                })
             })?;
 
             // Jump over the padding
@@ -164,7 +164,7 @@ pub(crate) trait PcapNgOption<'a> {
         state: &PcapNgState,
         interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError>;
+    ) -> Result<usize, WriteError<BlockValidationError>>;
 
     /// Write all options in a block
     fn write_opts_to<B: ByteOrder, W: Write>(
@@ -172,7 +172,7 @@ pub(crate) trait PcapNgOption<'a> {
         state: &PcapNgState,
         interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError>
+    ) -> Result<usize, WriteError<BlockValidationError>>
     where
         Self: std::marker::Sized,
     {
@@ -213,7 +213,11 @@ impl<'a> UnknownOption<'a> {
 }
 
 pub(crate) trait WriteOpt {
-    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError>;
+    fn write_opt<B: ByteOrder, W: Write>(
+        &self,
+        code: u16,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<BlockValidationError>>;
 }
 
 /// Write an option with its header and padding.
@@ -222,12 +226,19 @@ fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
     code: u16,
     len: usize,
     content: impl FnOnce(&mut W) -> Result<(), std::io::Error>,
-) -> Result<usize, PcapNgWriteError> {
+) -> Result<usize, WriteError<BlockValidationError>> {
     let pad_len = (4 - len % 4) % 4;
 
-    let len: u16 = len
-        .try_into()
-        .map_err(|_| PcapNgWriteError::from(ContentValidationError::OptionTooBig(len)))?;
+    let len: u16 = len.try_into().map_err(|_| {
+        WriteError::Other(BlockValidationError::Option(OptionError::InvalidEntry {
+            code,
+            name: "option",
+            source: Box::new(OptionEntryError::TooLarge {
+                actual: len,
+                maximum: u16::MAX as usize,
+            }),
+        }))
+    })?;
 
     writer.write_u16::<B>(code)?;
     writer.write_u16::<B>(len)?;
@@ -238,49 +249,81 @@ fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
 }
 
 impl<'a> WriteOpt for Cow<'a, [u8]> {
-    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    fn write_opt<B: ByteOrder, W: Write>(
+        &self,
+        code: u16,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         write_opt_with_header_and_pad::<B, _>(writer, code, self.len(), |w| w.write_all(self))
     }
 }
 
 impl<'a> WriteOpt for Cow<'a, str> {
-    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    fn write_opt<B: ByteOrder, W: Write>(
+        &self,
+        code: u16,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         write_opt_with_header_and_pad::<B, _>(writer, code, self.len(), |w| w.write_all(self.as_bytes()))
     }
 }
 
 impl WriteOpt for u8 {
-    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    fn write_opt<B: ByteOrder, W: Write>(
+        &self,
+        code: u16,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         write_opt_with_header_and_pad::<B, _>(writer, code, 1, |w| w.write_u8(*self))
     }
 }
 
 impl WriteOpt for u16 {
-    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    fn write_opt<B: ByteOrder, W: Write>(
+        &self,
+        code: u16,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         write_opt_with_header_and_pad::<B, _>(writer, code, 2, |w| w.write_u16::<B>(*self))
     }
 }
 
 impl WriteOpt for u32 {
-    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    fn write_opt<B: ByteOrder, W: Write>(
+        &self,
+        code: u16,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         write_opt_with_header_and_pad::<B, _>(writer, code, 4, |w| w.write_u32::<B>(*self))
     }
 }
 
 impl WriteOpt for u64 {
-    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    fn write_opt<B: ByteOrder, W: Write>(
+        &self,
+        code: u16,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         write_opt_with_header_and_pad::<B, _>(writer, code, 8, |w| w.write_u64::<B>(*self))
     }
 }
 
 impl WriteOpt for i64 {
-    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    fn write_opt<B: ByteOrder, W: Write>(
+        &self,
+        code: u16,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         write_opt_with_header_and_pad::<B, _>(writer, code, 8, |w| w.write_i64::<B>(*self))
     }
 }
 
 impl<'a> WriteOpt for CommonOption<'a> {
-    fn write_opt<B: ByteOrder, W: Write>(&self, code: u16, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    fn write_opt<B: ByteOrder, W: Write>(
+        &self,
+        code: u16,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         match self {
             CommonOption::Comment(a) => {
                 write_opt_with_header_and_pad::<B, _>(writer, code, a.len(), |w| w.write_all(a.as_bytes()))
@@ -326,7 +369,7 @@ mod tests {
 
     use crate::pcapng::PcapNgState;
     use crate::pcapng::blocks::opt_common::PcapNgOption;
-    use crate::pcapng::errors::{OptionEntryError, PcapNgWriteError};
+    use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
 
     #[derive(Debug, PartialEq)]
     struct PcapNgOptionImpl {}
@@ -349,7 +392,7 @@ mod tests {
             _state: &PcapNgState,
             _interface_id: Option<u32>,
             _writer: &mut W,
-        ) -> Result<usize, PcapNgWriteError> {
+        ) -> Result<usize, WriteError<BlockValidationError>> {
             Ok(0)
         }
 

@@ -5,7 +5,7 @@ use super::blocks::block_common::{Block, RawBlock};
 use super::blocks::interface_description::{InterfaceDescriptionBlock, InterfaceTsResolution};
 use super::blocks::section_header::SectionHeaderBlock;
 use crate::Endianness;
-use crate::pcapng::errors::{ContentValidationError, StateUpdateError};
+use crate::pcapng::errors::{StateUpdateError, TimestampError};
 
 #[cfg(doc)]
 use {
@@ -54,11 +54,6 @@ impl PcapNgState {
     /// Returns the endianness of the current section.
     pub fn endianness(&self) -> Endianness {
         self.section.endianness
-    }
-
-    /// Returns whether decoding subsequent blocks requires this block's state.
-    pub(crate) fn block_is_needed(block: &Block<'_>) -> bool {
-        matches!(block, Block::SectionHeader(_) | Block::InterfaceDescription(_))
     }
 
     /// Decode the given [`RawBlock`] if it contains state information.
@@ -115,13 +110,13 @@ impl PcapNgState {
         interface_id: u32,
         timestamp_high: u32,
         timestamp_low: u32,
-    ) -> Result<Duration, ContentValidationError> {
+    ) -> Result<Duration, TimestampError> {
         let ts_raw = ((timestamp_high as u64) << 32) | timestamp_low as u64;
 
         let (ts_resolution, ts_offset) = self
             .ts_parameters
             .get(interface_id as usize)
-            .ok_or(ContentValidationError::InvalidInterfaceId(interface_id))?;
+            .ok_or(TimestampError::InvalidInterfaceId(interface_id))?;
 
         let timestamp = ts_resolution.decode_timestamp(ts_raw);
         let offset = Duration::from_secs(ts_offset.unsigned_abs());
@@ -131,7 +126,7 @@ impl PcapNgState {
         } else {
             timestamp.checked_sub(offset)
         }
-        .ok_or_else(|| ContentValidationError::FailedToDecodeTimestamp {
+        .ok_or(TimestampError::DecodeOutOfRange {
             timestamp_high,
             timestamp_low,
             resolution: *ts_resolution,
@@ -142,15 +137,11 @@ impl PcapNgState {
     /// Encode a timestamp using the correct format for the current state.
     ///
     /// `timestamp` is the time elapsed since 1970-01-01 00:00:00 UTC.
-    pub fn encode_timestamp(
-        &self,
-        interface_id: u32,
-        timestamp: Duration,
-    ) -> Result<(u32, u32), ContentValidationError> {
+    pub fn encode_timestamp(&self, interface_id: u32, timestamp: Duration) -> Result<(u32, u32), TimestampError> {
         let (ts_resolution, ts_offset) = self
             .ts_parameters
             .get(interface_id as usize)
-            .ok_or(ContentValidationError::InvalidInterfaceId(interface_id))?;
+            .ok_or(TimestampError::InvalidInterfaceId(interface_id))?;
 
         let offset = Duration::from_secs(ts_offset.unsigned_abs());
         let ts_relative = if *ts_offset >= 0 {
@@ -158,19 +149,19 @@ impl PcapNgState {
         } else {
             timestamp.checked_add(offset)
         }
-        .ok_or(ContentValidationError::FailedToEncodeTimestamp {
+        .ok_or(TimestampError::EncodeOutOfRange {
             timestamp,
             resolution: *ts_resolution,
             offset: *ts_offset,
         })?;
 
-        let ts_raw = ts_resolution.encode_timestamp(ts_relative).map_err(|_| {
-            ContentValidationError::FailedToEncodeTimestamp {
+        let ts_raw = ts_resolution
+            .encode_timestamp(ts_relative)
+            .map_err(|_| TimestampError::EncodeOutOfRange {
                 timestamp,
                 resolution: *ts_resolution,
                 offset: *ts_offset,
-            }
-        })?;
+            })?;
 
         let timestamp_high = (ts_raw >> 32) as u32;
         let timestamp_low = (ts_raw & 0xFFFFFFFF) as u32;
@@ -197,7 +188,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            ContentValidationError::FailedToDecodeTimestamp {
+            TimestampError::DecodeOutOfRange {
                 timestamp_high,
                 timestamp_low,
                 resolution,
@@ -219,7 +210,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            ContentValidationError::FailedToEncodeTimestamp {
+            TimestampError::EncodeOutOfRange {
                 timestamp,
                 resolution,
                 offset,
@@ -240,7 +231,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            ContentValidationError::FailedToEncodeTimestamp {
+            TimestampError::EncodeOutOfRange {
                 timestamp,
                 resolution,
                 offset,

@@ -19,10 +19,10 @@ use super::packet::PacketBlock;
 use super::section_header::SectionHeaderBlock;
 use super::simple_packet::SimplePacketBlock;
 use super::systemd_journal_export::SystemdJournalExportBlock;
+use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{
-    BlockContentParseError, BlockConversionError, PcapNgFormatError, PcapNgWriteError, RawBlockParseError,
+    BlockError, BlockValidationError, PcapNgFormatError, PcapNgWriteError, RawBlockParseError, WriteError,
 };
-use crate::pcapng::{ContentValidationError, PcapNgState};
 
 /* ----- Raw blocks ----- */
 
@@ -162,7 +162,7 @@ impl<'a> RawBlock<'a> {
     /// Decodes a raw block after checking framing, without semantic validation.
     /// Call [`Block::validate`] explicitly to validate the decoded content.
     /// The byteorder is defined by the `state`.
-    pub fn try_into_block(&self, state: &PcapNgState) -> Result<Block<'a>, BlockConversionError> {
+    pub fn try_into_block(&self, state: &PcapNgState) -> Result<Block<'a>, BlockError> {
         match state.section.endianness {
             crate::Endianness::Big => Block::try_from_raw_block::<BigEndian>(state, self),
             crate::Endianness::Little => Block::try_from_raw_block::<LittleEndian>(state, self),
@@ -172,10 +172,7 @@ impl<'a> RawBlock<'a> {
     /// Decodes a raw block after checking framing, without semantic validation.
     /// Call [`Block::validate`] explicitly to validate the decoded content.
     /// The byteorder is defined by the caller.
-    pub fn try_into_block_with_byteorder<B: ByteOrder>(
-        &self,
-        state: &PcapNgState,
-    ) -> Result<Block<'a>, BlockConversionError> {
+    pub fn try_into_block_with_byteorder<B: ByteOrder>(&self, state: &PcapNgState) -> Result<Block<'a>, BlockError> {
         Block::try_from_raw_block::<B>(state, self)
     }
 }
@@ -231,7 +228,7 @@ impl<'a> Block<'a> {
     pub fn try_from_raw_block<B: ByteOrder>(
         state: &PcapNgState,
         raw_block: &RawBlock<'a>,
-    ) -> Result<Block<'a>, BlockConversionError> {
+    ) -> Result<Block<'a>, BlockError> {
         let type_ = raw_block.type_;
 
         return match &raw_block.body {
@@ -243,7 +240,7 @@ impl<'a> Block<'a> {
             state: &PcapNgState,
             type_: u32,
             body: &'a [u8],
-        ) -> Result<Block<'a>, BlockConversionError> {
+        ) -> Result<Block<'a>, BlockError> {
             match type_ {
                 SectionHeaderBlock::TYPE => {
                     SectionHeaderBlock::from_body::<B>(state, body).map(|(_, blk)| Block::SectionHeader(blk))
@@ -270,9 +267,9 @@ impl<'a> Block<'a> {
                 CustomBlock::<false>::TYPE => {
                     CustomBlock::from_body::<B>(state, body).map(|(_, blk)| Block::CustomNonCopiable(blk))
                 }
-                _ => Err(BlockContentParseError::UnknownBlock(type_)),
+                _ => Err(BlockValidationError::UnknownType),
             }
-            .map_err(|source| BlockConversionError {
+            .map_err(|source| BlockError {
                 type_,
                 source: source.into(),
             })
@@ -286,8 +283,8 @@ impl<'a> Block<'a> {
         &self,
         state: &PcapNgState,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
-        return match self {
+    ) -> Result<usize, WriteError<BlockError>> {
+        let result = match self {
             Self::SectionHeader(b) => inner_write_to::<B, _, W>(state, b, writer),
             Self::InterfaceDescription(b) => inner_write_to::<B, _, W>(state, b, writer),
             Self::Packet(b) => inner_write_to::<B, _, W>(state, b, writer),
@@ -300,12 +297,19 @@ impl<'a> Block<'a> {
             Self::CustomNonCopiable(b) => inner_write_to::<B, _, W>(state, b, writer),
         };
 
-        /// Writes a block to the writer, including its header and padding.
-        fn inner_write_to<'a, B: ByteOrder, BL: PcapNgBlock<'a>, W: Write>(
+        return result.map_err(|error| match error {
+            WriteError::Io(error) => WriteError::Io(error),
+            WriteError::Other(source) => WriteError::Other(BlockError {
+                type_: self.type_code(),
+                source: Box::new(source),
+            }),
+        });
+
+        fn inner_write_to<'block, B: ByteOrder, BL: PcapNgBlock<'block>, W: Write>(
             state: &PcapNgState,
             block: &BL,
             writer: &mut W,
-        ) -> Result<usize, PcapNgWriteError> {
+        ) -> Result<usize, WriteError<BlockValidationError>> {
             // Fake write to compute the data length
             // Required encoding conversions fail before the destination is written.
             let data_len = block.write_body_to::<B, _>(state, &mut std::io::sink())?;
@@ -316,15 +320,19 @@ impl<'a> Block<'a> {
 
             // Check that there wasn't an overflow
             if block_len < data_len {
-                return Err(PcapNgWriteError::from(ContentValidationError::BlockContentTooBig(
-                    data_len as u64,
-                )));
+                return Err(WriteError::Other(BlockValidationError::BlockTooLarge {
+                    actual: data_len as u64,
+                    maximum: u32::MAX as u64,
+                }));
             }
 
             // Check that the block length fits within the u32 limit
-            let block_len: u32 = block_len
-                .try_into()
-                .map_err(|_| PcapNgWriteError::from(ContentValidationError::BlockContentTooBig(block_len as u64)))?;
+            let block_len: u32 = block_len.try_into().map_err(|_| {
+                WriteError::Other(BlockValidationError::BlockTooLarge {
+                    actual: block_len as u64,
+                    maximum: u32::MAX as u64,
+                })
+            })?;
 
             writer.write_u32::<B>(BL::TYPE)?;
             writer.write_u32::<B>(block_len)?;
@@ -337,7 +345,7 @@ impl<'a> Block<'a> {
     }
 
     /// Validates the block's semantic constraints against the current state.
-    pub fn validate(&self, state: &PcapNgState) -> Result<(), ContentValidationError> {
+    pub fn validate(&self, state: &PcapNgState) -> Result<(), BlockError> {
         match self {
             Self::SectionHeader(block) => block.validate(state),
             Self::InterfaceDescription(block) => block.validate(state),
@@ -350,6 +358,10 @@ impl<'a> Block<'a> {
             Self::CustomCopiable(block) => block.validate(state),
             Self::CustomNonCopiable(block) => block.validate(state),
         }
+        .map_err(|source| BlockError {
+            type_: self.type_code(),
+            source: source.into(),
+        })
     }
 
     /// Converts this block into a packet view using the current interface state.
@@ -377,13 +389,6 @@ impl<'a> Block<'a> {
             Self::CustomNonCopiable(_) => <CustomBlock<'a, false> as PcapNgBlock>::TYPE,
         }
     }
-
-    pub(crate) fn conversion_error(&self, source: ContentValidationError) -> BlockConversionError {
-        BlockConversionError {
-            type_: self.type_code(),
-            source: Box::new(source.into()),
-        }
-    }
 }
 
 /* ----- Common block interface ----- */
@@ -398,16 +403,13 @@ pub trait PcapNgBlock<'a> {
     /// Explicitly validates semantic constraints.
     /// Low-level decoding and encoding
     /// do not call this method; strict parsers and writers do.
-    fn validate(&self, _state: &PcapNgState) -> Result<(), ContentValidationError> {
+    fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError> {
         Ok(())
     }
 
     /// Decodes a block body using the supplied state, without semantic validation.
     /// Required bounds and representation checks still apply.
-    fn from_body<B: ByteOrder>(
-        state: &PcapNgState,
-        slice: &'a [u8],
-    ) -> Result<(&'a [u8], Self), BlockContentParseError>
+    fn from_body<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockValidationError>
     where
         Self: std::marker::Sized;
 
@@ -417,7 +419,7 @@ pub trait PcapNgBlock<'a> {
         &self,
         state: &PcapNgState,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError>;
+    ) -> Result<usize, WriteError<BlockValidationError>>;
 
     /// Convert a block into the [`Block`] enumeration
     fn into_block(self) -> Block<'a>;

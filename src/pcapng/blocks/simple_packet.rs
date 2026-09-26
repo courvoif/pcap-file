@@ -10,8 +10,8 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
-use crate::pcapng::{ContentValidationError, PcapNgState};
+use crate::pcapng::PcapNgState;
+use crate::pcapng::errors::{BlockValidationError, WriteError};
 
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
 ///
@@ -32,9 +32,9 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    ) -> Result<(&'a [u8], Self), BlockValidationError> {
         if slice.len() < 4 {
-            return Err(BlockContentParseError::BlockContentTooSmall {
+            return Err(BlockValidationError::ContentTooSmall {
                 needed: 4,
                 actual: slice.len(),
             });
@@ -42,7 +42,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
 
         // The interface of a simple packet is always the first interface of the section
         let Some(interface) = state.interfaces.first() else {
-            return Err(ContentValidationError::NoInterface.into());
+            return Err(BlockValidationError::NoInterface);
         };
 
         let original_len = slice.read_u32::<B>().unwrap();
@@ -59,7 +59,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         let tot_len = pkt_len + pad_len;
 
         if slice.len() < tot_len {
-            return Err(BlockContentParseError::BlockContentTooSmall {
+            return Err(BlockValidationError::ContentTooSmall {
                 needed: tot_len,
                 actual: slice.len(),
             });
@@ -76,15 +76,15 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         Ok((slice, packet))
     }
 
-    fn validate(&self, state: &PcapNgState) -> Result<(), ContentValidationError> {
+    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
         if (self.original_len as usize) < self.data.len() {
-            return Err(ContentValidationError::InvalidOriginalLen(
+            return Err(BlockValidationError::InvalidOriginalLen(
                 self.original_len,
                 self.data.len(),
             ));
         }
-        
-        let interface = state.interfaces.first().ok_or(ContentValidationError::NoInterface)?;
+
+        let interface = state.interfaces.first().ok_or(BlockValidationError::NoInterface)?;
 
         let expected_len = if interface.snaplen == 0 {
             self.original_len as usize
@@ -93,12 +93,12 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         };
 
         if self.data.len() != expected_len {
-            return Err(ContentValidationError::InvalidCapturedLen {
+            return Err(BlockValidationError::InvalidCapturedLen {
                 expected: expected_len,
                 actual: self.data.len(),
             });
         }
-        
+
         Ok(())
     }
 
@@ -106,7 +106,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         &self,
         _state: &PcapNgState,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         writer.write_u32::<B>(self.original_len)?;
         writer.write_all(&self.data)?;
 
@@ -129,10 +129,10 @@ mod tests {
 
     use super::SimplePacketBlock;
     use crate::DataLink;
+    use crate::pcapng::PcapNgState;
     use crate::pcapng::blocks::PcapNgBlock;
     use crate::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-    use crate::pcapng::errors::BlockContentParseError;
-    use crate::pcapng::{ContentValidationError, PcapNgState};
+    use crate::pcapng::errors::BlockValidationError;
 
     fn state_with_snaplen(snaplen: u32) -> PcapNgState {
         let mut state = PcapNgState::default();
@@ -145,10 +145,7 @@ mod tests {
         let data = [0, 0, 0, 4, 0, 1, 2, 3];
         let err = SimplePacketBlock::from_body::<BigEndian>(&PcapNgState::default(), &data).unwrap_err();
 
-        assert!(matches!(
-            err,
-            BlockContentParseError::Validation(ContentValidationError::NoInterface)
-        ));
+        assert!(matches!(err, BlockValidationError::NoInterface));
     }
 
     #[test]
@@ -175,7 +172,7 @@ mod tests {
         };
         let err = packet.validate(&PcapNgState::default()).unwrap_err();
 
-        assert!(matches!(err, ContentValidationError::NoInterface));
+        assert!(matches!(err, BlockValidationError::NoInterface));
     }
 
     #[test]
@@ -189,7 +186,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            ContentValidationError::InvalidCapturedLen { expected: 4, actual: 2 }
+            BlockValidationError::InvalidCapturedLen { expected: 4, actual: 2 }
         ));
     }
 
@@ -218,7 +215,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            ContentValidationError::InvalidCapturedLen { expected: 2, actual: 3 }
+            BlockValidationError::InvalidCapturedLen { expected: 2, actual: 3 }
         ));
     }
 }

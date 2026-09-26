@@ -17,7 +17,7 @@ use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::DataLink;
 use crate::pcapng::PcapNgState;
-use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
+use crate::pcapng::errors::{BlockValidationError, OptionEntryError, TimestampError, WriteError};
 
 /* ----- InterfaceDescriptionBlock ----- */
 
@@ -48,9 +48,9 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    ) -> Result<(&'a [u8], Self), BlockValidationError> {
         if slice.len() < 8 {
-            return Err(BlockContentParseError::BlockContentTooSmall {
+            return Err(BlockValidationError::ContentTooSmall {
                 needed: 8,
                 actual: slice.len(),
             });
@@ -73,15 +73,14 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         Ok((slice, block))
     }
 
-
     fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         let datalink: u16 = u32::from(self.linktype)
             .try_into()
-            .map_err(|_| PcapNgWriteError::from(ContentValidationError::InvalidLinktype(self.linktype)))?;
+            .map_err(|_| WriteError::Other(BlockValidationError::InvalidLinkType(self.linktype)))?;
 
         writer.write_u16::<B>(datalink)?;
         writer.write_u16::<B>(0)?;
@@ -323,7 +322,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         match self {
             InterfaceDescriptionOption::IfName(a) => a.write_opt::<B, W>(Self::IF_NAME, writer),
             InterfaceDescriptionOption::IfDescription(a) => a.write_opt::<B, W>(Self::IF_DESCRIPTION, writer),
@@ -405,16 +404,24 @@ impl InterfaceTsResolution {
     ///
     /// - If binary, the resolution must be in the range [0-29].
     /// - If decimal, the resolution must be in the range [0-9].
-    pub fn new(is_bin: bool, resol: u8) -> Result<Self, ContentValidationError> {
+    pub fn new(is_bin: bool, resol: u8) -> Result<Self, TimestampError> {
         // 2^29 is the last power of 2 inferior to 1_000_000_000 which is the number of nanosec in one second
         if is_bin && resol > 29 {
             let resol_enc = InterfaceTsResolution { is_bin, resol }.to_u8();
-            return Err(ContentValidationError::InvalidTsResolution(resol_enc, is_bin, resol));
+            return Err(TimestampError::InvalidResolution {
+                encoded: resol_enc,
+                is_binary: is_bin,
+                exponent: resol,
+            });
         }
 
         if !is_bin && resol > 9 {
             let resol_enc = InterfaceTsResolution { is_bin, resol }.to_u8();
-            return Err(ContentValidationError::InvalidTsResolution(resol_enc, is_bin, resol));
+            return Err(TimestampError::InvalidResolution {
+                encoded: resol_enc,
+                is_binary: is_bin,
+                exponent: resol,
+            });
         }
 
         Ok(InterfaceTsResolution { is_bin, resol })
@@ -424,7 +431,7 @@ impl InterfaceTsResolution {
     ///
     /// - If binary, the resolution must be in the range [0-29].
     /// - If decimal, the resolution must be in the range [0-9].
-    pub fn from_u8(ts_resol: u8) -> Result<Self, ContentValidationError> {
+    pub fn from_u8(ts_resol: u8) -> Result<Self, TimestampError> {
         let is_bin = (ts_resol >> 7) & 0x1 == 1;
         let resol = ts_resol & 0x7F;
 
@@ -453,12 +460,12 @@ impl InterfaceTsResolution {
     ///
     /// # Errors
     /// - Timestamp can't be encoded with the current resolution on a u64
-    pub fn encode_timestamp(&self, timestamp: Duration) -> Result<u64, ContentValidationError> {
+    pub fn encode_timestamp(&self, timestamp: Duration) -> Result<u64, TimestampError> {
         let timestamp_ns = timestamp.as_nanos();
         let ts = if self.is_bin {
             timestamp_ns
                 .checked_shl(self.resol.into())
-                .ok_or(ContentValidationError::FailedToEncodeTimestamp {
+                .ok_or(TimestampError::EncodeOutOfRange {
                     timestamp,
                     resolution: *self,
                     offset: 0,
@@ -468,12 +475,11 @@ impl InterfaceTsResolution {
             timestamp_ns / TS_RESOL_DEC_TO_DURATION[self.resol as usize]
         };
 
-        ts.try_into()
-            .map_err(|_| ContentValidationError::FailedToEncodeTimestamp {
-                timestamp,
-                resolution: *self,
-                offset: 0,
-            })
+        ts.try_into().map_err(|_| TimestampError::EncodeOutOfRange {
+            timestamp,
+            resolution: *self,
+            offset: 0,
+        })
     }
 
     /// Returns whether the resolution is binary or decimal.
@@ -508,7 +514,8 @@ impl Display for InterfaceTsResolution {
 mod tests {
     use std::time::Duration;
 
-    use super::{ContentValidationError, InterfaceTsResolution};
+    use super::InterfaceTsResolution;
+    use crate::pcapng::errors::TimestampError;
 
     /// Test that multiple encode / decode doesn't drift more than by one step.
     #[test]
@@ -546,7 +553,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            ContentValidationError::FailedToEncodeTimestamp {
+            TimestampError::EncodeOutOfRange {
                 timestamp,
                 resolution: error_resolution,
                 offset,

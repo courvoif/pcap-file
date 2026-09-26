@@ -10,7 +10,7 @@ use thiserror::Error;
 
 use super::block_common::{Block, PcapNgBlock};
 use crate::pcapng::blocks::opt_common::CommonOption;
-use crate::pcapng::errors::{BlockContentParseError, PcapNgWriteError};
+use crate::pcapng::errors::{BlockValidationError, WriteError};
 use crate::pcapng::{OptionEntryError, PcapNgState};
 
 /* ----- traits for Custom Payload ----- */
@@ -251,12 +251,12 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
     fn from_body<B: ByteOrder>(
         _state: &PcapNgState,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Self), BlockContentParseError>
+    ) -> Result<(&'a [u8], Self), BlockValidationError>
     where
         Self: Sized,
     {
         if slice.len() < 4 {
-            return Err(BlockContentParseError::BlockContentTooSmall {
+            return Err(BlockValidationError::ContentTooSmall {
                 needed: 4,
                 actual: slice.len(),
             });
@@ -276,7 +276,7 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
         &self,
         _state: &PcapNgState,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         writer.write_u32::<B>(self.pen)?;
         writer.write_all(&self.payload)?;
         Ok(4 + self.payload.len())

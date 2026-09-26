@@ -4,9 +4,7 @@ use std::io::Read;
 
 use super::blocks::block_common::{Block, RawBlock};
 use super::{PcapNgPacket, PcapNgParser, PcapNgState};
-use crate::pcapng::errors::{
-    BlockConversionError, ContentValidationError, PacketConversionError, PcapNgReadError, StateUpdateError,
-};
+use crate::pcapng::errors::{BlockError, BlockValidationError, PacketConversionError, PcapNgReadError};
 use crate::read_buffer::ReadBuffer;
 
 /* ----- Reader ----- */
@@ -76,14 +74,14 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// A well-framed non-state block is consumed before typed conversion and
     /// semantic validation. If either step returns
-    /// [`PcapNgReadError::BlockConversion`], the block has already been skipped
+    /// [`PcapNgReadError::Block`], the block has already been skipped
     /// and the next call continues with the following block.
     ///
     /// [`None`] means that the reader has reached the end of input or was
     /// previously poisoned by a fatal error.
     ///
     /// # Errors
-    /// - [`PcapNgReadError::BlockConversion`] is non-fatal and consumes the
+    /// - [`PcapNgReadError::Block`] is non-fatal and consumes the
     ///   rejected block.
     /// - I/O errors with [`std::io::ErrorKind::Interrupted`],
     ///   [`std::io::ErrorKind::WouldBlock`], or
@@ -110,16 +108,7 @@ impl<R: Read> PcapNgReader<R> {
                     let block = raw_block.try_into_block(&self.parser.state)?;
 
                     if self.parser.strict() {
-                        if let Err(source) = block.validate(&self.parser.state) {
-                            let state_block = matches!(&block, Block::SectionHeader(_) | Block::InterfaceDescription(_));
-                            let error = block.conversion_error(source);
-
-                            if state_block {
-                                return Err(StateUpdateError::BlockConversion(error).into());
-                            }
-
-                            return Err(error.into());
-                        }
+                        block.validate(&self.parser.state)?;
                     }
 
                     Ok((block, &self.parser.state))
@@ -281,9 +270,9 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
                         Ok(packet) => return Some(Ok(packet.into_owned())),
                         Err(PacketConversionError::NotPacket(_)) => continue,
                         Err(PacketConversionError::InvalidInterfaceId(id)) => {
-                            return Some(Err(BlockConversionError {
+                            return Some(Err(BlockError {
                                 type_,
-                                source: Box::new(ContentValidationError::InvalidInterfaceId(id).into()),
+                                source: Box::new(BlockValidationError::InvalidInterfaceId(id)),
                             }
                             .into()));
                         }

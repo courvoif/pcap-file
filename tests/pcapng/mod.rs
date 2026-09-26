@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use glob::glob;
-use pcap_file::pcapng::{Block, ContentValidationError, PcapNgParser, PcapNgReader, PcapNgWriter};
+use pcap_file::pcapng::{Block, BlockValidationError, PcapNgParser, PcapNgReader, PcapNgWriter, TimestampError};
 
 /* ----- Reader, parser, and writer tests ----- */
 
@@ -276,7 +276,7 @@ fn pcapng_with_partially_buffered_interface() -> (Vec<u8>, usize) {
 
 #[test]
 fn strict_reader_validates_typed_blocks_and_advances_after_validation_error() {
-    use pcap_file::pcapng::{BlockContentParseError, PcapNgReadError};
+    use pcap_file::pcapng::PcapNgReadError;
 
     let pcapng = pcapng_with_semantically_invalid_packet();
 
@@ -293,11 +293,8 @@ fn strict_reader_validates_typed_blocks_and_advances_after_validation_error() {
     let error = strict.next_block().unwrap().unwrap_err();
     assert!(matches!(
         error,
-        PcapNgReadError::BlockConversion(error)
-            if matches!(
-                error.source.as_ref(),
-                BlockContentParseError::Validation(ContentValidationError::InvalidOriginalLen(1, 2))
-            )
+        PcapNgReadError::Block(error)
+            if matches!(error.source.as_ref(), BlockValidationError::InvalidOriginalLen(1, 2))
     ));
 
     let (block, _) = strict.next_block().unwrap().unwrap();
@@ -311,9 +308,9 @@ fn strict_reader_validates_typed_blocks_and_advances_after_validation_error() {
 fn typed_reader_is_poisoned_after_fatal_state_error() {
     use byteorder_slice::BigEndian;
     use pcap_file::pcapng::PcapNgBlock;
+    use pcap_file::pcapng::PcapNgReadError;
     use pcap_file::pcapng::blocks::block_common::RawBlock;
     use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-    use pcap_file::pcapng::PcapNgReadError;
 
     let writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big, true).unwrap();
     let mut pcapng = writer.into_inner();
@@ -363,7 +360,9 @@ fn reader_retries_retryable_io_error_without_losing_buffered_data() {
     let mut reader = PcapNgReader::new(source, true).unwrap();
 
     let error = reader.next_block().unwrap().unwrap_err();
-    assert!(matches!(error, pcap_file::pcapng::PcapNgReadError::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock));
+    assert!(
+        matches!(error, pcap_file::pcapng::PcapNgReadError::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+    );
     assert!(matches!(
         reader.next_block().unwrap().unwrap().0,
         Block::InterfaceDescription(_)
@@ -377,7 +376,9 @@ fn reader_is_poisoned_after_fatal_io_error() {
     let mut reader = PcapNgReader::new(source, true).unwrap();
 
     let error = reader.next_block().unwrap().unwrap_err();
-    assert!(matches!(error, pcap_file::pcapng::PcapNgReadError::Io(error) if error.kind() == std::io::ErrorKind::ConnectionReset));
+    assert!(
+        matches!(error, pcap_file::pcapng::PcapNgReadError::Io(error) if error.kind() == std::io::ErrorKind::ConnectionReset)
+    );
     assert!(reader.next_block().is_none());
 }
 
@@ -647,7 +648,7 @@ fn reader_with_capacity_handles_large_blocks() {
 
 #[test]
 fn typed_reader_continues_after_non_fatal_block_error() {
-    use pcap_file::pcapng::{ContentValidationError, PcapNgReadError};
+    use pcap_file::pcapng::PcapNgReadError;
 
     let pcapng = pcapng_with_invalid_and_valid_packet_blocks();
 
@@ -656,10 +657,10 @@ fn typed_reader_continues_after_non_fatal_block_error() {
 
     let typed_error = reader.next_block().unwrap().unwrap_err();
     match typed_error {
-        PcapNgReadError::BlockConversion(error) => {
+        PcapNgReadError::Block(error) => {
             assert!(matches!(
                 error.source.as_ref(),
-                pcap_file::pcapng::BlockContentParseError::Validation(ContentValidationError::InvalidInterfaceId(7))
+                BlockValidationError::Timestamp(TimestampError::InvalidInterfaceId(7))
             ));
         }
         other => panic!("Expected block conversion error, got {other:?}"),
@@ -700,7 +701,7 @@ fn test_stateful_custom_block() {
         Io(#[from] std::io::Error),
 
         #[error(transparent)]
-        Validation(#[from] ContentValidationError),
+        Timestamp(#[from] TimestampError),
     }
 
     // 2. Implement the required traits for the custom payload

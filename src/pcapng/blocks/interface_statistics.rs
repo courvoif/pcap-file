@@ -10,8 +10,8 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
-use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
-use crate::pcapng::{PcapNgState};
+use crate::pcapng::PcapNgState;
+use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -36,9 +36,9 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    ) -> Result<(&'a [u8], Self), BlockValidationError> {
         if slice.len() < 12 {
-            return Err(BlockContentParseError::BlockContentTooSmall {
+            return Err(BlockValidationError::ContentTooSmall {
                 needed: 12,
                 actual: slice.len(),
             });
@@ -63,8 +63,10 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         &self,
         state: &PcapNgState,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
-        let (timestamp_high, timestamp_low) = state.encode_timestamp(self.interface_id, self.timestamp)?;
+    ) -> Result<usize, WriteError<BlockValidationError>> {
+        let (timestamp_high, timestamp_low) = state
+            .encode_timestamp(self.interface_id, self.timestamp)
+            .map_err(|error| WriteError::Other(BlockValidationError::Timestamp(error)))?;
 
         writer.write_u32::<B>(self.interface_id)?;
         writer.write_u32::<B>(timestamp_high)?;
@@ -223,7 +225,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         state: &PcapNgState,
         interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         match self {
             InterfaceStatisticsOption::IsbStartTime(a) => {
                 write_timestamp::<B, W>(Self::ISB_START_TIME, *a, state, interface_id, writer)
@@ -261,11 +263,13 @@ fn write_timestamp<B: ByteOrder, W: Write>(
     state: &PcapNgState,
     interface_id: Option<u32>,
     writer: &mut W,
-) -> Result<usize, PcapNgWriteError> {
+) -> Result<usize, WriteError<BlockValidationError>> {
     const TIMESTAMP_LENGTH: u16 = 8;
     const OPTION_LENGTH: usize = 12;
 
-    let (timestamp_high, timestamp_low) = state.encode_timestamp(interface_id.unwrap(), timestamp)?;
+    let (timestamp_high, timestamp_low) = state
+        .encode_timestamp(interface_id.unwrap(), timestamp)
+        .map_err(|error| WriteError::Other(BlockValidationError::Timestamp(error)))?;
 
     writer.write_u16::<B>(code)?;
     writer.write_u16::<B>(TIMESTAMP_LENGTH)?;

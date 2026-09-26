@@ -12,7 +12,7 @@ use derive_into_owned::IntoOwned;
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::pcapng::PcapNgState;
-use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
+use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
 /// (present in the captured packets) and their corresponding canonical names and it is optional.
@@ -32,7 +32,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    ) -> Result<(&'a [u8], Self), BlockValidationError> {
         let mut records = Vec::new();
 
         loop {
@@ -52,7 +52,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         Ok((rem, block))
     }
 
-    fn validate(&self, _state: &PcapNgState) -> Result<(), ContentValidationError> {
+    fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError> {
         for record in &self.records {
             record.validate()?;
         }
@@ -63,7 +63,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         &self,
         state: &PcapNgState,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         let mut len = 0;
 
         for record in &self.records {
@@ -97,16 +97,18 @@ pub enum Record<'a> {
 
 impl<'a> Record<'a> {
     /// Validates names and the encoded record size.
-    pub fn validate(&self) -> Result<(), ContentValidationError> {
+    pub fn validate(&self) -> Result<(), BlockValidationError> {
         match self {
             Self::Ipv4(record) => record.validate(),
             Self::Ipv6(record) => record.validate(),
             Self::Unknown(record) => {
-                u16::try_from(record.value.len())
-                    .map_err(|_| ContentValidationError::RecordTooBig(record.value.len()))?;
+                u16::try_from(record.value.len()).map_err(|_| BlockValidationError::RecordTooLarge {
+                    actual: record.value.len(),
+                    maximum: u16::MAX as usize,
+                })?;
                 // Codes 0, 1 and 2 have known encodings; in particular 0 is the terminator.
                 if record.type_ <= 2 {
-                    return Err(ContentValidationError::InvalidRecordType(record.type_));
+                    return Err(BlockValidationError::RecordTypeInvalid(record.type_));
                 }
                 Ok(())
             }
@@ -115,9 +117,9 @@ impl<'a> Record<'a> {
 
     /// Parses a record, returning `None` for the end marker.
     /// Semantic validation is left to the caller.
-    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Option<Self>), BlockContentParseError> {
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Option<Self>), BlockValidationError> {
         if slice.len() < 4 {
-            return Err(BlockContentParseError::BlockContentTooSmall {
+            return Err(BlockValidationError::ContentTooSmall {
                 needed: 4,
                 actual: slice.len(),
             });
@@ -128,7 +130,7 @@ impl<'a> Record<'a> {
         let pad_len = (4 - length % 4) % 4;
 
         if slice.len() < length + pad_len {
-            return Err(BlockContentParseError::BlockContentTooSmall {
+            return Err(BlockValidationError::ContentTooSmall {
                 needed: length + pad_len,
                 actual: slice.len(),
             });
@@ -138,11 +140,10 @@ impl<'a> Record<'a> {
         let record = match type_ {
             0 => {
                 if length != 0 {
-                    return Err(ContentValidationError::RecordWrongSize {
+                    return Err(BlockValidationError::RecordWrongSize {
                         expected: 0,
                         actual: length,
-                    }
-                    .into());
+                    });
                 }
 
                 return Ok((&slice[length + pad_len..], None));
@@ -170,15 +171,18 @@ impl<'a> Record<'a> {
     }
 
     /// Write a [`Record`] to a writer
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapNgWriteError> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, WriteError<BlockValidationError>> {
         match self {
             Record::Ipv4(a) => {
                 let len = a.write_to::<B, _>(&mut std::io::sink())?;
                 let pad_len = (4 - len % 4) % 4;
 
-                let len: u16 = len
-                    .try_into()
-                    .map_err(|_| PcapNgWriteError::from(ContentValidationError::RecordTooBig(len)))?;
+                let len: u16 = len.try_into().map_err(|_| {
+                    WriteError::Other(BlockValidationError::RecordTooLarge {
+                        actual: len,
+                        maximum: u16::MAX as usize,
+                    })
+                })?;
 
                 writer.write_u16::<B>(1)?;
                 writer.write_u16::<B>(len)?;
@@ -191,9 +195,12 @@ impl<'a> Record<'a> {
                 let len = a.write_to::<B, _>(&mut std::io::sink())?;
                 let pad_len = (4 - len % 4) % 4;
 
-                let len: u16 = len
-                    .try_into()
-                    .map_err(|_| PcapNgWriteError::from(ContentValidationError::RecordTooBig(len)))?;
+                let len: u16 = len.try_into().map_err(|_| {
+                    WriteError::Other(BlockValidationError::RecordTooLarge {
+                        actual: len,
+                        maximum: u16::MAX as usize,
+                    })
+                })?;
 
                 writer.write_u16::<B>(2)?;
                 writer.write_u16::<B>(len)?;
@@ -204,16 +211,17 @@ impl<'a> Record<'a> {
             }
             Record::Unknown(a) => {
                 if a.type_ == 0 {
-                    return Err(PcapNgWriteError::from(ContentValidationError::InvalidRecordType(
-                        a.type_,
-                    )));
+                    return Err(WriteError::Other(BlockValidationError::RecordTypeInvalid(a.type_)));
                 }
                 let len = a.value.len();
                 let pad_len = (4 - len % 4) % 4;
 
-                let len: u16 = len
-                    .try_into()
-                    .map_err(|_| PcapNgWriteError::from(ContentValidationError::RecordTooBig(len)))?;
+                let len: u16 = len.try_into().map_err(|_| {
+                    WriteError::Other(BlockValidationError::RecordTooLarge {
+                        actual: len,
+                        maximum: u16::MAX as usize,
+                    })
+                })?;
 
                 writer.write_u16::<B>(a.type_)?;
                 writer.write_u16::<B>(len)?;
@@ -237,32 +245,36 @@ pub struct Ipv4Record<'a> {
 
 impl<'a> Ipv4Record<'a> {
     /// Validates names and their total encoded size.
-    pub fn validate(&self) -> Result<(), ContentValidationError> {
+    pub fn validate(&self) -> Result<(), BlockValidationError> {
         if self.names.is_empty() {
-            return Err(ContentValidationError::RecordNamesEmpty);
+            return Err(BlockValidationError::RecordNamesEmpty);
         }
         let mut len = 4_usize;
         for name in &self.names {
             if name.is_empty() || name.as_bytes().contains(&0) {
-                return Err(ContentValidationError::InvalidRecordName);
+                return Err(BlockValidationError::RecordNameInvalid);
             }
-            len = len
-                .checked_add(name.len())
-                .and_then(|len| len.checked_add(1))
-                .ok_or(ContentValidationError::RecordTooBig(usize::MAX))?;
+            len = len.checked_add(name.len()).and_then(|len| len.checked_add(1)).ok_or(
+                BlockValidationError::RecordTooLarge {
+                    actual: usize::MAX,
+                    maximum: u16::MAX as usize,
+                },
+            )?;
         }
-        u16::try_from(len).map_err(|_| ContentValidationError::RecordTooBig(len))?;
+        u16::try_from(len).map_err(|_| BlockValidationError::RecordTooLarge {
+            actual: len,
+            maximum: u16::MAX as usize,
+        })?;
         Ok(())
     }
 
     /// Parse a [`Ipv4Record`] from a slice
-    pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
+    pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockValidationError> {
         if slice.len() < 4 {
-            return Err(ContentValidationError::RecordWrongMinSize {
+            return Err(BlockValidationError::RecordWrongMinSize {
                 min: 4,
                 actual: slice.len(),
-            }
-            .into());
+            });
         }
 
         let ip_addr_oct: [u8; 4] = slice.read_slice(4).unwrap().try_into().unwrap();
@@ -274,7 +286,7 @@ impl<'a> Ipv4Record<'a> {
                 break;
             }
             names.push(Cow::Borrowed(
-                std::str::from_utf8(name).map_err(ContentValidationError::RecordNameNotUtf8)?,
+                std::str::from_utf8(name).map_err(BlockValidationError::RecordNameNotUtf8)?,
             ));
         }
 
@@ -312,32 +324,36 @@ pub struct Ipv6Record<'a> {
 
 impl<'a> Ipv6Record<'a> {
     /// Validates names and their total encoded size.
-    pub fn validate(&self) -> Result<(), ContentValidationError> {
+    pub fn validate(&self) -> Result<(), BlockValidationError> {
         if self.names.is_empty() {
-            return Err(ContentValidationError::RecordNamesEmpty);
+            return Err(BlockValidationError::RecordNamesEmpty);
         }
         let mut len = 16_usize;
         for name in &self.names {
             if name.is_empty() || name.as_bytes().contains(&0) {
-                return Err(ContentValidationError::InvalidRecordName);
+                return Err(BlockValidationError::RecordNameInvalid);
             }
-            len = len
-                .checked_add(name.len())
-                .and_then(|len| len.checked_add(1))
-                .ok_or(ContentValidationError::RecordTooBig(usize::MAX))?;
+            len = len.checked_add(name.len()).and_then(|len| len.checked_add(1)).ok_or(
+                BlockValidationError::RecordTooLarge {
+                    actual: usize::MAX,
+                    maximum: u16::MAX as usize,
+                },
+            )?;
         }
-        u16::try_from(len).map_err(|_| ContentValidationError::RecordTooBig(len))?;
+        u16::try_from(len).map_err(|_| BlockValidationError::RecordTooLarge {
+            actual: len,
+            maximum: u16::MAX as usize,
+        })?;
         Ok(())
     }
 
     /// Parse a [`Ipv6Record`] from a slice
-    pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockContentParseError> {
+    pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockValidationError> {
         if slice.len() < 16 {
-            return Err(ContentValidationError::RecordWrongMinSize {
+            return Err(BlockValidationError::RecordWrongMinSize {
                 min: 16,
                 actual: slice.len(),
-            }
-            .into());
+            });
         }
 
         let ip_addr_oct: [u8; 16] = slice.read_slice(16).unwrap().try_into().unwrap();
@@ -349,7 +365,7 @@ impl<'a> Ipv6Record<'a> {
                 break;
             }
             names.push(Cow::Borrowed(
-                std::str::from_utf8(name).map_err(ContentValidationError::RecordNameNotUtf8)?,
+                std::str::from_utf8(name).map_err(BlockValidationError::RecordNameNotUtf8)?,
             ));
         }
 
@@ -454,7 +470,7 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         match self {
             NameResolutionOption::NsDnsName(a) => a.write_opt::<B, W>(Self::NS_DNS_NAME, writer),
             NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt::<B, W>(Self::NS_DNS_IPV4_ADDR, writer),
@@ -481,7 +497,7 @@ mod tests {
 
     use super::{NameResolutionBlock, NameResolutionOption, PcapNgBlock};
     use crate::pcapng::PcapNgState;
-    use crate::pcapng::errors::{ContentValidationError, PcapNgWriteError};
+    use crate::pcapng::errors::{BlockValidationError, OptionEntryError, OptionError, WriteError};
 
     #[test]
     fn write_rejects_oversized_name_resolution_option() {
@@ -498,10 +514,11 @@ mod tests {
 
         assert!(matches!(
             error,
-            PcapNgWriteError::Validation(source) if matches!(
-                source.as_ref(),
-                ContentValidationError::OptionTooBig(len) if *len == u16::MAX as usize + 1
-            )
+            WriteError::Other(BlockValidationError::Option(OptionError::InvalidEntry {
+                source,
+                ..
+            })) if matches!(source.as_ref(), OptionEntryError::TooLarge { actual, maximum }
+                if *actual == u16::MAX as usize + 1 && *maximum == u16::MAX as usize)
         ));
     }
 }

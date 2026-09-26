@@ -11,8 +11,8 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
-use crate::pcapng::errors::{BlockContentParseError, OptionEntryError, PcapNgWriteError};
-use crate::pcapng::{ContentValidationError, PcapNgState};
+use crate::pcapng::PcapNgState;
+use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
@@ -47,9 +47,9 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    ) -> Result<(&'a [u8], Self), BlockValidationError> {
         if slice.len() < 20 {
-            return Err(BlockContentParseError::BlockContentTooSmall {
+            return Err(BlockValidationError::ContentTooSmall {
                 needed: 20,
                 actual: slice.len(),
             });
@@ -67,7 +67,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let tot_len = captured_len as usize + pad_len;
 
         if slice.len() < tot_len {
-            return Err(BlockContentParseError::BlockContentTooSmall {
+            return Err(BlockValidationError::ContentTooSmall {
                 needed: tot_len,
                 actual: slice.len(),
             });
@@ -89,24 +89,26 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         Ok((slice, block))
     }
 
-    fn validate(&self, state: &PcapNgState) -> Result<(), ContentValidationError> {
-        let captured_len = u32::try_from(self.data.len())
-            .map_err(|_| ContentValidationError::BlockContentTooBig(self.data.len() as u64))?;
+    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
+        let captured_len = u32::try_from(self.data.len()).map_err(|_| BlockValidationError::BlockTooLarge {
+            actual: self.data.len() as u64,
+            maximum: u32::MAX as u64,
+        })?;
 
         let interface = state
             .interfaces
             .get(self.interface_id as usize)
-            .ok_or(ContentValidationError::InvalidInterfaceId(self.interface_id as u32))?;
+            .ok_or(BlockValidationError::InvalidInterfaceId(self.interface_id as u32))?;
 
         if self.original_len < captured_len {
-            return Err(ContentValidationError::InvalidOriginalLen(
+            return Err(BlockValidationError::InvalidOriginalLen(
                 self.original_len,
                 self.data.len(),
             ));
         }
 
         if interface.snaplen != 0 && captured_len > interface.snaplen {
-            return Err(ContentValidationError::CapturedLengthExceedsSnaplen {
+            return Err(BlockValidationError::CapturedLengthExceedsSnaplen {
                 captured_len: self.data.len(),
                 snaplen: interface.snaplen,
             });
@@ -119,11 +121,17 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         &self,
         state: &PcapNgState,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
-        let captured_len = u32::try_from(self.data.len())
-            .map_err(|_| PcapNgWriteError::from(ContentValidationError::BlockContentTooBig(self.data.len() as u64)))?;
-        
-        let (timestamp_high, timestamp_low) = state.encode_timestamp(self.interface_id as u32, self.timestamp)?;
+    ) -> Result<usize, WriteError<BlockValidationError>> {
+        let captured_len = u32::try_from(self.data.len()).map_err(|_| {
+            WriteError::Other(BlockValidationError::BlockTooLarge {
+                actual: self.data.len() as u64,
+                maximum: u32::MAX as u64,
+            })
+        })?;
+
+        let (timestamp_high, timestamp_low) = state
+            .encode_timestamp(self.interface_id as u32, self.timestamp)
+            .map_err(|error| WriteError::Other(BlockValidationError::Timestamp(error)))?;
 
         writer.write_u16::<B>(self.interface_id)?;
         writer.write_u16::<B>(self.drop_count)?;
@@ -194,7 +202,7 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         match self {
             PacketOption::Flags(a) => a.write_opt::<B, W>(Self::FLAGS, writer),
             PacketOption::Hash(a) => a.write_opt::<B, W>(Self::HASH, writer),

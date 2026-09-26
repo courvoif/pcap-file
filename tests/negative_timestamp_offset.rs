@@ -10,8 +10,7 @@ use pcap_file::pcapng::blocks::interface_description::{
     InterfaceDescriptionBlock, InterfaceDescriptionOption, InterfaceTsResolution,
 };
 use pcap_file::pcapng::{
-    Block, BlockContentParseError, ContentValidationError, PcapNgReadError, PcapNgReader, PcapNgWriteError,
-    PcapNgWriter,
+    Block, BlockValidationError, PcapNgReadError, PcapNgReader, PcapNgWriteError, PcapNgWriter, TimestampError,
 };
 
 #[test]
@@ -38,7 +37,8 @@ fn writer_rejects_timestamp_before_interface_offset() {
 
     assert!(matches!(
         error,
-        PcapNgWriteError::Validation(source) if matches!(source.as_ref(), ContentValidationError::FailedToEncodeTimestamp { .. })
+        PcapNgWriteError::Block(error)
+            if matches!(error.source.as_ref(), BlockValidationError::Timestamp(TimestampError::EncodeOutOfRange { .. }))
     ));
 }
 
@@ -110,10 +110,10 @@ fn reader_rejects_timestamp_before_unix_epoch() {
 
     assert!(matches!(
         error,
-        PcapNgReadError::BlockConversion(error)
+        PcapNgReadError::Block(error)
             if matches!(
                 error.source.as_ref(),
-                BlockContentParseError::Validation(ContentValidationError::FailedToDecodeTimestamp { .. })
+                BlockValidationError::Timestamp(TimestampError::DecodeOutOfRange { .. })
             )
     ));
 }

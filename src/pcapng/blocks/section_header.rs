@@ -12,7 +12,7 @@ use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
 use crate::Endianness;
 use crate::pcapng::PcapNgState;
-use crate::pcapng::errors::{BlockContentParseError, ContentValidationError, OptionEntryError, PcapNgWriteError};
+use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
 
 /// Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -45,12 +45,12 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    ) -> Result<(&'a [u8], Self), BlockValidationError> {
         fn parse_body<'a, B: ByteOrder>(
             state: &PcapNgState,
             endianness: Endianness,
             mut slice: &'a [u8],
-        ) -> Result<(&'a [u8], SectionHeaderBlock<'a>), BlockContentParseError> {
+        ) -> Result<(&'a [u8], SectionHeaderBlock<'a>), BlockValidationError> {
             let major_version = slice.read_u16::<B>().unwrap();
             let minor_version = slice.read_u16::<B>().unwrap();
             let section_length = slice.read_i64::<B>().unwrap();
@@ -69,7 +69,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
 
         // Start of implementation
         if slice.len() < 16 {
-            return Err(BlockContentParseError::BlockContentTooSmall {
+            return Err(BlockValidationError::ContentTooSmall {
                 needed: 16,
                 actual: slice.len(),
             });
@@ -79,7 +79,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         match magic {
             0x1A2B3C4D => parse_body::<BigEndian>(state, Endianness::Big, slice),
             0x4D3C2B1A => parse_body::<LittleEndian>(state, Endianness::Little, slice),
-            _ => Err(ContentValidationError::InvalidMagicNumber(magic).into()),
+            _ => Err(BlockValidationError::InvalidMagicNumber(magic)),
         }
     }
 
@@ -87,7 +87,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         &self,
         state: &PcapNgState,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         match self.endianness {
             Endianness::Big => writer.write_u32::<BigEndian>(0x1A2B3C4D)?,
             Endianness::Little => writer.write_u32::<LittleEndian>(0x1A2B3C4D)?,
@@ -194,7 +194,7 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         match self {
             SectionHeaderOption::Hardware(a) => a.write_opt::<B, W>(Self::HARDWARE, writer),
             SectionHeaderOption::OS(a) => a.write_opt::<B, W>(Self::OS_, writer),

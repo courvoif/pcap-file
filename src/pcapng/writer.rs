@@ -139,8 +139,8 @@ impl<W: Write> PcapNgWriter<W> {
         if self.strict {
             block.validate(&self.state)?;
         }
-        let endianess = self.state.block_endianness(Some(block));
 
+        let endianess = self.state.block_endianness(Some(block));
         let nb_written = match endianess {
             Endianness::Big => block.write_to::<BigEndian, _>(&self.state, &mut self.writer)?,
             Endianness::Little => block.write_to::<LittleEndian, _>(&self.state, &mut self.writer)?,

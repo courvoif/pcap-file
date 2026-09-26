@@ -61,16 +61,14 @@ impl PcapNgParser {
         let mut state = PcapNgState::default();
 
         let (rem, raw_block) = RawBlock::from_slice::<BigEndian>(src)?;
+
         let block = Block::try_from_raw_block::<BigEndian>(&state, &raw_block)?;
 
         if !matches!(&block, Block::SectionHeader(_)) {
             return Err(PcapNgFormatError::MissingSectionHeader.into());
-        };
+        }
 
-        block
-            .validate(&state)
-            .map_err(|source| block.conversion_error(source))?;
-
+        block.validate(&state).map_err(StateUpdateError::from)?;
         state.update_from_block(&block);
 
         let parser = PcapNgParser { state, strict };
@@ -107,18 +105,20 @@ impl PcapNgParser {
             src: &'a [u8],
         ) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
             let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
-            let state = &parser.state;
-            let block = raw_block.try_into_block(state)?;
 
-            if PcapNgState::block_is_needed(&block) {
-                block
-                    .validate(&parser.state)
-                    .map_err(|e| StateUpdateError::BlockConversion(block.conversion_error(e)))?;
-
+            // State-changing blocks must be handled separately to keep the parser state valid.
+            // Failures during their state preparation must be returned as fatal state-update errors.
+            let block = if let Some(block) = parser.state.decode_block_if_needed(&raw_block)? {
+                block.validate(&parser.state).map_err(StateUpdateError::from)?;
                 parser.state.update_from_block(&block);
-            } else if parser.strict {
-                block.validate(state).map_err(|source| block.conversion_error(source))?;
-            }
+                block
+            } else {
+                let block = raw_block.try_into_block(&parser.state)?;
+                if parser.strict {
+                    block.validate(&parser.state)?;
+                }
+                block
+            };
 
             Ok((rem, block))
         }
@@ -138,8 +138,8 @@ impl PcapNgParser {
     ///
     /// # Errors
     /// - Only [`PcapNgParseError::IncompleteBuffer`] is recoverable (by loading more data).
-    /// - [`PcapNgParseError::StateUpdate`] occurs when a state-changing raw block
-    ///   cannot be decoded or validated.
+    /// - [`PcapNgParseError::StateUpdate`] occurs when state preparation cannot
+    ///   decode a state-changing raw block.
     /// - All other errors will prevent the parser from advancing further.
     pub fn next_raw_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
         // Read next RawBlock
@@ -156,9 +156,7 @@ impl PcapNgParser {
             let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
 
             if let Some(block) = parser.state.decode_block_if_needed(&raw_block)? {
-                block
-                    .validate(&parser.state)
-                    .map_err(|e| StateUpdateError::BlockConversion(block.conversion_error(e)))?;
+                block.validate(&parser.state).map_err(StateUpdateError::from)?;
                 parser.state.update_from_block(&block);
             }
 

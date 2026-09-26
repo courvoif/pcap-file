@@ -9,7 +9,7 @@ use derive_into_owned::IntoOwned;
 use super::block_common::{Block, PcapNgBlock};
 use crate::pcapng::{
     PcapNgState,
-    errors::{BlockContentParseError, PcapNgWriteError},
+    errors::{BlockValidationError, WriteError},
 };
 
 /// The Systemd Journal Export Block is a lightweight container for systemd Journal Export Format entry data.
@@ -26,7 +26,7 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
     fn from_body<B: ByteOrder>(
         _state: &PcapNgState,
         slice: &'a [u8],
-    ) -> Result<(&'a [u8], Self), BlockContentParseError> {
+    ) -> Result<(&'a [u8], Self), BlockValidationError> {
         let packet = SystemdJournalExportBlock {
             journal_entry: Cow::Borrowed(slice),
         };
@@ -37,7 +37,7 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
         &self,
         _state: &PcapNgState,
         writer: &mut W,
-    ) -> Result<usize, PcapNgWriteError> {
+    ) -> Result<usize, WriteError<BlockValidationError>> {
         writer.write_all(&self.journal_entry)?;
 
         let pad_len = (4 - (self.journal_entry.len() % 4)) % 4;
