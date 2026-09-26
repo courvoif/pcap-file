@@ -34,16 +34,12 @@ pub struct PcapReader<R: Read> {
 }
 
 impl<R: Read> PcapReader<R> {
-    /// Creates a new [`PcapReader`] from an existing reader.
-    ///
-    /// This function reads the global pcap header of the file to verify its integrity.
-    ///
-    /// The underlying reader must point to a valid pcap file/stream.
+    /// Creates a [`PcapReader`] from a reader.
+    /// The reader must start with a valid pcap capture.
     ///
     /// # Errors
-    /// The data stream is not in a valid pcap file format.
-    ///
-    /// The underlying data are not readable.
+    /// - The data stream is not in a valid pcap file format.
+    /// - The underlying data are not readable.
     pub fn new(reader: R) -> Result<PcapReader<R>, PcapReadError> {
         let mut reader = ReadBuffer::new(reader);
         let parser = reader.parse_with(PcapParser::new)?;
@@ -55,15 +51,13 @@ impl<R: Read> PcapReader<R> {
         })
     }
 
-    /// Creates a new [`PcapReader`] with a custom internal buffer capacity.
+    /// Creates a [`PcapReader`] with a custom capacity.
     ///
-    /// Use this when the stream can contain packets larger than the default
-    /// reader buffer.
+    /// Set `capacity` large enough for the largest packet you expect to read.
     ///
     /// # Errors
-    /// The data stream is not in a valid pcap file format.
-    ///
-    /// The underlying data are not readable.
+    /// - The data stream is not in a valid pcap file format.
+    /// - The underlying data are not readable.
     pub fn with_capacity(reader: R, capacity: usize) -> Result<PcapReader<R>, PcapReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
         let parser = reader.parse_with(PcapParser::new)?;
@@ -75,27 +69,15 @@ impl<R: Read> PcapReader<R> {
         })
     }
 
-    /// Consumes the [`PcapReader`], returning the wrapped reader.
-    pub fn into_inner(self) -> R {
-        self.reader.into_inner()
-    }
-
-    /// Returns the next [`PcapPacket`].
+    /// Returns the next validated [`PcapPacket`].
     ///
-    /// A well-framed packet is consumed before semantic validation. If validation
-    /// fails, the next call continues with the following packet.
-    ///
-    /// [`None`] means that the reader has reached the end of input or was
-    /// previously poisoned by a fatal error.
+    /// [`None`] means that the reader reached the end of input or a previous
+    /// call returned a fatal error.
     ///
     /// # Errors
-    /// - [`PcapReadError::Validation`] is non-fatal and consumes the rejected packet.
-    /// - I/O errors with [`std::io::ErrorKind::Interrupted`],
-    ///   [`std::io::ErrorKind::WouldBlock`], or
-    ///   [`std::io::ErrorKind::TimedOut`] are non-fatal. Calling this method
-    ///   again retries without losing buffered input.
-    /// - All other I/O errors are fatal. The reader returns the error once and
-    ///   then becomes poisoned.
+    /// - On [`PcapReadError::Validation`], the packet is skipped.
+    /// - Retry a non-fatal I/O error by calling this method again.
+    /// - A fatal error is returned once. Later calls return [`None`].
     #[must_use = "the result contains either the next packet or a read error"]
     pub fn next_packet<'a>(&'a mut self) -> Option<Result<PcapPacket<'a>, PcapReadError>> {
         if self.poisoned {
@@ -124,20 +106,16 @@ impl<R: Read> PcapReader<R> {
     }
 
     /// Returns the next [`RawPcapPacket`].
-    /// [`None`] means that the reader has reached the end of input or was
-    /// previously poisoned by a fatal error.
+    /// [`None`] means that the reader reached the end of input or a previous
+    /// call returned a fatal error.
     ///
-    /// More permissive than [`Self::next_packet`], can be used to parse malformed files.
-    ///
-    /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
+    /// Use this when you need raw timestamp and length fields, including fields
+    /// from packets that fail semantic validation.
+    /// Call [`RawPcapPacket::try_into_pcap_packet`] to validate and convert it.
     ///
     /// # Errors
-    /// - I/O errors with [`std::io::ErrorKind::Interrupted`],
-    ///   [`std::io::ErrorKind::WouldBlock`], or
-    ///   [`std::io::ErrorKind::TimedOut`] are non-fatal. Calling this method
-    ///   again retries without losing buffered input.
-    /// - All other I/O errors are fatal. The reader returns the error once and
-    ///   then becomes poisoned.
+    /// - Retry a non-fatal I/O error by calling this method again.
+    /// - A fatal error is returned once. Later calls return [`None`].
     #[must_use = "the result contains either the next raw packet or a read error"]
     pub fn next_raw_packet<'a>(&'a mut self) -> Option<Result<RawPcapPacket<'a>, PcapReadError>> {
         if self.poisoned {
@@ -156,7 +134,7 @@ impl<R: Read> PcapReader<R> {
         Some(res)
     }
 
-    /// Returns the global header of the pcap.
+    /// Returns the pcap global header.
     pub fn header(&self) -> PcapHeader {
         self.parser.header()
     }
@@ -164,7 +142,7 @@ impl<R: Read> PcapReader<R> {
     /// Consumes the reader and returns an iterator over owned packets.
     ///
     /// Non-fatal errors are yielded without stopping the iterator. A fatal
-    /// error is yielded once, then the poisoned reader returns [`None`].
+    /// error is yielded once, then iteration ends.
     pub fn packets(self) -> PcapPacketIterator<R> {
         PcapPacketIterator { reader: self }
     }
@@ -172,6 +150,11 @@ impl<R: Read> PcapReader<R> {
     /// Gets a reference to the wrapped reader.
     pub fn get_ref(&self) -> &R {
         self.reader.get_ref()
+    }
+
+    /// Consumes the [`PcapReader`], returning the wrapped reader.
+    pub fn into_inner(self) -> R {
+        self.reader.into_inner()
     }
 
     /// Returns the number of bytes parsed so far.
@@ -182,13 +165,12 @@ impl<R: Read> PcapReader<R> {
 
 /* ----- Packet iteration ----- */
 
-/// Iterator over owned [`PcapPacket`] values.
+/// Returns an iterator over owned [`PcapPacket`] values.
 ///
-/// This is slower than [`PcapReader::next_packet`] because each packet payload
-/// is copied out of the internal read buffer.
-///
-/// Non-fatal errors are yielded and iteration can continue when polled again.
-/// A fatal error is yielded once, then the poisoned reader ends the iterator.
+/// # Errors
+/// - On [`PcapReadError::Validation`], the error is returned and the packet is skipped.
+/// - Retry a non-fatal I/O error by polling the iterator again.
+/// - A fatal error is yielded once. Later polls return [`None`].
 ///
 /// # Example
 ///

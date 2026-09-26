@@ -44,9 +44,18 @@ for pkt in pcap_reader.packets() {
 }
 ```
 
-The iterator API returns owned packets and is slower than `next_packet()`,
-which can borrow packet data directly from the internal read buffer. It yields
-non-fatal errors and continues when polled again. Fatal errors stop iteration.
+`next_packet()` returns validated packets with timestamps as `Duration`. Use it
+when you can process each packet before reading the next one. Its payload
+borrows from the reader.
+
+`next_raw_packet()` returns raw packet fields. Use it to inspect or write
+`ts_sec`, `ts_frac`, `incl_len`, and `orig_len`, including when validation
+fails. Include the payload bytes declared by `incl_len` to read a complete
+packet.
+
+`packets()` returns owned, validated packets. Use it for a simple loop or when
+you need to retain packets while reading further. Non-fatal errors can be
+followed by another iterator poll; fatal errors end iteration.
 
 ### PcapWriter
 
@@ -83,16 +92,25 @@ while let Some(result) = pcapng_reader.next_block() {
 }
 ```
 
-Use `next_block()` to borrow typed blocks and access their `PcapNgState`.
-After a non-fatal error, the next call continues with the following block.
+`next_block()` returns typed blocks and the section/interface state. Use it
+when you need typed block data. Finish using a block before requesting the
+next one. Set `strict: true` to reject semantically invalid blocks other than
+Section Header and Interface Description blocks. Set it to `false` to validate
+those typed blocks yourself. Section Header and Interface Description blocks
+must be valid in either mode.
 
-Use `next_raw_block()` to inspect blocks in their raw representation.
+`next_raw_block()` returns a raw block and the current state. Use it to inspect
+raw data or preserve unsupported block types. Use the returned state with
+`RawBlock::try_into_block(state)` to decode a block, then with
+`Block::validate(state)` to check it. Section Header and Interface Description
+blocks must be valid in either mode. After a recoverable block or I/O error,
+call the reader again.
 
 Fatal errors stop the reader. Use `PcapNgReadError::is_fatal()` to distinguish
 fatal errors from errors after which reading can continue.
 
-Pass `strict: bool` as the last argument to parser, reader, and writer
-constructors for strict validation.
+Pass `true` as the last argument to pcapng parser, reader, and writer
+constructors to enable strict semantic validation.
 
 ### PcapNgReader packet iterator
 
@@ -113,9 +131,14 @@ for packet in pcapng_reader.packets() {
 }
 ```
 
-The iterator returns owned packets and skips non-packet blocks. Reading can
-continue after non-fatal errors, while fatal errors stop the iterator.
-Use `next_block()` when you need interface IDs, options, or other block metadata.
+`packets()` returns owned packets from Enhanced, Simple, and obsolete Packet
+Blocks. Use it to iterate over packets while skipping non-packet
+blocks. Each packet includes its datalink, original length, and data. Simple
+Packet Blocks have no timestamp. The iterator uses the reader's `strict`
+setting and does not retain metadata such as interface IDs or options. Use
+`next_block()` for typed block metadata. Use `next_raw_block()` instead of the
+packet iterator to inspect or preserve unsupported block types. Non-fatal
+errors can be followed by another iterator poll; fatal errors end iteration.
 
 ### PcapNgWriter
 

@@ -35,6 +35,15 @@ Example:
 validate_config(&config)?;
 ```
 
+### Documentation
+
+* Document every module, item, and function, even private ones.
+* Keep API docs compact and usage-focused.
+* Start with one sentence that says what the function returns or does.
+* Add only guidance callers need to choose or use the API. Don't explain implementation details or repeat information clear from the signature or the referenced types.
+* Use a `# Errors` section when callers need error explanation or recovery guidance. Describe the consequences and next action, don't list all the errors.
+* Put each sentence on its own rustdoc line.
+
 ---
 
 ## Commits

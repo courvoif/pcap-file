@@ -45,21 +45,25 @@ pub struct PcapParser {
 }
 
 impl PcapParser {
-    /// Creates a new [`PcapParser`].
+    /// Creates a parser from the pcap global header and returns the remaining input.
     ///
-    /// Returns the remainder and the parser.
+    /// # Errors
+    /// - On [`PcapParseError::IncompleteBuffer`], provide the rest of the
+    ///   global header and call this method again.
+    /// - On a validation error, provide a valid pcap global header.
     pub fn new(slice: &[u8]) -> Result<(&[u8], PcapParser), PcapParseError> {
         let (slice, header) = PcapHeader::from_slice(slice)?;
         let parser = PcapParser { header };
         Ok((slice, parser))
     }
 
-    /// Returns the remainder and the next [`PcapPacket`].
+    /// Returns the remaining input and the next validated [`PcapPacket`].
     ///
     /// # Errors
-    /// - [`PcapParseError::IncompleteBuffer`] is recoverable (by loading more data).
-    /// - Other errors will prevent the parser from advancing further.
-    ///   Some can be recovered by calling [`PcapParser::next_raw_packet`].
+    /// - On [`PcapParseError::IncompleteBuffer`], provide more bytes and retry
+    ///   with the same input.
+    /// - On a validation error, call [`Self::next_raw_packet`] with the same
+    ///   input to inspect the packet's raw fields.
     pub fn next_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], PcapPacket<'a>), PcapParseError> {
         let res = match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),
@@ -75,14 +79,16 @@ impl PcapParser {
         })
     }
 
-    /// Returns the remainder and the next [`RawPcapPacket`].
+    /// Returns the remaining input and the next [`RawPcapPacket`].
+    /// Use this when you need raw packet fields, including fields from a packet
+    /// that fails semantic validation.
     ///
-    /// More permissive than [`Self::next_packet`], can be used to parse malformed files.
-    ///
-    /// A [`RawPcapPacket`] can be validated using [`RawPcapPacket::try_into_pcap_packet`].
+    /// Call [`RawPcapPacket::try_into_pcap_packet`] to validate and convert the
+    /// raw packet.
     ///
     /// # Errors
-    /// - Only [`PcapParseError::IncompleteBuffer`] can happen. It is recoverable by loading more data.
+    /// - On [`PcapParseError::IncompleteBuffer`], provide more bytes and retry
+    ///   with the same input.
     pub fn next_raw_packet<'a>(&self, slice: &'a [u8]) -> Result<(&'a [u8], RawPcapPacket<'a>), PcapParseError> {
         match self.header.endianness {
             Endianness::Big => RawPcapPacket::from_slice::<BigEndian>(slice),

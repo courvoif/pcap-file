@@ -36,13 +36,17 @@ pub struct PcapNgReader<R: Read> {
 }
 
 impl<R: Read> PcapNgReader<R> {
-    /// Creates a new [`PcapNgReader`] from a reader.
+    /// Creates a [`PcapNgReader`] from a reader.
+    /// The input must start with a valid pcapng capture.
     ///
-    /// Parses the first block, which must be a Section Header Block.
-    /// When `strict` is true, every typed block is semantically validated.
-    /// Section Header and Interface Description blocks are always validated
-    /// because the reader needs them to maintain its state.
-    /// Raw operations leave validation of all other block types to the caller.
+    /// Set `strict` to `true` to validate blocks returned by
+    /// [`Self::next_block`].
+    /// Section Header and Interface Description blocks must be valid in either
+    /// mode.
+    ///
+    /// # Errors
+    /// - The capture does not start with a valid Section Header Block.
+    /// - The input cannot be read.
     pub fn new(reader: R, strict: bool) -> Result<Self, PcapNgReadError> {
         let mut reader = ReadBuffer::new(reader);
         let parser = reader.parse_with(|src| PcapNgParser::new(src, strict))?;
@@ -53,13 +57,15 @@ impl<R: Read> PcapNgReader<R> {
         })
     }
 
-    /// Creates a new [`PcapNgReader`] with a custom internal buffer capacity.
+    /// Creates a [`PcapNgReader`] with a custom capacity.
     ///
-    /// Use this when the stream can contain blocks larger than the default
-    /// reader buffer.
+    /// Set `capacity` large enough for the largest block you expect to read.
     ///
-    /// Parses the initial Section Header Block. `strict` controls semantic
-    /// validation of typed blocks, as in [`Self::new`].
+    /// Set `strict` as in [`Self::new`].
+    ///
+    /// # Errors
+    /// - The capture does not start with a valid Section Header Block.
+    /// - The input cannot be read.
     pub fn with_capacity(reader: R, capacity: usize, strict: bool) -> Result<Self, PcapNgReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
         let parser = reader.parse_with(|src| PcapNgParser::new(src, strict))?;
@@ -70,25 +76,21 @@ impl<R: Read> PcapNgReader<R> {
         })
     }
 
-    /// Returns the next typed block and the state after applying that block.
+    /// Returns the next [`Block`] and the [`PcapNgState`].
     ///
-    /// A well-framed non-state block is consumed before typed conversion and
-    /// semantic validation. If either step returns
-    /// [`PcapNgReadError::Block`], the block has already been skipped
-    /// and the next call continues with the following block.
+    /// [`None`] means that the reader reached the end of input or a previous
+    /// call returned a fatal error.
     ///
-    /// [`None`] means that the reader has reached the end of input or was
-    /// previously poisoned by a fatal error.
+    /// Use this when you need typed block data.
+    ///
+    /// The `strict` setting controls validation of blocks.
+    /// Section Header and Interface Description blocks must be valid in either
+    /// mode.
     ///
     /// # Errors
-    /// - [`PcapNgReadError::Block`] is non-fatal and consumes the
-    ///   rejected block.
-    /// - I/O errors with [`std::io::ErrorKind::Interrupted`],
-    ///   [`std::io::ErrorKind::WouldBlock`], or
-    ///   [`std::io::ErrorKind::TimedOut`] are non-fatal. Calling this method
-    ///   again retries without losing buffered input.
-    /// - Invalid framing, state update errors, and all other I/O errors are
-    ///   fatal. The reader returns the error once and then becomes poisoned.
+    /// - On [`PcapNgReadError::Block`], the block is skipped.
+    /// - Retry a non-fatal I/O error by calling this method again.
+    /// - A fatal error poisons the reader. Later calls return [`None`].
     #[must_use = "the result contains either the next block or a read error"]
     pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
         if self.poisoned {
@@ -124,26 +126,22 @@ impl<R: Read> PcapNgReader<R> {
         Some(res)
     }
 
-    /// Returns the next [`RawBlock`] and the current [`PcapNgState`].
-    /// More permissive than [`Self::next_block`].
+    /// Returns the next [`RawBlock`] and the [`PcapNgState`].
     ///
-    /// Strict mode does not validate non-state raw block contents. Decode with
-    /// [`RawBlock::try_into_block`] and call [`Block::validate`] explicitly when
-    /// semantic validation is wanted.
+    /// [`None`] means that the reader reached the end of input or a previous
+    /// call returned a fatal error.
     ///
-    /// Section Header and Interface Description blocks are always decoded and
-    /// validated before the reader updates its state.
+    /// Use this when you need raw block data or want to parse an unsupported
+    /// block type.
     ///
-    /// [`None`] means that the reader has reached the end of input or was
-    /// previously poisoned by a fatal error.
+    /// Use the returned state with [`RawBlock::try_into_block`] to decode a
+    /// block, then with [`Block::validate`] to check it semantically.
+    /// Section Header and Interface Description blocks must be valid to read
+    /// later blocks.
     ///
     /// # Errors
-    /// - I/O errors with [`std::io::ErrorKind::Interrupted`],
-    ///   [`std::io::ErrorKind::WouldBlock`], or
-    ///   [`std::io::ErrorKind::TimedOut`] are non-fatal. Calling this method
-    ///   again retries without losing buffered input.
-    /// - Invalid framing, state update errors, and all other I/O errors are
-    ///   fatal. The reader returns the error once and then becomes poisoned.
+    /// - Retry a non-fatal I/O error by calling this method again.
+    /// - A fatal error poisons the reader. Later calls return [`None`].
     #[must_use = "the result contains either the next raw block or a read error"]
     pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {
         if self.poisoned {
@@ -171,14 +169,14 @@ impl<R: Read> PcapNgReader<R> {
         Some(res)
     }
 
-    /// Returns whether this reader and its packet iterator validate non-state typed blocks.
+    /// Returns whether this reader and its packet iterator validate blocks.
     ///
-    /// State-changing blocks are always validated.
+    /// Section Header and Interface Description blocks are always validated.
     pub fn strict(&self) -> bool {
         self.parser.strict()
     }
 
-    /// Returns the current parsing state.
+    /// Returns the current [`PcapNgState`].
     pub fn state(&self) -> &PcapNgState {
         self.parser.state()
     }
@@ -186,8 +184,8 @@ impl<R: Read> PcapNgReader<R> {
     /// Consumes the reader and returns an iterator over owned packets.
     ///
     /// Non-packet blocks are skipped. Non-fatal errors are yielded without
-    /// stopping the iterator; polling it again continues reading. A fatal error
-    /// is yielded once, after which the poisoned reader returns [`None`].
+    /// stopping the iterator; polling it again continues reading.
+    /// A fatal error is yielded once, then iteration ends.
     pub fn packets(self) -> PcapNgPacketIterator<R> {
         PcapNgPacketIterator { reader: self }
     }
@@ -210,20 +208,14 @@ impl<R: Read> PcapNgReader<R> {
 
 /* ----- Packet iteration ----- */
 
-/// Iterator over owned packets, skipping non-packet blocks.
+/// Returns an iterator over owned packets and skips non-packet blocks.
 ///
-/// Uses the reader's strict setting for non-state blocks. State-changing blocks
-/// are always validated. Non-fatal errors are yielded and iteration can continue
-/// when polled again. A fatal error is yielded once, then the poisoned reader
-/// ends the iterator.
+/// Use this to read packets from packet related Blocks.
 ///
-/// Packet data is copied out of the internal read buffer.
-/// Packets contain datalink, timestamp, original length, and data.
-/// The datalink is resolved from the packet's interface in the current section.
-///
-/// Use [`PcapNgReader::next_block`] for typed blocks and their state.
-/// Use [`PcapNgReader::next_raw_block`] from the start when unsupported or
-/// malformed non-state content must be preserved.
+/// # Errors
+/// - On [`PcapNgReadError::Block`], , the error is returned and the block is skipped.
+/// - Retry a non-fatal I/O error by polling the iterator again.
+/// - A fatal error is yielded once. Later polls return [`None`].
 ///
 /// # Example
 ///
