@@ -9,9 +9,8 @@ use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
 use pcap_file::pcapng::blocks::interface_description::{
     InterfaceDescriptionBlock, InterfaceDescriptionOption, InterfaceTsResolution,
 };
-use pcap_file::pcapng::{
-    Block, BlockValidationError, PcapNgReadError, PcapNgReader, PcapNgWriteError, PcapNgWriter, TimestampError,
-};
+use pcap_file::pcapng::{Block, PcapNgReader, PcapNgWriter};
+use pcap_file::pcapng::errors::{BlockValidationError, PcapNgReadError, PcapNgWriteError, TimestampError};
 
 #[test]
 fn writer_rejects_timestamp_before_interface_offset() {

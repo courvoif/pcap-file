@@ -1,3 +1,5 @@
+//! Error types returned by pcapng parsing, reading, and writing.
+
 /* ----- Imports ----- */
 
 use std::time::Duration;

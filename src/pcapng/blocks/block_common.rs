@@ -370,7 +370,7 @@ impl<'a> Block<'a> {
     pub fn into_pcapng_packet(
         self,
         state: &PcapNgState,
-    ) -> Result<crate::pcapng::PcapNgPacket<'a>, crate::pcapng::PacketConversionError<'a>> {
+    ) -> Result<crate::pcapng::PcapNgPacket<'a>, crate::pcapng::errors::PacketConversionError<'a>> {
         crate::pcapng::PcapNgPacket::from_block(self, state)
     }
 
@@ -456,7 +456,8 @@ mod tests {
 
     use super::*;
     use crate::Endianness;
-    use crate::pcapng::{PcapNgFormatError, PcapNgState};
+    use crate::pcapng::PcapNgState;
+    use crate::pcapng::errors::PcapNgFormatError;
 
     /* ----- Block metadata ----- */
 

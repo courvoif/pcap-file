@@ -11,7 +11,8 @@ use thiserror::Error;
 use super::block_common::{Block, PcapNgBlock};
 use crate::pcapng::blocks::opt_common::CommonOption;
 use crate::pcapng::errors::{BlockValidationError, WriteError};
-use crate::pcapng::{OptionEntryError, PcapNgState};
+use crate::pcapng::errors::OptionEntryError;
+use crate::pcapng::PcapNgState;
 
 /* ----- traits for Custom Payload ----- */
 

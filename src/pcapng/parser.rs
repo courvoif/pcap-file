@@ -5,18 +5,18 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use super::PcapNgState;
 use super::blocks::block_common::{Block, RawBlock};
 use crate::Endianness;
-use crate::pcapng::StateUpdateError;
-use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError};
+use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError, StateUpdateError};
 
 /* ----- Parser ----- */
 
 /// Parses a PcapNg from a slice of bytes.
 ///
-/// You can match on [`PcapNgParseError::IncompleteBuffer`](crate::pcapng::PcapNgParseError) to know if the parser needs more data.
+/// You can match on [`PcapNgParseError::IncompleteBuffer`](crate::pcapng::errors::PcapNgParseError) to know if the parser needs more data.
 ///
 /// # Example
 /// ```rust,no_run
-/// use pcap_file::pcapng::{PcapNgParseError, PcapNgParser};
+/// use pcap_file::pcapng::PcapNgParser;
+/// use pcap_file::pcapng::errors::PcapNgParseError;
 ///
 /// let pcap = std::fs::read("test.pcapng").expect("Error reading file");
 /// let mut src = &pcap[..];

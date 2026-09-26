@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
 use glob::glob;
-use pcap_file::pcapng::{Block, BlockValidationError, PcapNgParser, PcapNgReader, PcapNgWriter, TimestampError};
+use pcap_file::pcapng::{Block, PcapNgParser, PcapNgReader, PcapNgWriter};
+use pcap_file::pcapng::errors::{BlockValidationError, TimestampError};
 
 /* ----- Reader, parser, and writer tests ----- */
 
@@ -117,7 +118,8 @@ fn writer() {
 
 #[test]
 fn packet_iterator_matches_typed_packet_traversal() {
-    use pcap_file::pcapng::{PacketConversionError, PcapNgPacket};
+    use pcap_file::pcapng::PcapNgPacket;
+    use pcap_file::pcapng::errors::PacketConversionError;
     for entry in glob("tests/pcapng/**/**/*.pcapng").unwrap() {
         let data = std::fs::read(entry.unwrap()).unwrap();
         let mut reader = PcapNgReader::new(&data[..], true).unwrap();
@@ -276,7 +278,7 @@ fn pcapng_with_partially_buffered_interface() -> (Vec<u8>, usize) {
 
 #[test]
 fn strict_reader_validates_typed_blocks_and_advances_after_validation_error() {
-    use pcap_file::pcapng::PcapNgReadError;
+    use pcap_file::pcapng::errors::PcapNgReadError;
 
     let pcapng = pcapng_with_semantically_invalid_packet();
 
@@ -308,7 +310,7 @@ fn strict_reader_validates_typed_blocks_and_advances_after_validation_error() {
 fn typed_reader_is_poisoned_after_fatal_state_error() {
     use byteorder_slice::BigEndian;
     use pcap_file::pcapng::PcapNgBlock;
-    use pcap_file::pcapng::PcapNgReadError;
+    use pcap_file::pcapng::errors::PcapNgReadError;
     use pcap_file::pcapng::blocks::block_common::RawBlock;
     use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
 
@@ -334,7 +336,7 @@ fn typed_reader_is_poisoned_after_fatal_state_error() {
 
 #[test]
 fn raw_reader_is_poisoned_after_fatal_format_error() {
-    use pcap_file::pcapng::PcapNgReadError;
+    use pcap_file::pcapng::errors::PcapNgReadError;
 
     let writer = PcapNgWriter::with_endianness(Vec::new(), pcap_file::Endianness::Big, true).unwrap();
     let mut pcapng = writer.into_inner();
@@ -361,7 +363,7 @@ fn reader_retries_retryable_io_error_without_losing_buffered_data() {
 
     let error = reader.next_block().unwrap().unwrap_err();
     assert!(
-        matches!(error, pcap_file::pcapng::PcapNgReadError::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+        matches!(error, pcap_file::pcapng::errors::PcapNgReadError::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock)
     );
     assert!(matches!(
         reader.next_block().unwrap().unwrap().0,
@@ -377,7 +379,7 @@ fn reader_is_poisoned_after_fatal_io_error() {
 
     let error = reader.next_block().unwrap().unwrap_err();
     assert!(
-        matches!(error, pcap_file::pcapng::PcapNgReadError::Io(error) if error.kind() == std::io::ErrorKind::ConnectionReset)
+        matches!(error, pcap_file::pcapng::errors::PcapNgReadError::Io(error) if error.kind() == std::io::ErrorKind::ConnectionReset)
     );
     assert!(reader.next_block().is_none());
 }
@@ -388,7 +390,7 @@ fn raw_writer_rejects_invalid_state_block_lengths_without_state_update() {
     use pcap_file::pcapng::PcapNgBlock;
     use pcap_file::pcapng::blocks::block_common::RawBlock;
     use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-    use pcap_file::pcapng::{PcapNgFormatError, PcapNgWriteError};
+    use pcap_file::pcapng::errors::{PcapNgFormatError, PcapNgWriteError};
 
     let mut writer = PcapNgWriter::with_endianness(Vec::new(), Endianness::Big, true).unwrap();
     let len_before = writer.get_ref().len();
@@ -648,7 +650,7 @@ fn reader_with_capacity_handles_large_blocks() {
 
 #[test]
 fn typed_reader_continues_after_non_fatal_block_error() {
-    use pcap_file::pcapng::PcapNgReadError;
+    use pcap_file::pcapng::errors::PcapNgReadError;
 
     let pcapng = pcapng_with_invalid_and_valid_packet_blocks();
 

@@ -5,8 +5,7 @@
 pub mod blocks;
 pub use blocks::{Block, PcapNgBlock, RawBlock};
 
-pub(crate) mod errors;
-pub use errors::*;
+pub mod errors;
 
 pub(crate) mod state;
 pub use state::PcapNgState;

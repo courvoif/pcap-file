@@ -8,8 +8,9 @@ use std::time::Duration;
 use derive_into_owned::IntoOwned;
 
 use super::blocks::Block;
-use super::{PacketConversionError, PcapNgState};
+use super::PcapNgState;
 use crate::DataLink;
+use crate::pcapng::errors::PacketConversionError;
 
 /* ----- Packet view ----- */
 
