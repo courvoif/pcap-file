@@ -79,7 +79,7 @@ impl<R: Read> PcapNgReader<R> {
     /// Returns the next [`Block`] and the [`PcapNgState`].
     ///
     /// [`None`] means that the reader reached the end of input or a previous
-    /// call returned a fatal error.
+    /// call returned a fatal error and the reader remains poisoned.
     ///
     /// Use this when you need typed block data.
     ///
@@ -129,7 +129,7 @@ impl<R: Read> PcapNgReader<R> {
     /// Returns the next [`RawBlock`] and the [`PcapNgState`].
     ///
     /// [`None`] means that the reader reached the end of input or a previous
-    /// call returned a fatal error.
+    /// call returned a fatal error and the reader remains poisoned.
     ///
     /// Use this when you need raw block data or want to parse an unsupported
     /// block type.
@@ -167,6 +167,17 @@ impl<R: Read> PcapNgReader<R> {
         });
 
         Some(res)
+    }
+
+    /// Allows reading again after a fatal error.
+    /// This keeps the buffered bytes and section and interface state unchanged.
+    ///
+    /// # Safety
+    /// The caller must ensure the unread bytes and underlying input can be read
+    /// as blocks under the current section and interface state.
+    /// Otherwise later reads may repeat the error or interpret data incorrectly.
+    pub unsafe fn reset_poisoned(&mut self) {
+        self.poisoned = false;
     }
 
     /// Returns whether this reader and its packet iterator validate blocks.

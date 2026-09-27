@@ -72,7 +72,7 @@ impl<R: Read> PcapReader<R> {
     /// Returns the next validated [`PcapPacket`].
     ///
     /// [`None`] means that the reader reached the end of input or a previous
-    /// call returned a fatal error.
+    /// call returned a fatal error and the reader remains poisoned.
     ///
     /// # Errors
     /// - On [`PcapReadError::Validation`], the packet is skipped.
@@ -107,7 +107,7 @@ impl<R: Read> PcapReader<R> {
 
     /// Returns the next [`RawPcapPacket`].
     /// [`None`] means that the reader reached the end of input or a previous
-    /// call returned a fatal error.
+    /// call returned a fatal error and the reader remains poisoned.
     ///
     /// Use this when you need raw timestamp and length fields, including fields
     /// from packets that fail semantic validation.
@@ -132,6 +132,17 @@ impl<R: Read> PcapReader<R> {
         });
 
         Some(res)
+    }
+
+    /// Allows reading again after a fatal error.
+    /// This keeps the buffered bytes and pcap header unchanged.
+    ///
+    /// # Safety
+    /// The caller must ensure the unread bytes and underlying input can be read
+    /// as packets under the current header.
+    /// Otherwise later reads may repeat the error or interpret data incorrectly.
+    pub unsafe fn reset_poisoned(&mut self) {
+        self.poisoned = false;
     }
 
     /// Returns the pcap global header.

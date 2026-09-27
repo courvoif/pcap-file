@@ -163,9 +163,33 @@ Packet blocks in pcapng refer to interface blocks by index. When creating a
 pcapng file from scratch, write an `InterfaceDescriptionBlock` before any packet
 block that uses that interface.
 
-More complete read, write, raw block, and custom block examples are available
-in [`tests/pcap/mod.rs`](tests/pcap/mod.rs) and
-[`tests/pcapng/mod.rs`](tests/pcapng/mod.rs).
+Runnable examples are available under `examples/`. Run one with
+`cargo run --example <name>`:
+
+| Example | Demonstrates |
+| --- | --- |
+| `pcap_parser_packet` | Parse packet records from `tests/pcap/little_endian.pcap` |
+| `pcap_reader_packet` | Read packets from `tests/pcap/little_endian.pcap` |
+| `pcap_reader_raw_packet` | Inspect raw pcap packet fields and validate them |
+| `pcap_reader_iterator` | Iterate over owned pcap packets |
+| `pcap_writer_packet` | Write a generated packet to a `Vec<u8>` |
+| `pcapng_parser_block` | Parse blocks from `tests/pcapng/little_endian/basic/test001.pcapng` |
+| `pcapng_reader_block` | Read typed blocks from the pcapng fixture |
+| `pcapng_reader_raw_block` | Inspect raw pcapng blocks and decode them |
+| `pcapng_reader_iterator` | Iterate over packets in the pcapng fixture |
+| `pcapng_writer_block` | Write generated pcapng blocks to a `Vec<u8>` |
+| `pcapng_custom_block` | Write and read a stateful custom block in a new capture |
+| `pcapng_custom_options` | Write and read a custom option in a new capture |
+
+Run these commands from the repository root so the examples can read their
+fixed test fixtures.
+The parser and reader examples continue past errors when the parser or reader
+can recover; fatal errors stop the example.
+Writer examples generate content and keep output in a `Vec<u8>`. The custom
+examples create new captures, read them back, and compare their payloads. Each
+custom example defines its payload in the example file. The custom block uses
+`PcapNgState` to encode its timestamp with the interface resolution. The custom
+option uses it to follow the section byte order.
 
 ## Fuzzing
 
