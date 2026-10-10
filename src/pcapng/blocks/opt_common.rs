@@ -1,5 +1,7 @@
 //! Generic block option types.
 
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::io::Write;
 
@@ -10,54 +12,181 @@ use derive_into_owned::IntoOwned;
 
 use crate::pcapng::PcapNgState;
 use crate::pcapng::blocks::custom::{CustomBinaryOption, CustomUtf8Option};
-use crate::pcapng::errors::{BlockValidationError, OptionEntryError, OptionError, WriteError};
+use crate::pcapng::errors::{OptionEntryError, OptionError, WriteError};
 
-/// Comment
+/* ----- Option codes ----- */
+
+/// Comment option code.
 pub const COMMENT: u16 = 0x0001;
-/// Custom UTF-8 option code, copiable
+/// Copiable custom UTF-8 option code.
 pub const CUSTOM_UTF8_OPTION_COPIABLE: u16 = 0x0BAC;
-/// Custom UTF-8 option code, non-copiable
+/// Non-copiable custom UTF-8 option code.
 pub const CUSTOM_UTF8_OPTION_NON_COPIABLE: u16 = 0x4BAC;
-/// Custom binary option code, copiable
+/// Copiable custom binary option code.
 pub const CUSTOM_BINARY_OPTION_COPIABLE: u16 = 0x0BAD;
-/// Custom binary option code, non-copiable
+/// Non-copiable custom binary option code.
 pub const CUSTOM_BINARY_OPTION_NON_COPIABLE: u16 = 0x4BAD;
 
-/// Common options applicable to all block types.
+/* ----- Option lists ----- */
+
+/// Parses all framed options in a block body.
+pub(crate) fn opts_from_slice<'a, B: ByteOrder, O: PcapNgOption<'a>>(
+    state: &PcapNgState,
+    interface_id: Option<u32>,
+    mut slice: &'a [u8],
+) -> Result<(&'a [u8], Vec<O>), OptionError> {
+    let mut options = vec![];
+
+    while !slice.is_empty() {
+        let (rem, raw_option) = RawOption::from_slice::<B>(slice).map_err(|source| {
+            let code = if slice.len() >= 2 {
+                let mut prefix = slice;
+                prefix.read_u16::<B>().expect("slice length checked above")
+            } else {
+                0
+            };
+            OptionError {
+                code,
+                name: if slice.len() < 2 {
+                    "Option"
+                } else if code == 0 {
+                    "End of Options"
+                } else {
+                    O::name(code)
+                },
+                source: Box::new(source),
+            }
+        })?;
+        let code = raw_option.code;
+        let value = raw_option.value;
+
+        if code == 0 {
+            raw_option.validate().map_err(|source| OptionError {
+                code,
+                name: "End of Options",
+                source: Box::new(source),
+            })?;
+            return Ok((rem, options));
+        }
+
+        let option = O::from_content::<B>(state, interface_id, code, value).map_err(|source| OptionError {
+            code,
+            name: O::name(code),
+            source: Box::new(source),
+        })?;
+        option.validate(state, interface_id).map_err(|source| OptionError {
+            code,
+            name: O::name(code),
+            source: Box::new(source),
+        })?;
+
+        options.push(option);
+        slice = rem;
+    }
+
+    Ok((slice, options))
+}
+
+/// Validates and writes all options followed by an end-of-options entry.
+pub(crate) fn write_opts_to<'a, B: ByteOrder, O: PcapNgOption<'a>, W: Write>(
+    options: &[O],
+    state: &PcapNgState,
+    interface_id: Option<u32>,
+    writer: &mut W,
+) -> Result<usize, WriteError<OptionError>> {
+    validate_opts(options, state, interface_id).map_err(WriteError::Other)?;
+
+    let mut written = 0;
+
+    for option in options {
+        written += option
+            .write_to::<B, W>(state, interface_id, writer)
+            .map_err(|error| match error {
+                WriteError::Io(error) => WriteError::Io(error),
+                WriteError::Other(source) => {
+                    let code = option.code();
+                    WriteError::Other(OptionError {
+                        code,
+                        name: O::name(code),
+                        source: Box::new(source),
+                    })
+                }
+            })?;
+    }
+
+    if !options.is_empty() {
+        written += RawOption::write_framed_to::<B, _, _>(writer, 0, 0, |_| Ok(())).map_err(|error| match error {
+            WriteError::Io(error) => WriteError::Io(error),
+            WriteError::Other(source) => WriteError::Other(OptionError {
+                code: 0,
+                name: "End of Options",
+                source: Box::new(source),
+            }),
+        })?;
+    }
+
+    Ok(written)
+}
+
+/// Helper to validate all options of a block
+pub(crate) fn validate_opts<'a, O: PcapNgOption<'a>>(
+    options: &[O],
+    state: &PcapNgState,
+    interface_id: Option<u32>,
+) -> Result<(), OptionError> {
+    for option in options {
+        option.validate(state, interface_id).map_err(|source| {
+            let code = option.code();
+            OptionError {
+                code,
+                name: O::name(code),
+                source: Box::new(source),
+            }
+        })?;
+    }
+
+    Ok(())
+}
+
+/* ----- Common options ----- */
+
+/// Common pcapng block options.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum CommonOption<'a> {
-    /// Comment
+    /// Comment.
     Comment(Cow<'a, str>),
 
-    /// Custom option containing copiable binary octets in the Custom Data portion
+    /// Custom option containing copiable bytes in the Custom Data portion.
     CustomBinaryCopiable(CustomBinaryOption<'a, true>),
 
-    /// Custom option containing non-copiable binary octets in the Custom Data portion
+    /// Custom option containing non-copiable bytes in the Custom Data portion.
     CustomBinaryNonCopiable(CustomBinaryOption<'a, false>),
 
-    /// Custom option containing a copiable UTF-8 string in the Custom Data portion
+    /// Custom option containing a copiable UTF-8 string in the Custom Data portion.
     CustomUtf8Copiable(CustomUtf8Option<'a, true>),
 
-    /// Custom option containing a non-copiable UTF-8 string in the Custom Data portion
+    /// Custom option containing a non-copiable UTF-8 string in the Custom Data portion.
     CustomUtf8NonCopiable(CustomUtf8Option<'a, false>),
 
-    /// Unknown option
+    /// Unknown option.
     Unknown(UnknownOption<'a>),
 }
 
 impl<'a> CommonOption<'a> {
+    /// Returns the encoded option code.
     pub(crate) fn code(&self) -> u16 {
         match self {
-            CommonOption::Comment(_) => COMMENT,
-            CommonOption::CustomBinaryCopiable(_) => CUSTOM_BINARY_OPTION_COPIABLE,
-            CommonOption::CustomBinaryNonCopiable(_) => CUSTOM_BINARY_OPTION_NON_COPIABLE,
-            CommonOption::CustomUtf8Copiable(_) => CUSTOM_UTF8_OPTION_COPIABLE,
-            CommonOption::CustomUtf8NonCopiable(_) => CUSTOM_UTF8_OPTION_NON_COPIABLE,
-            CommonOption::Unknown(a) => a.code,
+            Self::Comment(_) => COMMENT,
+            Self::CustomBinaryCopiable(_) => CUSTOM_BINARY_OPTION_COPIABLE,
+            Self::CustomBinaryNonCopiable(_) => CUSTOM_BINARY_OPTION_NON_COPIABLE,
+            Self::CustomUtf8Copiable(_) => CUSTOM_UTF8_OPTION_COPIABLE,
+            Self::CustomUtf8NonCopiable(_) => CUSTOM_UTF8_OPTION_NON_COPIABLE,
+            Self::Unknown(option) => option.code,
         }
     }
 
-    pub(crate) fn new<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, OptionEntryError> {
+    /// Decodes a common option value by code.
+    pub(crate) fn from_content<B: ByteOrder>(code: u16, slice: &'a [u8]) -> Result<Self, OptionEntryError> {
         Ok(match code {
             COMMENT => CommonOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
             CUSTOM_UTF8_OPTION_COPIABLE => CommonOption::CustomUtf8Copiable(CustomUtf8Option::from_slice::<B>(slice)?),
@@ -74,6 +203,7 @@ impl<'a> CommonOption<'a> {
         })
     }
 
+    /// Returns the common option name for a code.
     pub(crate) fn code_name(code: u16) -> &'static str {
         match code {
             COMMENT => "Comment",
@@ -84,12 +214,195 @@ impl<'a> CommonOption<'a> {
             _ => "Unknown",
         }
     }
+
+    /// Writes a common option with its code and padding.
+    pub(crate) fn write_to<B: ByteOrder, W: Write>(
+        &self,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<OptionEntryError>> {
+        match self {
+            CommonOption::Comment(value) => write_bytes_option::<B, _>(writer, COMMENT, value.as_bytes()),
+            CommonOption::CustomBinaryCopiable(option) => {
+                write_custom_option::<B, _>(writer, CUSTOM_BINARY_OPTION_COPIABLE, option.pen, &option.value)
+            }
+            CommonOption::CustomBinaryNonCopiable(option) => {
+                write_custom_option::<B, _>(writer, CUSTOM_BINARY_OPTION_NON_COPIABLE, option.pen, &option.value)
+            }
+            CommonOption::CustomUtf8Copiable(option) => {
+                write_custom_option::<B, _>(writer, CUSTOM_UTF8_OPTION_COPIABLE, option.pen, option.value.as_bytes())
+            }
+            CommonOption::CustomUtf8NonCopiable(option) => write_custom_option::<B, _>(
+                writer,
+                CUSTOM_UTF8_OPTION_NON_COPIABLE,
+                option.pen,
+                option.value.as_bytes(),
+            ),
+            CommonOption::Unknown(option) => write_bytes_option::<B, _>(writer, option.code, &option.value),
+        }
+    }
 }
 
-/// Common functions of the PcapNg options
+/* ----- Raw options ----- */
+
+/// Raw pcapng option with its framing fields and unparsed value.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct RawOption<'a> {
+    /// Numeric option code.
+    pub code: u16,
+    /// Unparsed option value.
+    pub value: &'a [u8],
+}
+
+impl<'a> RawOption<'a> {
+    /// Parses one raw option, including its header and padding, from a slice.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the slice does not contain the complete option frame.
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), OptionEntryError> {
+        if slice.len() < 4 {
+            return Err(OptionEntryError::ContentTooSmall {
+                needed: 4,
+                actual: slice.len(),
+            });
+        }
+
+        let code = slice.read_u16::<B>().expect("slice length checked above");
+        let length = slice.read_u16::<B>().expect("slice length checked above");
+        let value_len = length as usize;
+        let pad_len = (4 - value_len % 4) % 4;
+
+        if slice.len() < value_len + pad_len {
+            return Err(OptionEntryError::ContentTooSmall {
+                needed: value_len + pad_len,
+                actual: slice.len(),
+            });
+        }
+
+        let value = &slice[..value_len];
+        let rem = &slice[value_len + pad_len..];
+
+        Ok((rem, Self { code, value }))
+    }
+
+    /// Validates constraints imposed by the option framing itself.
+    pub fn validate(&self) -> Result<(), OptionEntryError> {
+        if self.code == 0 && !self.value.is_empty() {
+            return Err(OptionEntryError::WrongSize {
+                expected: 0,
+                actual: self.value.len(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Writes one raw option with its header and padding.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the value is too large or the writer fails.
+    pub(crate) fn write_framed_to<B, W, F>(
+        writer: &mut W,
+        code: u16,
+        content_len: usize,
+        write_content: F,
+    ) -> Result<usize, WriteError<OptionEntryError>>
+    where
+        B: ByteOrder,
+        W: Write,
+        F: FnOnce(&mut W) -> std::io::Result<()>,
+    {
+        let content_len_u16 = content_len.try_into().map_err(|_| {
+            WriteError::Other(OptionEntryError::TooLarge {
+                actual: content_len,
+                maximum: u16::MAX as usize,
+            })
+        })?;
+
+        let pad_len = (4 - (content_len % 4)) % 4;
+
+        writer.write_u16::<B>(code)?;
+        writer.write_u16::<B>(content_len_u16)?;
+        write_content(writer)?;
+        writer.write_all(&[0_u8; 3][..pad_len])?;
+
+        Ok(4 + content_len + pad_len)
+    }
+}
+
+/* ----- Helpers for writing option values ----- */
+
+/// Writes bytes as a framed option.
+pub(crate) fn write_bytes_option<B: ByteOrder, W: Write>(
+    writer: &mut W,
+    code: u16,
+    value: &[u8],
+) -> Result<usize, WriteError<OptionEntryError>> {
+    RawOption::write_framed_to::<B, _, _>(writer, code, value.len(), |writer| {
+        writer.write_all(value)?;
+        Ok(())
+    })
+}
+
+/// Writes an 8-bit value as a framed option.
+pub(crate) fn write_u8_option<B: ByteOrder, W: Write>(
+    writer: &mut W,
+    code: u16,
+    value: u8,
+) -> Result<usize, WriteError<OptionEntryError>> {
+    RawOption::write_framed_to::<B, _, _>(writer, code, 1, |writer| writer.write_u8(value))
+}
+
+/// Writes a 32-bit value as a framed option.
+pub(crate) fn write_u32_option<B: ByteOrder, W: Write>(
+    writer: &mut W,
+    code: u16,
+    value: u32,
+) -> Result<usize, WriteError<OptionEntryError>> {
+    RawOption::write_framed_to::<B, _, _>(writer, code, 4, |writer| writer.write_u32::<B>(value))
+}
+
+/// Writes a 64-bit value as a framed option.
+pub(crate) fn write_u64_option<B: ByteOrder, W: Write>(
+    writer: &mut W,
+    code: u16,
+    value: u64,
+) -> Result<usize, WriteError<OptionEntryError>> {
+    RawOption::write_framed_to::<B, _, _>(writer, code, 8, |writer| writer.write_u64::<B>(value))
+}
+
+/// Writes a signed 64-bit value as a framed option.
+pub(crate) fn write_i64_option<B: ByteOrder, W: Write>(
+    writer: &mut W,
+    code: u16,
+    value: i64,
+) -> Result<usize, WriteError<OptionEntryError>> {
+    RawOption::write_framed_to::<B, _, _>(writer, code, 8, |writer| writer.write_i64::<B>(value))
+}
+
+/// Writes a custom value with its private enterprise number.
+fn write_custom_option<B: ByteOrder, W: Write>(
+    writer: &mut W,
+    code: u16,
+    pen: u32,
+    value: &[u8],
+) -> Result<usize, WriteError<OptionEntryError>> {
+    RawOption::write_framed_to::<B, _, _>(writer, code, value.len() + 4, |writer| {
+        writer.write_u32::<B>(pen)?;
+        writer.write_all(value)?;
+        Ok(())
+    })
+}
+
+/* ----- Option interface ----- */
+
+/// Common behavior for pcapng options.
 pub(crate) trait PcapNgOption<'a> {
-    /// Parse an option from a slice
-    fn from_slice<B: ByteOrder>(
+    /// Parses an option from a byte slice without semantic validation.
+    /// [`opts_from_slice`] validates the returned option immediately after
+    /// this call.
+    fn from_content<B: ByteOrder>(
         state: &PcapNgState,
         interface_id: Option<u32>,
         code: u16,
@@ -98,112 +411,40 @@ pub(crate) trait PcapNgOption<'a> {
     where
         Self: std::marker::Sized;
 
-    /// Return the name of the Option entry from its code
-    fn code_name(code: u16) -> &'static str;
-
-    /// Parse all options in a block
-    fn opts_from_slice<B: ByteOrder>(
-        state: &PcapNgState,
-        interface_id: Option<u32>,
-        mut slice: &'a [u8],
-    ) -> Result<(&'a [u8], Vec<Self>), BlockValidationError>
-    where
-        Self: std::marker::Sized,
-    {
-        let mut options = vec![];
-
-        // If there is nothing left in the slice, it means that there is no option
-        if slice.is_empty() {
-            return Ok((slice, options));
-        }
-
-        while !slice.is_empty() {
-            if slice.len() < 4 {
-                return Err(BlockValidationError::Option(OptionError::ContentTooSmall {
-                    needed: 4,
-                    actual: slice.len(),
-                }));
-            }
-
-            let code = slice.read_u16::<B>().expect("available length checked before");
-            let length = slice.read_u16::<B>().expect("available length checked before") as usize;
-            let pad_len = (4 - (length % 4)) % 4;
-
-            if code == 0 {
-                return Ok((slice, options));
-            }
-
-            if slice.len() < length + pad_len {
-                return Err(BlockValidationError::Option(OptionError::ContentTooSmall {
-                    needed: length + pad_len,
-                    actual: slice.len(),
-                }));
-            }
-
-            let tmp_slice = &slice[..length];
-            let opt = Self::from_slice::<B>(state, interface_id, code, tmp_slice).map_err(|e| {
-                BlockValidationError::Option(OptionError::InvalidEntry {
-                    code,
-                    name: Self::code_name(code),
-                    source: Box::new(e),
-                })
-            })?;
-
-            // Jump over the padding
-            slice = &slice[length + pad_len..];
-
-            options.push(opt);
-        }
-
-        Ok((slice, options))
-    }
-
-    /// Write the option to a writer
+    /// Writes an already validated option to a writer.
+    /// [`write_opts_to`] validates the option list before calling this method.
     fn write_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
         interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>>;
+    ) -> Result<usize, WriteError<OptionEntryError>>;
 
-    /// Write all options in a block
-    fn write_opts_to<B: ByteOrder, W: Write>(
-        opts: &[Self],
-        state: &PcapNgState,
-        interface_id: Option<u32>,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>>
-    where
-        Self: std::marker::Sized,
-    {
-        let mut have_opt = false;
-        let mut written = 0;
-        for opt in opts {
-            written += opt.write_to::<B, W>(state, interface_id, writer)?;
-            have_opt = true;
-        }
+    /// Validates the decoded option against the supplied pcapng state.
+    fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError>;
 
-        if have_opt {
-            writer.write_u16::<B>(0)?;
-            writer.write_u16::<B>(0)?;
-            written += 4;
-        }
+    /// Returns the encoded option code.
+    fn code(&self) -> u16;
 
-        Ok(written)
-    }
+    /// Returns the option name for a code.
+    fn name(code: u16) -> &'static str;
 }
 
-/// Unknown options
+/* ----- Unknown options ----- */
+
+/// Unknown option.
+///
+/// Stores an option whose code is not recognized.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct UnknownOption<'a> {
-    /// Option code
+    /// Option code.
     pub code: u16,
-    /// Option value
+    /// Option value.
     pub value: Cow<'a, [u8]>,
 }
 
 impl<'a> UnknownOption<'a> {
-    /// Creates a new [`UnknownOption`]
+    /// Creates a new [`UnknownOption`].
     pub fn new(code: u16, value: &'a [u8]) -> Self {
         UnknownOption {
             code,
@@ -212,170 +453,56 @@ impl<'a> UnknownOption<'a> {
     }
 }
 
-pub(crate) trait WriteOpt {
-    fn write_opt<B: ByteOrder, W: Write>(
-        &self,
-        code: u16,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>>;
-}
+/* ----- Tests ----- */
 
-/// Write an option with its header and padding.
-fn write_opt_with_header_and_pad<B: ByteOrder, W: Write>(
-    writer: &mut W,
-    code: u16,
-    len: usize,
-    content: impl FnOnce(&mut W) -> Result<(), std::io::Error>,
-) -> Result<usize, WriteError<BlockValidationError>> {
-    let pad_len = (4 - len % 4) % 4;
-
-    let len: u16 = len.try_into().map_err(|_| {
-        WriteError::Other(BlockValidationError::Option(OptionError::InvalidEntry {
-            code,
-            name: "option",
-            source: Box::new(OptionEntryError::TooLarge {
-                actual: len,
-                maximum: u16::MAX as usize,
-            }),
-        }))
-    })?;
-
-    writer.write_u16::<B>(code)?;
-    writer.write_u16::<B>(len)?;
-    content(writer)?;
-    writer.write_all(&[0_u8; 3][..pad_len])?;
-
-    Ok(len as usize + pad_len + 4)
-}
-
-impl<'a> WriteOpt for Cow<'a, [u8]> {
-    fn write_opt<B: ByteOrder, W: Write>(
-        &self,
-        code: u16,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
-        write_opt_with_header_and_pad::<B, _>(writer, code, self.len(), |w| w.write_all(self))
-    }
-}
-
-impl<'a> WriteOpt for Cow<'a, str> {
-    fn write_opt<B: ByteOrder, W: Write>(
-        &self,
-        code: u16,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
-        write_opt_with_header_and_pad::<B, _>(writer, code, self.len(), |w| w.write_all(self.as_bytes()))
-    }
-}
-
-impl WriteOpt for u8 {
-    fn write_opt<B: ByteOrder, W: Write>(
-        &self,
-        code: u16,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
-        write_opt_with_header_and_pad::<B, _>(writer, code, 1, |w| w.write_u8(*self))
-    }
-}
-
-impl WriteOpt for u16 {
-    fn write_opt<B: ByteOrder, W: Write>(
-        &self,
-        code: u16,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
-        write_opt_with_header_and_pad::<B, _>(writer, code, 2, |w| w.write_u16::<B>(*self))
-    }
-}
-
-impl WriteOpt for u32 {
-    fn write_opt<B: ByteOrder, W: Write>(
-        &self,
-        code: u16,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
-        write_opt_with_header_and_pad::<B, _>(writer, code, 4, |w| w.write_u32::<B>(*self))
-    }
-}
-
-impl WriteOpt for u64 {
-    fn write_opt<B: ByteOrder, W: Write>(
-        &self,
-        code: u16,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
-        write_opt_with_header_and_pad::<B, _>(writer, code, 8, |w| w.write_u64::<B>(*self))
-    }
-}
-
-impl WriteOpt for i64 {
-    fn write_opt<B: ByteOrder, W: Write>(
-        &self,
-        code: u16,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
-        write_opt_with_header_and_pad::<B, _>(writer, code, 8, |w| w.write_i64::<B>(*self))
-    }
-}
-
-impl<'a> WriteOpt for CommonOption<'a> {
-    fn write_opt<B: ByteOrder, W: Write>(
-        &self,
-        code: u16,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
-        match self {
-            CommonOption::Comment(a) => {
-                write_opt_with_header_and_pad::<B, _>(writer, code, a.len(), |w| w.write_all(a.as_bytes()))
-            }
-            CommonOption::CustomBinaryCopiable(a) => {
-                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
-                    w.write_u32::<B>(a.pen)?;
-                    w.write_all(&a.value)?;
-                    Ok(())
-                })
-            }
-            CommonOption::CustomBinaryNonCopiable(a) => {
-                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
-                    w.write_u32::<B>(a.pen)?;
-                    w.write_all(&a.value)?;
-                    Ok(())
-                })
-            }
-            CommonOption::CustomUtf8Copiable(a) => {
-                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
-                    w.write_u32::<B>(a.pen)?;
-                    w.write_all(a.value.as_bytes())?;
-                    Ok(())
-                })
-            }
-            CommonOption::CustomUtf8NonCopiable(a) => {
-                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len() + 4, |w| {
-                    w.write_u32::<B>(a.pen)?;
-                    w.write_all(a.value.as_bytes())?;
-                    Ok(())
-                })
-            }
-            CommonOption::Unknown(a) => {
-                write_opt_with_header_and_pad::<B, _>(writer, code, a.value.len(), |w| w.write_all(&a.value))
-            }
-        }
-    }
-}
-
+/// Checks option framing, parsing, and validation behavior.
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
+
     use byteorder_slice::BigEndian;
 
     use crate::pcapng::PcapNgState;
-    use crate::pcapng::blocks::opt_common::PcapNgOption;
-    use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
+    use crate::pcapng::blocks::opt_common::{PcapNgOption, RawOption, opts_from_slice, write_opts_to};
+    use crate::pcapng::errors::{OptionEntryError, OptionError, WriteError};
 
+    /// Minimal option type for list parsing.
     #[derive(Debug, PartialEq)]
     struct PcapNgOptionImpl {}
 
+    /// Checks that raw options consume and write complete frames.
+    #[test]
+    fn raw_option_parses_and_writes_its_frame() {
+        let data = [0, 2, 0, 1, 7, 0, 0, 0, 9];
+        let (rem, option) = RawOption::from_slice::<BigEndian>(&data).unwrap();
+
+        assert_eq!(rem, &[9]);
+        assert_eq!(option.code, 2);
+        assert_eq!(option.value, &[7]);
+        option.validate().unwrap();
+
+        let mut encoded = Vec::new();
+        RawOption::write_framed_to::<BigEndian, _, _>(&mut encoded, option.code, option.value.len(), |writer| {
+            writer.write_all(option.value)?;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(encoded, &data[..8]);
+    }
+
+    /// Checks that the end marker cannot carry a value.
+    #[test]
+    fn raw_end_option_rejects_a_value() {
+        let option = RawOption { code: 0, value: &[1] };
+
+        assert!(matches!(
+            option.validate(),
+            Err(OptionEntryError::WrongSize { expected: 0, actual: 1 })
+        ));
+    }
+
     impl<'a> PcapNgOption<'a> for PcapNgOptionImpl {
-        fn from_slice<B: byteorder_slice::ByteOrder>(
+        fn from_content<B: byteorder_slice::ByteOrder>(
             _state: &PcapNgState,
             _interface_id: Option<u32>,
             _code: u16,
@@ -392,25 +519,111 @@ mod tests {
             _state: &PcapNgState,
             _interface_id: Option<u32>,
             _writer: &mut W,
-        ) -> Result<usize, WriteError<BlockValidationError>> {
+        ) -> Result<usize, WriteError<OptionEntryError>> {
             Ok(0)
         }
 
-        fn code_name(_code: u16) -> &'static str {
+        fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
+            Ok(())
+        }
+
+        fn code(&self) -> u16 {
+            1
+        }
+
+        fn name(_code: u16) -> &'static str {
             "Option"
         }
     }
 
-    /// Test that a list of option without an endofopt can be parsed
+    /// Tests that an option list without an end-of-options marker can be parsed.
     #[test]
     fn opt_without_endofopt() {
         let data = [0, 1, 0, 4, 0, 0, 0, 0];
         let state = PcapNgState::default();
 
         let (rem, opts) =
-            PcapNgOptionImpl::opts_from_slice::<BigEndian>(&state, None, &data).expect("Failed to read the options");
+            opts_from_slice::<BigEndian, PcapNgOptionImpl>(&state, None, &data).expect("Failed to read the options");
 
         assert_eq!(&opts, &[PcapNgOptionImpl {}]);
         assert!(rem.is_empty());
+    }
+
+    /// Option type with explicit validation for list writing.
+    #[derive(Debug)]
+    struct ValidatedOption {
+        /// Whether validation succeeds.
+        valid: bool,
+    }
+
+    impl<'a> PcapNgOption<'a> for ValidatedOption {
+        fn from_content<B: byteorder_slice::ByteOrder>(
+            _state: &PcapNgState,
+            _interface_id: Option<u32>,
+            _code: u16,
+            _slice: &'a [u8],
+        ) -> Result<Self, OptionEntryError> {
+            Ok(Self { valid: true })
+        }
+
+        fn name(_code: u16) -> &'static str {
+            "ValidatedOption"
+        }
+
+        fn code(&self) -> u16 {
+            1
+        }
+
+        fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
+            if self.valid {
+                Ok(())
+            } else {
+                Err(OptionEntryError::ContentTooSmall { needed: 1, actual: 0 })
+            }
+        }
+
+        fn write_to<B: byteorder_slice::ByteOrder, W: std::io::Write>(
+            &self,
+            _state: &PcapNgState,
+            _interface_id: Option<u32>,
+            writer: &mut W,
+        ) -> Result<usize, WriteError<OptionEntryError>> {
+            RawOption::write_framed_to::<B, _, _>(writer, 1, 1, |writer| {
+                writer.write_all(&[1])?;
+                Ok(())
+            })
+        }
+    }
+
+    /// Checks the option list length and terminator.
+    #[test]
+    fn writes_options_and_end_marker_with_complete_length() {
+        let options = [ValidatedOption { valid: true }];
+        let mut encoded = Vec::new();
+
+        let written =
+            write_opts_to::<BigEndian, ValidatedOption, _>(&options, &PcapNgState::default(), None, &mut encoded)
+                .unwrap();
+
+        assert_eq!(written, encoded.len());
+        assert_eq!(encoded, [0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
+    }
+
+    /// Checks that validation finishes before any option is written.
+    #[test]
+    fn validates_all_options_before_writing_any() {
+        let options = [ValidatedOption { valid: true }, ValidatedOption { valid: false }];
+        let mut encoded = Vec::new();
+
+        let error =
+            write_opts_to::<BigEndian, ValidatedOption, _>(&options, &PcapNgState::default(), None, &mut encoded)
+                .unwrap_err();
+
+        assert!(encoded.is_empty());
+        assert!(matches!(
+            error,
+            WriteError::Other(OptionError { source, .. })
+                if matches!(*source, OptionEntryError::ContentTooSmall { needed: 1, actual: 0 })
+        ));
     }
 }

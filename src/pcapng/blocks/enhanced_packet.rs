@@ -10,7 +10,10 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
+use super::opt_common::{
+    CommonOption, PcapNgOption, opts_from_slice, validate_opts, write_bytes_option, write_opts_to, write_u32_option,
+    write_u64_option,
+};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
 
@@ -75,7 +78,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         let data = &slice[..captured_len as usize];
         slice = &slice[tot_len..];
 
-        let (slice, options) = EnhancedPacketOption::opts_from_slice::<B>(state, Some(interface_id), slice)?;
+        let (slice, options) = opts_from_slice::<B, EnhancedPacketOption>(state, Some(interface_id), slice)?;
         let block = EnhancedPacketBlock {
             interface_id,
             timestamp,
@@ -112,7 +115,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
             });
         }
 
-        Ok(())
+        validate_opts(&self.options, state, Some(self.interface_id)).map_err(BlockValidationError::Option)
     }
 
     fn write_body_to<B: ByteOrder, W: Write>(
@@ -141,8 +144,12 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         writer.write_all(&self.data)?;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        let opt_len =
-            EnhancedPacketOption::write_opts_to::<B, W>(&self.options, state, Some(self.interface_id), writer)?;
+        let opt_len = write_opts_to::<B, _, W>(&self.options, state, Some(self.interface_id), writer).map_err(
+            |error| match error {
+                WriteError::Io(error) => WriteError::Io(error),
+                WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
+            },
+        )?;
 
         Ok(20 + &self.data.len() + pad_len + opt_len)
     }
@@ -180,7 +187,7 @@ impl EnhancedPacketOption<'_> {
 }
 
 impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
-    fn from_slice<B: ByteOrder>(
+    fn from_content<B: ByteOrder>(
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         code: u16,
@@ -206,7 +213,7 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
                 }
                 EnhancedPacketOption::DropCount(slice.read_u64::<B>().expect("slice length checked above"))
             }
-            _ => EnhancedPacketOption::Common(CommonOption::new::<B>(code, slice)?),
+            _ => EnhancedPacketOption::Common(CommonOption::from_content::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -217,16 +224,29 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
+    ) -> Result<usize, WriteError<OptionEntryError>> {
         match self {
-            EnhancedPacketOption::Flags(a) => a.write_opt::<B, W>(2, writer),
-            EnhancedPacketOption::Hash(a) => a.write_opt::<B, W>(3, writer),
-            EnhancedPacketOption::DropCount(a) => a.write_opt::<B, W>(4, writer),
-            EnhancedPacketOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
+            EnhancedPacketOption::Flags(a) => write_u32_option::<B, W>(writer, Self::FLAGS, *a),
+            EnhancedPacketOption::Hash(a) => write_bytes_option::<B, W>(writer, Self::HASH, a),
+            EnhancedPacketOption::DropCount(a) => write_u64_option::<B, W>(writer, Self::DROP_COUNT, *a),
+            EnhancedPacketOption::Common(a) => a.write_to::<B, W>(writer),
         }
     }
 
-    fn code_name(code: u16) -> &'static str {
+    fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
+        Ok(())
+    }
+
+    fn code(&self) -> u16 {
+        match self {
+            Self::Flags(_) => Self::FLAGS,
+            Self::Hash(_) => Self::HASH,
+            Self::DropCount(_) => Self::DROP_COUNT,
+            Self::Common(option) => option.code(),
+        }
+    }
+
+    fn name(code: u16) -> &'static str {
         match code {
             Self::FLAGS => "Flags",
             Self::HASH => "Hash",

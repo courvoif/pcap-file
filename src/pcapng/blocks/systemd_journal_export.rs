@@ -23,6 +23,10 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
     const TYPE: u32 = 0x00000009;
     const NAME: &'static str = "systemd Journal Export Block";
 
+    fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError> {
+        Ok(())
+    }
+
     fn from_body<B: ByteOrder>(
         _state: &PcapNgState,
         slice: &'a [u8],

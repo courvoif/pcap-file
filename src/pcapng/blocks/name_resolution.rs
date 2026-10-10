@@ -10,7 +10,9 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
+use super::opt_common::{
+    CommonOption, PcapNgOption, opts_from_slice, validate_opts, write_bytes_option, write_opts_to,
+};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
 
@@ -45,18 +47,18 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
             }
         }
 
-        let (rem, options) = NameResolutionOption::opts_from_slice::<B>(state, None, slice)?;
+        let (rem, options) = opts_from_slice::<B, NameResolutionOption>(state, None, slice)?;
 
         let block = NameResolutionBlock { records, options };
 
         Ok((rem, block))
     }
 
-    fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError> {
+    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
         for record in &self.records {
             record.validate()?;
         }
-        Ok(())
+        validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
     }
 
     fn write_body_to<B: ByteOrder, W: Write>(
@@ -74,7 +76,10 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         writer.write_u16::<B>(0)?;
         len += 4;
 
-        len += NameResolutionOption::write_opts_to::<B, _>(&self.options, state, None, writer)?;
+        len += write_opts_to::<B, _, _>(&self.options, state, None, writer).map_err(|error| match error {
+            WriteError::Io(error) => WriteError::Io(error),
+            WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
+        })?;
 
         Ok(len)
     }
@@ -433,7 +438,7 @@ impl NameResolutionOption<'_> {
 }
 
 impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
-    fn from_slice<B: ByteOrder>(
+    fn from_content<B: ByteOrder>(
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         code: u16,
@@ -459,7 +464,7 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
                 }
                 NameResolutionOption::NsDnsIpv6Addr(Cow::Borrowed(slice))
             }
-            _ => NameResolutionOption::Common(CommonOption::new::<B>(code, slice)?),
+            _ => NameResolutionOption::Common(CommonOption::from_content::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -470,16 +475,29 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
+    ) -> Result<usize, WriteError<OptionEntryError>> {
         match self {
-            NameResolutionOption::NsDnsName(a) => a.write_opt::<B, W>(Self::NS_DNS_NAME, writer),
-            NameResolutionOption::NsDnsIpv4Addr(a) => a.write_opt::<B, W>(Self::NS_DNS_IPV4_ADDR, writer),
-            NameResolutionOption::NsDnsIpv6Addr(a) => a.write_opt::<B, W>(Self::NS_DNS_IPV6_ADDR, writer),
-            NameResolutionOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
+            NameResolutionOption::NsDnsName(a) => write_bytes_option::<B, W>(writer, Self::NS_DNS_NAME, a.as_bytes()),
+            NameResolutionOption::NsDnsIpv4Addr(a) => write_bytes_option::<B, W>(writer, Self::NS_DNS_IPV4_ADDR, a),
+            NameResolutionOption::NsDnsIpv6Addr(a) => write_bytes_option::<B, W>(writer, Self::NS_DNS_IPV6_ADDR, a),
+            NameResolutionOption::Common(a) => a.write_to::<B, W>(writer),
         }
     }
 
-    fn code_name(code: u16) -> &'static str {
+    fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
+        Ok(())
+    }
+
+    fn code(&self) -> u16 {
+        match self {
+            Self::NsDnsName(_) => Self::NS_DNS_NAME,
+            Self::NsDnsIpv4Addr(_) => Self::NS_DNS_IPV4_ADDR,
+            Self::NsDnsIpv6Addr(_) => Self::NS_DNS_IPV6_ADDR,
+            Self::Common(option) => option.code(),
+        }
+    }
+
+    fn name(code: u16) -> &'static str {
         match code {
             Self::NS_DNS_NAME => "NsDnsName",
             Self::NS_DNS_IPV4_ADDR => "NsDnsIpv4Addr",
@@ -514,7 +532,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            WriteError::Other(BlockValidationError::Option(OptionError::InvalidEntry {
+            WriteError::Other(BlockValidationError::Option(OptionError {
                 source,
                 ..
             })) if matches!(source.as_ref(), OptionEntryError::TooLarge { actual, maximum }

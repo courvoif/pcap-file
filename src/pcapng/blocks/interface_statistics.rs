@@ -9,7 +9,9 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
+use super::opt_common::{
+    CommonOption, PcapNgOption, RawOption, opts_from_slice, validate_opts, write_opts_to, write_u64_option,
+};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
 
@@ -33,6 +35,14 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
     const TYPE: u32 = 0x00000005;
     const NAME: &'static str = "Interface Statistics Block";
 
+    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
+        state
+            .interfaces
+            .get(self.interface_id as usize)
+            .ok_or(BlockValidationError::InvalidInterfaceId(self.interface_id))?;
+        validate_opts(&self.options, state, Some(self.interface_id)).map_err(BlockValidationError::Option)
+    }
+
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
@@ -48,7 +58,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         let timestamp_high = slice.read_u32::<B>().unwrap();
         let timestamp_low = slice.read_u32::<B>().unwrap();
         let timestamp = state.decode_timestamp(interface_id, timestamp_high, timestamp_low)?;
-        let (slice, options) = InterfaceStatisticsOption::opts_from_slice::<B>(state, Some(interface_id), slice)?;
+        let (slice, options) = opts_from_slice::<B, InterfaceStatisticsOption>(state, Some(interface_id), slice)?;
 
         let block = InterfaceStatisticsBlock {
             interface_id,
@@ -72,8 +82,12 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         writer.write_u32::<B>(timestamp_high)?;
         writer.write_u32::<B>(timestamp_low)?;
 
-        let opt_len =
-            InterfaceStatisticsOption::write_opts_to::<B, _>(&self.options, state, Some(self.interface_id), writer)?;
+        let opt_len = write_opts_to::<B, _, _>(&self.options, state, Some(self.interface_id), writer).map_err(
+            |error| match error {
+                WriteError::Io(error) => WriteError::Io(error),
+                WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
+            },
+        )?;
 
         Ok(12 + opt_len)
     }
@@ -131,7 +145,7 @@ impl InterfaceStatisticsOption<'_> {
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
-    fn from_slice<B: ByteOrder>(
+    fn from_content<B: ByteOrder>(
         state: &PcapNgState,
         interface_id: Option<u32>,
         code: u16,
@@ -214,7 +228,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
                 InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>().unwrap())
             }
 
-            _ => InterfaceStatisticsOption::Common(CommonOption::new::<B>(code, slice)?),
+            _ => InterfaceStatisticsOption::Common(CommonOption::from_content::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -225,7 +239,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         state: &PcapNgState,
         interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
+    ) -> Result<usize, WriteError<OptionEntryError>> {
         match self {
             InterfaceStatisticsOption::IsbStartTime(a) => {
                 write_timestamp::<B, W>(Self::ISB_START_TIME, *a, state, interface_id, writer)
@@ -233,16 +247,35 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
             InterfaceStatisticsOption::IsbEndTime(a) => {
                 write_timestamp::<B, W>(Self::ISB_END_TIME, *a, state, interface_id, writer)
             }
-            InterfaceStatisticsOption::IsbIfRecv(a) => a.write_opt::<B, W>(Self::ISB_IF_RECV, writer),
-            InterfaceStatisticsOption::IsbIfDrop(a) => a.write_opt::<B, W>(Self::ISB_IF_DROP, writer),
-            InterfaceStatisticsOption::IsbFilterAccept(a) => a.write_opt::<B, W>(Self::ISB_FILTER_ACCEPT, writer),
-            InterfaceStatisticsOption::IsbOsDrop(a) => a.write_opt::<B, W>(Self::ISB_OS_DROP, writer),
-            InterfaceStatisticsOption::IsbUsrDeliv(a) => a.write_opt::<B, W>(Self::ISB_USR_DELIV, writer),
-            InterfaceStatisticsOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
+            InterfaceStatisticsOption::IsbIfRecv(a) => write_u64_option::<B, W>(writer, Self::ISB_IF_RECV, *a),
+            InterfaceStatisticsOption::IsbIfDrop(a) => write_u64_option::<B, W>(writer, Self::ISB_IF_DROP, *a),
+            InterfaceStatisticsOption::IsbFilterAccept(a) => {
+                write_u64_option::<B, W>(writer, Self::ISB_FILTER_ACCEPT, *a)
+            }
+            InterfaceStatisticsOption::IsbOsDrop(a) => write_u64_option::<B, W>(writer, Self::ISB_OS_DROP, *a),
+            InterfaceStatisticsOption::IsbUsrDeliv(a) => write_u64_option::<B, W>(writer, Self::ISB_USR_DELIV, *a),
+            InterfaceStatisticsOption::Common(a) => a.write_to::<B, W>(writer),
         }
     }
 
-    fn code_name(code: u16) -> &'static str {
+    fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
+        Ok(())
+    }
+
+    fn code(&self) -> u16 {
+        match self {
+            Self::IsbStartTime(_) => Self::ISB_START_TIME,
+            Self::IsbEndTime(_) => Self::ISB_END_TIME,
+            Self::IsbIfRecv(_) => Self::ISB_IF_RECV,
+            Self::IsbIfDrop(_) => Self::ISB_IF_DROP,
+            Self::IsbFilterAccept(_) => Self::ISB_FILTER_ACCEPT,
+            Self::IsbOsDrop(_) => Self::ISB_OS_DROP,
+            Self::IsbUsrDeliv(_) => Self::ISB_USR_DELIV,
+            Self::Common(option) => option.code(),
+        }
+    }
+
+    fn name(code: u16) -> &'static str {
         match code {
             Self::ISB_START_TIME => "IsbStartTime",
             Self::ISB_END_TIME => "IsbEndTime",
@@ -263,17 +296,14 @@ fn write_timestamp<B: ByteOrder, W: Write>(
     state: &PcapNgState,
     interface_id: Option<u32>,
     writer: &mut W,
-) -> Result<usize, WriteError<BlockValidationError>> {
-    const TIMESTAMP_LENGTH: u16 = 8;
-    const OPTION_LENGTH: usize = 12;
-
+) -> Result<usize, WriteError<OptionEntryError>> {
     let (timestamp_high, timestamp_low) = state
         .encode_timestamp(interface_id.unwrap(), timestamp)
-        .map_err(|error| WriteError::Other(BlockValidationError::Timestamp(error)))?;
+        .map_err(|error| WriteError::Other(OptionEntryError::Timestamp(error)))?;
 
-    writer.write_u16::<B>(code)?;
-    writer.write_u16::<B>(TIMESTAMP_LENGTH)?;
-    writer.write_u32::<B>(timestamp_high)?;
-    writer.write_u32::<B>(timestamp_low)?;
-    Ok(OPTION_LENGTH)
+    RawOption::write_framed_to::<B, _, _>(writer, code, 8, |writer| {
+        writer.write_u32::<B>(timestamp_high)?;
+        writer.write_u32::<B>(timestamp_low)?;
+        Ok(())
+    })
 }

@@ -401,11 +401,7 @@ pub trait PcapNgBlock<'a> {
     const NAME: &'static str;
 
     /// Explicitly validates semantic constraints.
-    /// Low-level decoding and encoding
-    /// do not call this method; strict parsers and writers do.
-    fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError> {
-        Ok(())
-    }
+    fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError>;
 
     /// Decodes a block body using the supplied state, without semantic validation.
     /// Required bounds and representation checks still apply.

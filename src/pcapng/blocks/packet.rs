@@ -10,7 +10,9 @@ use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
+use super::opt_common::{
+    CommonOption, PcapNgOption, opts_from_slice, validate_opts, write_bytes_option, write_opts_to, write_u32_option,
+};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
 
@@ -76,7 +78,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let data = &slice[..captured_len as usize];
         slice = &slice[tot_len..];
 
-        let (slice, options) = PacketOption::opts_from_slice::<B>(state, Some(interface_id as u32), slice)?;
+        let (slice, options) = opts_from_slice::<B, PacketOption>(state, Some(interface_id as u32), slice)?;
         let block = PacketBlock {
             interface_id,
             drop_count,
@@ -114,7 +116,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
             });
         }
 
-        Ok(())
+        validate_opts(&self.options, state, Some(self.interface_id as u32)).map_err(BlockValidationError::Option)
     }
 
     fn write_body_to<B: ByteOrder, W: Write>(
@@ -144,8 +146,12 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let pad_len = (4 - (self.data.len() % 4)) % 4;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        let opt_len =
-            PacketOption::write_opts_to::<B, _>(&self.options, state, Some(self.interface_id as u32), writer)?;
+        let opt_len = write_opts_to::<B, _, _>(&self.options, state, Some(self.interface_id as u32), writer).map_err(
+            |error| match error {
+                WriteError::Io(error) => WriteError::Io(error),
+                WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
+            },
+        )?;
 
         Ok(20 + self.data.len() + pad_len + opt_len)
     }
@@ -174,7 +180,7 @@ impl PacketOption<'_> {
 }
 
 impl<'a> PcapNgOption<'a> for PacketOption<'a> {
-    fn from_slice<B: ByteOrder>(
+    fn from_content<B: ByteOrder>(
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         code: u16,
@@ -191,7 +197,7 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
                 PacketOption::Flags(slice.read_u32::<B>().unwrap())
             }
             Self::HASH => PacketOption::Hash(Cow::Borrowed(slice)),
-            _ => PacketOption::Common(CommonOption::new::<B>(code, slice)?),
+            _ => PacketOption::Common(CommonOption::from_content::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -202,15 +208,27 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
+    ) -> Result<usize, WriteError<OptionEntryError>> {
         match self {
-            PacketOption::Flags(a) => a.write_opt::<B, W>(Self::FLAGS, writer),
-            PacketOption::Hash(a) => a.write_opt::<B, W>(Self::HASH, writer),
-            PacketOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
+            PacketOption::Flags(a) => write_u32_option::<B, W>(writer, Self::FLAGS, *a),
+            PacketOption::Hash(a) => write_bytes_option::<B, W>(writer, Self::HASH, a),
+            PacketOption::Common(a) => a.write_to::<B, W>(writer),
         }
     }
 
-    fn code_name(code: u16) -> &'static str {
+    fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
+        Ok(())
+    }
+
+    fn code(&self) -> u16 {
+        match self {
+            Self::Flags(_) => Self::FLAGS,
+            Self::Hash(_) => Self::HASH,
+            Self::Common(option) => option.code(),
+        }
+    }
+
+    fn name(code: u16) -> &'static str {
         match code {
             Self::FLAGS => "Flags",
             Self::HASH => "Hash",

@@ -44,7 +44,7 @@ impl From<RawBlockParseError> for PcapNgParseError {
     fn from(value: RawBlockParseError) -> Self {
         match value {
             RawBlockParseError::IncompleteBuffer(needed, actual) => Self::IncompleteBuffer(needed, actual),
-            RawBlockParseError::InvalidFormat(format) => Self::InvalidFormat(format)
+            RawBlockParseError::InvalidFormat(format) => Self::InvalidFormat(format),
         }
     }
 }
@@ -347,7 +347,22 @@ pub enum TimestampError {
 
 /// Errors that can occur while decoding or encoding a block's option list.
 #[derive(Debug, Error)]
-pub enum OptionError {
+#[error("Invalid option entry. Code: {code}, Name: {name}: {source}")]
+pub struct OptionError {
+    /// Numeric option code.
+    pub(crate) code: u16,
+    /// Human-readable option name.
+    pub(crate) name: &'static str,
+    /// Underlying option entry error.
+    #[source]
+    pub(crate) source: Box<OptionEntryError>,
+}
+
+/* ----- OptionEntryError ----- */
+
+/// Errors that can occur while decoding or encoding one option entry.
+#[derive(Debug, Error)]
+pub enum OptionEntryError {
     /// The option list is too short.
     #[error("The option field is too small: need {needed}B, got {actual}B")]
     ContentTooSmall {
@@ -356,24 +371,6 @@ pub enum OptionError {
         /// Actual remaining size.
         actual: usize,
     },
-    /// An individual option entry is invalid.
-    #[error("Invalid option entry. Code: {code}, Name: {name}: {source}")]
-    InvalidEntry {
-        /// Numeric option code.
-        code: u16,
-        /// Human-readable option name.
-        name: &'static str,
-        /// Underlying option entry error.
-        #[source]
-        source: Box<OptionEntryError>,
-    },
-}
-
-/* ----- OptionEntryError ----- */
-
-/// Errors that can occur while decoding or encoding one option entry.
-#[derive(Debug, Error)]
-pub enum OptionEntryError {
     /// The option value has the wrong size.
     #[error("Wrong entry size: expected {expected}B, got {actual}B")]
     WrongSize {

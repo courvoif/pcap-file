@@ -14,7 +14,10 @@ use derive_into_owned::IntoOwned;
 use once_cell::sync::Lazy;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
+use super::opt_common::{
+    CommonOption, PcapNgOption, opts_from_slice, validate_opts, write_bytes_option, write_i64_option, write_opts_to,
+    write_u8_option, write_u32_option, write_u64_option,
+};
 use crate::DataLink;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, TimestampError, WriteError};
@@ -62,7 +65,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         let _reserved = slice.read_u16::<B>().unwrap();
 
         let snaplen = slice.read_u32::<B>().unwrap();
-        let (slice, options) = InterfaceDescriptionOption::opts_from_slice::<B>(state, None, slice)?;
+        let (slice, options) = opts_from_slice::<B, InterfaceDescriptionOption>(state, None, slice)?;
 
         let block = InterfaceDescriptionBlock {
             linktype,
@@ -86,8 +89,16 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         writer.write_u16::<B>(0)?;
         writer.write_u32::<B>(self.snaplen)?;
 
-        let opt_len = InterfaceDescriptionOption::write_opts_to::<B, W>(&self.options, state, None, writer)?;
+        let opt_len = write_opts_to::<B, _, W>(&self.options, state, None, writer).map_err(|error| match error {
+            WriteError::Io(error) => WriteError::Io(error),
+            WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
+        })?;
         Ok(8 + opt_len)
+    }
+
+    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
+        u16::try_from(u32::from(self.linktype)).map_err(|_| BlockValidationError::InvalidLinkType(self.linktype))?;
+        validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
     }
 
     fn into_block(self) -> Block<'a> {
@@ -204,7 +215,7 @@ impl InterfaceDescriptionOption<'_> {
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
-    fn from_slice<B: ByteOrder>(
+    fn from_content<B: ByteOrder>(
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         code: u16,
@@ -311,7 +322,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             }
             Self::IF_HARDWARE => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
-            _ => InterfaceDescriptionOption::Common(CommonOption::new::<B>(code, slice)?),
+            _ => InterfaceDescriptionOption::Common(CommonOption::from_content::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -322,27 +333,55 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
+    ) -> Result<usize, WriteError<OptionEntryError>> {
         match self {
-            InterfaceDescriptionOption::IfName(a) => a.write_opt::<B, W>(Self::IF_NAME, writer),
-            InterfaceDescriptionOption::IfDescription(a) => a.write_opt::<B, W>(Self::IF_DESCRIPTION, writer),
-            InterfaceDescriptionOption::IfIpv4Addr(a) => a.write_opt::<B, W>(Self::IF_IPV4_ADDR, writer),
-            InterfaceDescriptionOption::IfIpv6Addr(a) => a.write_opt::<B, W>(Self::IF_IPV6_ADDR, writer),
-            InterfaceDescriptionOption::IfMacAddr(a) => a.write_opt::<B, W>(Self::IF_MAC_ADDR, writer),
-            InterfaceDescriptionOption::IfEuIAddr(a) => a.write_opt::<B, W>(Self::IF_EU_ADDR, writer),
-            InterfaceDescriptionOption::IfSpeed(a) => a.write_opt::<B, W>(Self::IF_SPEED, writer),
-            InterfaceDescriptionOption::IfTsResol(a) => a.to_u8().write_opt::<B, W>(Self::IF_TS_RESOL, writer),
-            InterfaceDescriptionOption::IfTzone(a) => a.write_opt::<B, W>(Self::IF_T_ZONE, writer),
-            InterfaceDescriptionOption::IfFilter(a) => a.write_opt::<B, W>(Self::IF_FILTER, writer),
-            InterfaceDescriptionOption::IfOs(a) => a.write_opt::<B, W>(Self::IF_OS, writer),
-            InterfaceDescriptionOption::IfFcsLen(a) => a.write_opt::<B, W>(Self::IF_FCS_LEN, writer),
-            InterfaceDescriptionOption::IfTsOffset(a) => a.write_opt::<B, W>(Self::IF_TS_OFFSET, writer),
-            InterfaceDescriptionOption::IfHardware(a) => a.write_opt::<B, W>(Self::IF_HARDWARE, writer),
-            InterfaceDescriptionOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
+            InterfaceDescriptionOption::IfName(a) => write_bytes_option::<B, W>(writer, Self::IF_NAME, a.as_bytes()),
+            InterfaceDescriptionOption::IfDescription(a) => {
+                write_bytes_option::<B, W>(writer, Self::IF_DESCRIPTION, a.as_bytes())
+            }
+            InterfaceDescriptionOption::IfIpv4Addr(a) => write_bytes_option::<B, W>(writer, Self::IF_IPV4_ADDR, a),
+            InterfaceDescriptionOption::IfIpv6Addr(a) => write_bytes_option::<B, W>(writer, Self::IF_IPV6_ADDR, a),
+            InterfaceDescriptionOption::IfMacAddr(a) => write_bytes_option::<B, W>(writer, Self::IF_MAC_ADDR, a),
+            InterfaceDescriptionOption::IfEuIAddr(a) => write_u64_option::<B, W>(writer, Self::IF_EU_ADDR, *a),
+            InterfaceDescriptionOption::IfSpeed(a) => write_u64_option::<B, W>(writer, Self::IF_SPEED, *a),
+            InterfaceDescriptionOption::IfTsResol(a) => write_u8_option::<B, W>(writer, Self::IF_TS_RESOL, a.to_u8()),
+            InterfaceDescriptionOption::IfTzone(a) => write_u32_option::<B, W>(writer, Self::IF_T_ZONE, *a),
+            InterfaceDescriptionOption::IfFilter(a) => write_bytes_option::<B, W>(writer, Self::IF_FILTER, a),
+            InterfaceDescriptionOption::IfOs(a) => write_bytes_option::<B, W>(writer, Self::IF_OS, a.as_bytes()),
+            InterfaceDescriptionOption::IfFcsLen(a) => write_u8_option::<B, W>(writer, Self::IF_FCS_LEN, *a),
+            InterfaceDescriptionOption::IfTsOffset(a) => write_i64_option::<B, W>(writer, Self::IF_TS_OFFSET, *a),
+            InterfaceDescriptionOption::IfHardware(a) => {
+                write_bytes_option::<B, W>(writer, Self::IF_HARDWARE, a.as_bytes())
+            }
+            InterfaceDescriptionOption::Common(a) => a.write_to::<B, W>(writer),
         }
     }
 
-    fn code_name(code: u16) -> &'static str {
+    fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
+        Ok(())
+    }
+
+    fn code(&self) -> u16 {
+        match self {
+            Self::IfName(_) => Self::IF_NAME,
+            Self::IfDescription(_) => Self::IF_DESCRIPTION,
+            Self::IfIpv4Addr(_) => Self::IF_IPV4_ADDR,
+            Self::IfIpv6Addr(_) => Self::IF_IPV6_ADDR,
+            Self::IfMacAddr(_) => Self::IF_MAC_ADDR,
+            Self::IfEuIAddr(_) => Self::IF_EU_ADDR,
+            Self::IfSpeed(_) => Self::IF_SPEED,
+            Self::IfTsResol(_) => Self::IF_TS_RESOL,
+            Self::IfTzone(_) => Self::IF_T_ZONE,
+            Self::IfFilter(_) => Self::IF_FILTER,
+            Self::IfOs(_) => Self::IF_OS,
+            Self::IfFcsLen(_) => Self::IF_FCS_LEN,
+            Self::IfTsOffset(_) => Self::IF_TS_OFFSET,
+            Self::IfHardware(_) => Self::IF_HARDWARE,
+            Self::Common(option) => option.code(),
+        }
+    }
+
+    fn name(code: u16) -> &'static str {
         match code {
             Self::IF_NAME => "IfName",
             Self::IF_DESCRIPTION => "IfDescription",

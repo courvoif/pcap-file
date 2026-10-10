@@ -9,7 +9,9 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
-use super::opt_common::{CommonOption, PcapNgOption, WriteOpt};
+use super::opt_common::{
+    CommonOption, PcapNgOption, opts_from_slice, validate_opts, write_bytes_option, write_opts_to,
+};
 use crate::Endianness;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
@@ -42,6 +44,10 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
     const TYPE: u32 = 0x0A0D0D0A;
     const NAME: &'static str = "Section Header Block";
 
+    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
+        validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
+    }
+
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
@@ -55,7 +61,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
             let minor_version = slice.read_u16::<B>().unwrap();
             let section_length = slice.read_i64::<B>().unwrap();
 
-            let (rem, options) = SectionHeaderOption::opts_from_slice::<B>(state, None, slice)?;
+            let (rem, options) = opts_from_slice::<B, SectionHeaderOption>(state, None, slice)?;
             let block = SectionHeaderBlock {
                 endianness,
                 major_version,
@@ -97,7 +103,10 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         writer.write_u16::<B>(self.minor_version)?;
         writer.write_i64::<B>(self.section_length)?;
 
-        let opt_len = SectionHeaderOption::write_opts_to::<B, W>(&self.options, state, None, writer)?;
+        let opt_len = write_opts_to::<B, _, W>(&self.options, state, None, writer).map_err(|error| match error {
+            WriteError::Io(error) => WriteError::Io(error),
+            WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
+        })?;
 
         Ok(16 + opt_len)
     }
@@ -172,7 +181,7 @@ impl SectionHeaderOption<'_> {
 }
 
 impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
-    fn from_slice<B: ByteOrder>(
+    fn from_content<B: ByteOrder>(
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         code: u16,
@@ -183,7 +192,7 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
             Self::OS_ => SectionHeaderOption::OS(Cow::Borrowed(std::str::from_utf8(slice)?)),
             Self::USER_APPLICATION => SectionHeaderOption::UserApplication(Cow::Borrowed(std::str::from_utf8(slice)?)),
 
-            _ => SectionHeaderOption::Common(CommonOption::new::<B>(code, slice)?),
+            _ => SectionHeaderOption::Common(CommonOption::from_content::<B>(code, slice)?),
         };
 
         Ok(opt)
@@ -194,16 +203,31 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
         _state: &PcapNgState,
         _interface_id: Option<u32>,
         writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
+    ) -> Result<usize, WriteError<OptionEntryError>> {
         match self {
-            SectionHeaderOption::Hardware(a) => a.write_opt::<B, W>(Self::HARDWARE, writer),
-            SectionHeaderOption::OS(a) => a.write_opt::<B, W>(Self::OS_, writer),
-            SectionHeaderOption::UserApplication(a) => a.write_opt::<B, W>(Self::USER_APPLICATION, writer),
-            SectionHeaderOption::Common(a) => a.write_opt::<B, W>(a.code(), writer),
+            SectionHeaderOption::Hardware(a) => write_bytes_option::<B, W>(writer, Self::HARDWARE, a.as_bytes()),
+            SectionHeaderOption::OS(a) => write_bytes_option::<B, W>(writer, Self::OS_, a.as_bytes()),
+            SectionHeaderOption::UserApplication(a) => {
+                write_bytes_option::<B, W>(writer, Self::USER_APPLICATION, a.as_bytes())
+            }
+            SectionHeaderOption::Common(a) => a.write_to::<B, W>(writer),
         }
     }
 
-    fn code_name(code: u16) -> &'static str {
+    fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
+        Ok(())
+    }
+
+    fn code(&self) -> u16 {
+        match self {
+            Self::Hardware(_) => Self::HARDWARE,
+            Self::OS(_) => Self::OS_,
+            Self::UserApplication(_) => Self::USER_APPLICATION,
+            Self::Common(option) => option.code(),
+        }
+    }
+
+    fn name(code: u16) -> &'static str {
         match code {
             Self::HARDWARE => "Hardware",
             Self::OS_ => "OS",

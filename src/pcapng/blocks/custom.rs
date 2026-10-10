@@ -9,10 +9,10 @@ use byteorder_slice::byteorder::{ReadBytesExt, WriteBytesExt};
 use thiserror::Error;
 
 use super::block_common::{Block, PcapNgBlock};
-use crate::pcapng::blocks::opt_common::CommonOption;
-use crate::pcapng::errors::{BlockValidationError, WriteError};
-use crate::pcapng::errors::OptionEntryError;
 use crate::pcapng::PcapNgState;
+use crate::pcapng::blocks::opt_common::CommonOption;
+use crate::pcapng::errors::OptionEntryError;
+use crate::pcapng::errors::{BlockValidationError, WriteError};
 
 /* ----- traits for Custom Payload ----- */
 
@@ -248,6 +248,10 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
     } else {
         "Custom Block (Non-Copiable)"
     };
+
+    fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError> {
+        Ok(())
+    }
 
     fn from_body<B: ByteOrder>(
         _state: &PcapNgState,
