@@ -1,5 +1,7 @@
 //! Packet Block.
 
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::io::Write;
 use std::time::Duration;
@@ -11,10 +13,13 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{
-    CommonOption, PcapNgOption, opts_from_slice, validate_opts, write_bytes_option, write_opts_to, write_u32_option,
+    CommonOption, PacketHash, PcapNgOption, check_opt_len, opts_from_slice, validate_opts, validate_unique_opts,
+    write_opts_to, write_u32_option,
 };
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
+
+/* ----- PacketBlock ----- */
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
@@ -116,6 +121,9 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
             });
         }
 
+        validate_unique_opts(&self.options, |option| matches!(option, PacketOption::Flags(_)))
+            .map_err(BlockValidationError::Option)?;
+
         validate_opts(&self.options, state, Some(self.interface_id as u32)).map_err(BlockValidationError::Option)
     }
 
@@ -146,12 +154,8 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let pad_len = (4 - (self.data.len() % 4)) % 4;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        let opt_len = write_opts_to::<B, _, _>(&self.options, state, Some(self.interface_id as u32), writer).map_err(
-            |error| match error {
-                WriteError::Io(error) => WriteError::Io(error),
-                WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
-            },
-        )?;
+        let opt_len = write_opts_to::<B, _, _>(&self.options, state, Some(self.interface_id as u32), writer)
+            .map_err(|error| error.map_other(BlockValidationError::Option))?;
 
         Ok(20 + self.data.len() + pad_len + opt_len)
     }
@@ -161,6 +165,8 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     }
 }
 
+/* ----- PacketOption ----- */
+
 /// Packet Block option
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum PacketOption<'a> {
@@ -168,7 +174,7 @@ pub enum PacketOption<'a> {
     Flags(u32),
 
     /// Contains a hash of the packet.
-    Hash(Cow<'a, [u8]>),
+    Hash(PacketHash<'a>),
 
     /// A common option applicable to any block type.
     Common(CommonOption<'a>),
@@ -188,15 +194,10 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
     ) -> Result<Self, OptionEntryError> {
         let opt = match code {
             Self::FLAGS => {
-                if slice.len() != 4 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 4,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 4)?;
                 PacketOption::Flags(slice.read_u32::<B>().unwrap())
             }
-            Self::HASH => PacketOption::Hash(Cow::Borrowed(slice)),
+            Self::HASH => PacketOption::Hash(PacketHash::from_slice(slice)?),
             _ => PacketOption::Common(CommonOption::from_content::<B>(code, slice)?),
         };
 
@@ -211,7 +212,7 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
     ) -> Result<usize, WriteError<OptionEntryError>> {
         match self {
             PacketOption::Flags(a) => write_u32_option::<B, W>(writer, Self::FLAGS, *a),
-            PacketOption::Hash(a) => write_bytes_option::<B, W>(writer, Self::HASH, a),
+            PacketOption::Hash(a) => a.write_to::<B, W>(writer, Self::HASH),
             PacketOption::Common(a) => a.write_to::<B, W>(writer),
         }
     }

@@ -4,6 +4,7 @@
 
 use std::borrow::Cow;
 use std::io::Write;
+use std::num::NonZeroU16;
 
 use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -27,6 +28,24 @@ pub const CUSTOM_BINARY_OPTION_COPIABLE: u16 = 0x0BAD;
 /// Non-copiable custom binary option code.
 pub const CUSTOM_BINARY_OPTION_NON_COPIABLE: u16 = 0x4BAD;
 
+/* ----- Option length checks ----- */
+
+/// Checks that an option value has exactly the expected byte length.
+///
+/// # Errors
+///
+/// Returns the expected and actual lengths when they differ.
+pub(crate) fn check_opt_len(slice: &[u8], expected: usize) -> Result<(), OptionEntryError> {
+    if slice.len() != expected {
+        return Err(OptionEntryError::WrongSize {
+            expected,
+            actual: slice.len(),
+        });
+    }
+
+    Ok(())
+}
+
 /* ----- Option lists ----- */
 
 /// Parses all framed options in a block body.
@@ -45,40 +64,31 @@ pub(crate) fn opts_from_slice<'a, B: ByteOrder, O: PcapNgOption<'a>>(
             } else {
                 0
             };
-            OptionError {
-                code,
-                name: if slice.len() < 2 {
-                    "Option"
-                } else if code == 0 {
-                    "End of Options"
-                } else {
-                    O::name(code)
-                },
-                source: Box::new(source),
-            }
+            let name = if slice.len() < 2 {
+                "Option"
+            } else if code == 0 {
+                "End of Options"
+            } else {
+                O::name(code)
+            };
+
+            OptionError::new(code, name, source)
         })?;
         let code = raw_option.code;
         let value = raw_option.value;
 
         if code == 0 {
-            raw_option.validate().map_err(|source| OptionError {
-                code,
-                name: "End of Options",
-                source: Box::new(source),
-            })?;
+            raw_option
+                .validate()
+                .map_err(|source| OptionError::new(code, "End of Options", source))?;
             return Ok((rem, options));
         }
 
-        let option = O::from_content::<B>(state, interface_id, code, value).map_err(|source| OptionError {
-            code,
-            name: O::name(code),
-            source: Box::new(source),
-        })?;
-        option.validate(state, interface_id).map_err(|source| OptionError {
-            code,
-            name: O::name(code),
-            source: Box::new(source),
-        })?;
+        let option = O::from_content::<B>(state, interface_id, code, value)
+            .map_err(|source| OptionError::new(code, O::name(code), source))?;
+        option
+            .validate(state, interface_id)
+            .map_err(|source| OptionError::new(code, O::name(code), source))?;
 
         options.push(option);
         slice = rem;
@@ -99,36 +109,25 @@ pub(crate) fn write_opts_to<'a, B: ByteOrder, O: PcapNgOption<'a>, W: Write>(
     let mut written = 0;
 
     for option in options {
-        written += option
-            .write_to::<B, W>(state, interface_id, writer)
-            .map_err(|error| match error {
-                WriteError::Io(error) => WriteError::Io(error),
-                WriteError::Other(source) => {
-                    let code = option.code();
-                    WriteError::Other(OptionError {
-                        code,
-                        name: O::name(code),
-                        source: Box::new(source),
-                    })
-                }
-            })?;
+        written += option.write_to::<B, W>(state, interface_id, writer).map_err(|error| {
+            error.map_other(|source| {
+                let code = option.code();
+                OptionError::new(code, O::name(code), source)
+            })
+        })?;
     }
 
     if !options.is_empty() {
-        written += RawOption::write_framed_to::<B, _, _>(writer, 0, 0, |_| Ok(())).map_err(|error| match error {
-            WriteError::Io(error) => WriteError::Io(error),
-            WriteError::Other(source) => WriteError::Other(OptionError {
-                code: 0,
-                name: "End of Options",
-                source: Box::new(source),
-            }),
-        })?;
+        written += RawOption::write_framed_to::<B, _, _>(writer, 0, 0, |_| Ok(()))
+            .map_err(|error| error.map_other(|source| OptionError::new(0, "End of Options", source)))?;
     }
 
     Ok(written)
 }
 
-/// Helper to validate all options of a block
+/* ----- Option validation ----- */
+
+/// Validates each option against the supplied pcapng state.
 pub(crate) fn validate_opts<'a, O: PcapNgOption<'a>>(
     options: &[O],
     state: &PcapNgState,
@@ -137,12 +136,36 @@ pub(crate) fn validate_opts<'a, O: PcapNgOption<'a>>(
     for option in options {
         option.validate(state, interface_id).map_err(|source| {
             let code = option.code();
-            OptionError {
-                code,
-                name: O::name(code),
-                source: Box::new(source),
-            }
+            OptionError::new(code, O::name(code), source)
         })?;
+    }
+
+    Ok(())
+}
+
+/// Checks that selected singleton options occur at most once in a block.
+/// Select only known singleton variants so repeatable and unknown options are preserved.
+///
+/// # Errors
+///
+/// Remove repeated singleton options before validating the block again.
+pub(crate) fn validate_unique_opts<'a, O: PcapNgOption<'a>>(
+    options: &[O],
+    must_be_unique: impl Fn(&O) -> bool,
+) -> Result<(), OptionError> {
+    let mut seen = Vec::new();
+
+    for option in options {
+        if !must_be_unique(option) {
+            continue;
+        }
+
+        let code = option.code();
+        if seen.contains(&code) {
+            return Err(OptionError::new(code, O::name(code), OptionEntryError::Duplicate));
+        }
+
+        seen.push(code);
     }
 
     Ok(())
@@ -181,7 +204,7 @@ impl<'a> CommonOption<'a> {
             Self::CustomBinaryNonCopiable(_) => CUSTOM_BINARY_OPTION_NON_COPIABLE,
             Self::CustomUtf8Copiable(_) => CUSTOM_UTF8_OPTION_COPIABLE,
             Self::CustomUtf8NonCopiable(_) => CUSTOM_UTF8_OPTION_NON_COPIABLE,
-            Self::Unknown(option) => option.code,
+            Self::Unknown(option) => option.code.get(),
         }
     }
 
@@ -199,7 +222,7 @@ impl<'a> CommonOption<'a> {
             CUSTOM_BINARY_OPTION_NON_COPIABLE => {
                 CommonOption::CustomBinaryNonCopiable(CustomBinaryOption::from_slice::<B>(slice)?)
             }
-            _ => CommonOption::Unknown(UnknownOption::new(code, slice)),
+            _ => CommonOption::Unknown(UnknownOption::new(code, slice)?),
         })
     }
 
@@ -237,7 +260,7 @@ impl<'a> CommonOption<'a> {
                 option.pen,
                 option.value.as_bytes(),
             ),
-            CommonOption::Unknown(option) => write_bytes_option::<B, _>(writer, option.code, &option.value),
+            CommonOption::Unknown(option) => write_bytes_option::<B, _>(writer, option.code.get(), &option.value),
         }
     }
 }
@@ -287,11 +310,8 @@ impl<'a> RawOption<'a> {
 
     /// Validates constraints imposed by the option framing itself.
     pub fn validate(&self) -> Result<(), OptionEntryError> {
-        if self.code == 0 && !self.value.is_empty() {
-            return Err(OptionEntryError::WrongSize {
-                expected: 0,
-                actual: self.value.len(),
-            });
+        if self.code == 0 {
+            check_opt_len(self.value, 0)?;
         }
 
         Ok(())
@@ -437,19 +457,106 @@ pub(crate) trait PcapNgOption<'a> {
 /// Stores an option whose code is not recognized.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct UnknownOption<'a> {
-    /// Option code.
-    pub code: u16,
+    /// Option code, excluding the end-of-options marker.
+    pub code: NonZeroU16,
     /// Option value.
     pub value: Cow<'a, [u8]>,
 }
 
 impl<'a> UnknownOption<'a> {
-    /// Creates a new [`UnknownOption`].
-    pub fn new(code: u16, value: &'a [u8]) -> Self {
-        UnknownOption {
+    /// Creates an unknown option with a nonzero code.
+    ///
+    /// # Errors
+    ///
+    /// Use a nonzero code because code `0` is reserved for the end-of-options marker.
+    pub fn new(code: u16, value: &'a [u8]) -> Result<Self, OptionEntryError> {
+        let code = NonZeroU16::new(code).ok_or(OptionEntryError::InvalidCode(code))?;
+
+        Ok(UnknownOption {
             code,
             value: Cow::Borrowed(value),
-        }
+        })
+    }
+}
+
+/* ----- Packet hashes ----- */
+
+/// Packet hash value shared by Enhanced Packet and Packet Block options.
+/// Digests retain their byte order regardless of the section's endianness.
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
+pub enum PacketHash<'a> {
+    /// CRC32 digest (algorithm `2`).
+    Crc32([u8; 4]),
+    /// MD5 digest (algorithm `3`).
+    Md5([u8; 16]),
+    /// SHA-1 digest (algorithm `4`).
+    Sha1([u8; 20]),
+    /// Toeplitz digest (algorithm `5`).
+    Toeplitz([u8; 4]),
+    /// Preserved hash for an unsupported algorithm, including codes `0` and `1`.
+    /// Algorithm codes and digest lengths are not validated for this variant.
+    Unknown {
+        /// Algorithm identifier from the first byte of the option value.
+        algorithm: u8,
+        /// Digest bytes following the algorithm identifier.
+        value: Cow<'a, [u8]>,
+    },
+}
+
+impl<'a> PacketHash<'a> {
+    /// Parses an algorithm byte and digest from a hash option value.
+    /// Unsupported algorithms retain their digest as a borrowed slice.
+    ///
+    /// # Errors
+    ///
+    /// Supply an algorithm byte and the exact digest length for a supported algorithm.
+    pub fn from_slice(slice: &'a [u8]) -> Result<Self, OptionEntryError> {
+        let (&algorithm, value) = slice
+            .split_first()
+            .ok_or(OptionEntryError::ContentTooSmall { needed: 1, actual: 0 })?;
+
+        Ok(match algorithm {
+            2 => {
+                check_opt_len(slice, 5)?;
+                Self::Crc32(value.try_into().expect("hash length checked above"))
+            }
+            3 => {
+                check_opt_len(slice, 17)?;
+                Self::Md5(value.try_into().expect("hash length checked above"))
+            }
+            4 => {
+                check_opt_len(slice, 21)?;
+                Self::Sha1(value.try_into().expect("hash length checked above"))
+            }
+            5 => {
+                check_opt_len(slice, 5)?;
+                Self::Toeplitz(value.try_into().expect("hash length checked above"))
+            }
+            _ => Self::Unknown {
+                algorithm,
+                value: Cow::Borrowed(value),
+            },
+        })
+    }
+
+    /// Writes the algorithm byte and digest as a framed hash option.
+    pub(crate) fn write_to<B: ByteOrder, W: Write>(
+        &self,
+        writer: &mut W,
+        code: u16,
+    ) -> Result<usize, WriteError<OptionEntryError>> {
+        let (algorithm, value): (u8, &[u8]) = match self {
+            Self::Crc32(value) => (2, value),
+            Self::Md5(value) => (3, value),
+            Self::Sha1(value) => (4, value),
+            Self::Toeplitz(value) => (5, value),
+            Self::Unknown { algorithm, value } => (*algorithm, value),
+        };
+
+        RawOption::write_framed_to::<B, _, _>(writer, code, value.len() + 1, |writer| {
+            writer.write_u8(algorithm)?;
+            writer.write_all(value)
+        })
     }
 }
 

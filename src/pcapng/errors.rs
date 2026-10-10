@@ -358,12 +358,29 @@ pub struct OptionError {
     pub(crate) source: Box<OptionEntryError>,
 }
 
+impl OptionError {
+    /// Creates an option error with its code, name, and underlying cause.
+    pub(crate) fn new(code: u16, name: &'static str, source: OptionEntryError) -> Self {
+        Self {
+            code,
+            name,
+            source: Box::new(source),
+        }
+    }
+}
+
 /* ----- OptionEntryError ----- */
 
 /// Errors that can occur while decoding or encoding one option entry.
 #[derive(Debug, Error)]
 pub enum OptionEntryError {
-    /// The option list is too short.
+    /// A singleton option occurs more than once in a block.
+    #[error("Option must not occur more than once in a block")]
+    Duplicate,
+    /// The option code is reserved for the end-of-options marker.
+    #[error("Option code {0} is reserved for the end-of-options marker")]
+    InvalidCode(u16),
+    /// The option field is too short.
     #[error("The option field is too small: need {needed}B, got {actual}B")]
     ContentTooSmall {
         /// Needed size to decode the option list.
@@ -382,6 +399,9 @@ pub enum OptionEntryError {
     /// The option value is not valid UTF-8.
     #[error("Invalid UTF-8 format")]
     InvalidUtf8(#[from] std::str::Utf8Error),
+    /// The IPv6 prefix length exceeds the address width.
+    #[error("IPv6 prefix length {0} exceeds 128")]
+    InvalidIpv6PrefixLen(u8),
     /// The option value is too large for its encoded length field.
     #[error("Option length {actual}B exceeds the maximum {maximum}B")]
     TooLarge {
@@ -390,6 +410,9 @@ pub enum OptionEntryError {
         /// Maximum encoded size.
         maximum: usize,
     },
+    /// The option requires an interface ID that was not supplied.
+    #[error("Missing interface ID for option")]
+    MissingInterfaceId,
     /// The option references an interface that does not exist.
     #[error("Invalid interface ID: {0}")]
     InvalidInterfaceId(u32),
@@ -409,6 +432,16 @@ pub enum WriteError<E: std::error::Error> {
     /// A typed block encoding error occurred.
     #[error(transparent)]
     Other(E),
+}
+
+impl<E: std::error::Error> WriteError<E> {
+    /// Transforms the domain error while preserving an I/O error unchanged.
+    pub fn map_other<T: std::error::Error>(self, map: impl FnOnce(E) -> T) -> WriteError<T> {
+        match self {
+            Self::Io(error) => WriteError::Io(error),
+            Self::Other(error) => WriteError::Other(map(error)),
+        }
+    }
 }
 
 impl From<WriteError<BlockError>> for PcapNgWriteError {

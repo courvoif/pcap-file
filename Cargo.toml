@@ -19,6 +19,7 @@ exclude = ["benches/bench.pcap", "benches/bench.pcapng", "fuzz", "tests"]
 [dependencies]
 byteorder_slice = "3.0.0"
 derive-into-owned = "0.2.0"
+macaddr = "1.0.1"
 once_cell = "1.21.3"
 thiserror = "2.0.17"
 

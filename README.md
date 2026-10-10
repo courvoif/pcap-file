@@ -257,6 +257,58 @@ pcapng file from scratch, write an
 [`InterfaceDescriptionBlock`][interface-description-block] before any packet
 block that uses that interface.
 
+### Pcapng option types
+
+Address options use fixed-size values:
+
+| Option | Value type |
+| --- | --- |
+| `InterfaceDescriptionOption::IfIpv4Addr` | `IfIpv4AddrOpt { ip: Ipv4Addr, netmask: [u8; 4] }` |
+| `InterfaceDescriptionOption::IfIpv6Addr` | `IfIpv6AddrOpt` |
+| `InterfaceDescriptionOption::IfMacAddr` | `MacAddr6` |
+| `InterfaceDescriptionOption::IfEuIAddr` | `MacAddr8` |
+| `NameResolutionOption::NsDnsIpv4Addr` | `Ipv4Addr` |
+| `NameResolutionOption::NsDnsIpv6Addr` | `Ipv6Addr` |
+
+**Breaking API changes:** Replace byte-slice `Cow` values and the integer EUI
+value for these address options with the types above.
+Use `IfIpv4AddrOpt::from_slice` or `IfIpv6AddrOpt::from_slice` to convert
+existing interface address bytes.
+Create an IPv6 address option with `IfIpv6AddrOpt::new(ip, prefix_len)?`,
+which rejects prefix lengths above `128`.
+The prefix field is private; call `.prefix_len()` to retrieve its byte value.
+For DNS, MAC, and EUI addresses, convert existing slices to fixed-size arrays
+with `try_into()`; the address types accept those arrays through `From`.
+`MacAddr6` and `MacAddr8` come from the [macaddr crate](https://docs.rs/macaddr/1.0.1/macaddr/)
+and are re-exported from `pcap_file::pcapng::blocks::interface_description`.
+MAC and EUI values preserve address byte order in both little-endian and
+big-endian sections.
+
+`UnknownOption::new(code, value)` now returns a `Result` and rejects code `0`,
+which is reserved for the end-of-options marker.
+Handle the result with `?` or another error handler.
+Its `code` field is now `NonZeroU16`; use `.get()` to retrieve the numeric code.
+
+Filter options remain byte slices and must include their filter type byte.
+Empty filters fail option validation before writing.
+
+Block validation rejects repeated known singleton options, such as timestamp
+resolutions and packet flags, with `OptionEntryError::Duplicate`.
+Keep one instance of each singleton when using a strict reader or writer.
+Comments, custom options, interface IP addresses, packet hashes, and unknown
+options may repeat.
+Section and interface blocks are validated by readers regardless of strict mode.
+
+**Breaking API change:** `EnhancedPacketOption::Hash` and `PacketOption::Hash`
+now take `PacketHash` from `pcap_file::pcapng::blocks::opt_common`.
+Use `PacketHash::Crc32([u8; 4])`, `Md5([u8; 16])`, `Sha1([u8; 20])`, or
+`Toeplitz([u8; 4])` for supported algorithms.
+Convert an existing option value, including its algorithm byte, with
+`PacketHash::from_slice(&value)?`.
+Unsupported algorithms, including codes `0` and `1`, are preserved as
+`PacketHash::Unknown { algorithm, value }` without digest validation.
+Hash bytes retain their order in either section byte order.
+
 ### [Custom blocks and options][custom-module]
 
 Implement [`CustomPayloadNonCopiable`][custom-payload-non-copiable] on a payload

@@ -1,5 +1,7 @@
 //! Interface Statistics Block.
 
+/* ----- Imports ----- */
+
 use std::io::Write;
 use std::time::Duration;
 
@@ -10,10 +12,13 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{
-    CommonOption, PcapNgOption, RawOption, opts_from_slice, validate_opts, write_opts_to, write_u64_option,
+    CommonOption, PcapNgOption, RawOption, check_opt_len, opts_from_slice, validate_opts, validate_unique_opts,
+    write_opts_to, write_u64_option,
 };
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
+
+/* ----- InterfaceStatisticsBlock ----- */
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -40,6 +45,12 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
             .interfaces
             .get(self.interface_id as usize)
             .ok_or(BlockValidationError::InvalidInterfaceId(self.interface_id))?;
+
+        validate_unique_opts(&self.options, |option| {
+            !matches!(option, InterfaceStatisticsOption::Common(_))
+        })
+        .map_err(BlockValidationError::Option)?;
+
         validate_opts(&self.options, state, Some(self.interface_id)).map_err(BlockValidationError::Option)
     }
 
@@ -82,12 +93,8 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         writer.write_u32::<B>(timestamp_high)?;
         writer.write_u32::<B>(timestamp_low)?;
 
-        let opt_len = write_opts_to::<B, _, _>(&self.options, state, Some(self.interface_id), writer).map_err(
-            |error| match error {
-                WriteError::Io(error) => WriteError::Io(error),
-                WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
-            },
-        )?;
+        let opt_len = write_opts_to::<B, _, _>(&self.options, state, Some(self.interface_id), writer)
+            .map_err(|error| error.map_other(BlockValidationError::Option))?;
 
         Ok(12 + opt_len)
     }
@@ -96,6 +103,8 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         Block::InterfaceStatistics(self)
     }
 }
+
+/* ----- InterfaceStatisticsOption ----- */
 
 /// The Interface Statistics Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -153,78 +162,49 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
     ) -> Result<Self, OptionEntryError> {
         let opt = match code {
             Self::ISB_START_TIME => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
-                let timestamp_high = slice.read_u32::<B>().unwrap();
-                let timestamp_low = slice.read_u32::<B>().unwrap();
+                check_opt_len(slice, 8)?;
+                let interface_id = interface_id.ok_or(OptionEntryError::MissingInterfaceId)?;
+
+                let timestamp_high = slice.read_u32::<B>().expect("option length checked above");
+                let timestamp_low = slice.read_u32::<B>().expect("option length checked above");
+
                 InterfaceStatisticsOption::IsbStartTime(state.decode_timestamp(
-                    interface_id.unwrap(),
+                    interface_id,
                     timestamp_high,
                     timestamp_low,
                 )?)
             }
             Self::ISB_END_TIME => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
-                let timestamp_high = slice.read_u32::<B>().unwrap();
-                let timestamp_low = slice.read_u32::<B>().unwrap();
+                check_opt_len(slice, 8)?;
+                let interface_id = interface_id.ok_or(OptionEntryError::MissingInterfaceId)?;
+
+                let timestamp_high = slice.read_u32::<B>().expect("option length checked above");
+                let timestamp_low = slice.read_u32::<B>().expect("option length checked above");
+
                 InterfaceStatisticsOption::IsbEndTime(state.decode_timestamp(
-                    interface_id.unwrap(),
+                    interface_id,
                     timestamp_high,
                     timestamp_low,
                 )?)
             }
             Self::ISB_IF_RECV => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 8)?;
                 InterfaceStatisticsOption::IsbIfRecv(slice.read_u64::<B>().unwrap())
             }
             Self::ISB_IF_DROP => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 8)?;
                 InterfaceStatisticsOption::IsbIfDrop(slice.read_u64::<B>().unwrap())
             }
             Self::ISB_FILTER_ACCEPT => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 8)?;
                 InterfaceStatisticsOption::IsbFilterAccept(slice.read_u64::<B>().unwrap())
             }
             Self::ISB_OS_DROP => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 8)?;
                 InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>().unwrap())
             }
             Self::ISB_USR_DELIV => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 8)?;
                 InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>().unwrap())
             }
 
@@ -289,7 +269,13 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
     }
 }
 
-/// Helper for writing options that contain timestamps.
+/* ----- Timestamp option encoding ----- */
+
+/// Writes a timestamp option using the supplied interface's parameters.
+///
+/// # Errors
+///
+/// Supply an interface ID whose timestamp parameters can encode the value.
 fn write_timestamp<B: ByteOrder, W: Write>(
     code: u16,
     timestamp: Duration,
@@ -297,8 +283,9 @@ fn write_timestamp<B: ByteOrder, W: Write>(
     interface_id: Option<u32>,
     writer: &mut W,
 ) -> Result<usize, WriteError<OptionEntryError>> {
+    let interface_id = interface_id.ok_or(WriteError::Other(OptionEntryError::MissingInterfaceId))?;
     let (timestamp_high, timestamp_low) = state
-        .encode_timestamp(interface_id.unwrap(), timestamp)
+        .encode_timestamp(interface_id, timestamp)
         .map_err(|error| WriteError::Other(OptionEntryError::Timestamp(error)))?;
 
     RawOption::write_framed_to::<B, _, _>(writer, code, 8, |writer| {
@@ -306,4 +293,66 @@ fn write_timestamp<B: ByteOrder, W: Write>(
         writer.write_u32::<B>(timestamp_low)?;
         Ok(())
     })
+}
+
+/* ----- Tests ----- */
+
+/// Checks that timestamp options report missing interface context.
+#[cfg(test)]
+mod tests {
+    /* ----- Imports ----- */
+
+    use std::time::Duration;
+
+    use byteorder_slice::BigEndian;
+
+    use super::InterfaceStatisticsOption;
+    use crate::pcapng::PcapNgState;
+    use crate::pcapng::blocks::opt_common::{PcapNgOption, write_opts_to};
+    use crate::pcapng::errors::{OptionEntryError, OptionError, WriteError};
+
+    /* ----- Missing interface ID ----- */
+
+    /// Rejects missing interface IDs when parsing or directly writing timestamp options.
+    #[test]
+    fn timestamp_options_require_interface_id() {
+        let state = PcapNgState::default();
+
+        for option in [
+            InterfaceStatisticsOption::IsbStartTime(Duration::ZERO),
+            InterfaceStatisticsOption::IsbEndTime(Duration::ZERO),
+        ] {
+            let error =
+                InterfaceStatisticsOption::from_content::<BigEndian>(&state, None, option.code(), &[0; 8]).unwrap_err();
+            assert!(matches!(error, OptionEntryError::MissingInterfaceId));
+
+            let mut encoded = Vec::new();
+            let error = option.write_to::<BigEndian, _>(&state, None, &mut encoded).unwrap_err();
+            assert!(matches!(error, WriteError::Other(OptionEntryError::MissingInterfaceId)));
+            assert!(encoded.is_empty());
+        }
+    }
+
+    /// Rejects missing interface context before writing any option in a list.
+    #[test]
+    fn missing_interface_id_preserves_option_output() {
+        let state = PcapNgState::default();
+
+        for timestamp in [
+            InterfaceStatisticsOption::IsbStartTime(Duration::ZERO),
+            InterfaceStatisticsOption::IsbEndTime(Duration::ZERO),
+        ] {
+            let code = timestamp.code();
+            let options = [InterfaceStatisticsOption::IsbIfRecv(1), timestamp];
+            let mut encoded = vec![42];
+            let error = write_opts_to::<BigEndian, _, _>(&options, &state, None, &mut encoded).unwrap_err();
+
+            assert!(matches!(
+                error,
+                WriteError::Other(OptionError { code: error_code, source, .. })
+                    if error_code == code && matches!(*source, OptionEntryError::MissingInterfaceId)
+            ));
+            assert_eq!(encoded, [42]);
+        }
+    }
 }

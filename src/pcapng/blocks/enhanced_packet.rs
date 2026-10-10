@@ -1,5 +1,7 @@
 //! Enhanced Packet Block (EPB).
 
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::io::Write;
 use std::time::Duration;
@@ -11,11 +13,13 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{
-    CommonOption, PcapNgOption, opts_from_slice, validate_opts, write_bytes_option, write_opts_to, write_u32_option,
-    write_u64_option,
+    CommonOption, PacketHash, PcapNgOption, check_opt_len, opts_from_slice, validate_opts, validate_unique_opts,
+    write_opts_to, write_u32_option, write_u64_option,
 };
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
+
+/* ----- EnhancedPacketBlock ----- */
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
 #[derive(Clone, Debug, Default, IntoOwned, Eq, PartialEq)]
@@ -115,6 +119,14 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
             });
         }
 
+        validate_unique_opts(&self.options, |option| {
+            matches!(
+                option,
+                EnhancedPacketOption::Flags(_) | EnhancedPacketOption::DropCount(_)
+            )
+        })
+        .map_err(BlockValidationError::Option)?;
+
         validate_opts(&self.options, state, Some(self.interface_id)).map_err(BlockValidationError::Option)
     }
 
@@ -144,12 +156,8 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         writer.write_all(&self.data)?;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        let opt_len = write_opts_to::<B, _, W>(&self.options, state, Some(self.interface_id), writer).map_err(
-            |error| match error {
-                WriteError::Io(error) => WriteError::Io(error),
-                WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
-            },
-        )?;
+        let opt_len = write_opts_to::<B, _, W>(&self.options, state, Some(self.interface_id), writer)
+            .map_err(|error| error.map_other(BlockValidationError::Option))?;
 
         Ok(20 + &self.data.len() + pad_len + opt_len)
     }
@@ -159,7 +167,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
     }
 }
 
-/* ----- */
+/* ----- EnhancedPacketOption ----- */
 
 /// The Enhanced Packet Block (EPB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -168,7 +176,7 @@ pub enum EnhancedPacketOption<'a> {
     Flags(u32),
 
     /// Contains a hash of the packet.
-    Hash(Cow<'a, [u8]>),
+    Hash(PacketHash<'a>),
 
     /// 64-bit integer value specifying the number of packets lost
     /// (by the interface and the operating system) between this packet and the preceding one for
@@ -195,22 +203,12 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
     ) -> Result<Self, OptionEntryError> {
         let opt = match code {
             Self::FLAGS => {
-                if slice.len() != 4 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 4,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 4)?;
                 EnhancedPacketOption::Flags(slice.read_u32::<B>().expect("slice length checked above"))
             }
-            Self::HASH => EnhancedPacketOption::Hash(Cow::Borrowed(slice)),
+            Self::HASH => EnhancedPacketOption::Hash(PacketHash::from_slice(slice)?),
             Self::DROP_COUNT => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 8)?;
                 EnhancedPacketOption::DropCount(slice.read_u64::<B>().expect("slice length checked above"))
             }
             _ => EnhancedPacketOption::Common(CommonOption::from_content::<B>(code, slice)?),
@@ -227,7 +225,7 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
     ) -> Result<usize, WriteError<OptionEntryError>> {
         match self {
             EnhancedPacketOption::Flags(a) => write_u32_option::<B, W>(writer, Self::FLAGS, *a),
-            EnhancedPacketOption::Hash(a) => write_bytes_option::<B, W>(writer, Self::HASH, a),
+            EnhancedPacketOption::Hash(a) => a.write_to::<B, W>(writer, Self::HASH),
             EnhancedPacketOption::DropCount(a) => write_u64_option::<B, W>(writer, Self::DROP_COUNT, *a),
             EnhancedPacketOption::Common(a) => a.write_to::<B, W>(writer),
         }

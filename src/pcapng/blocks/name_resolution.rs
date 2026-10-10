@@ -1,5 +1,7 @@
 //! Name Resolution Block (NRB).
 
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::io::{Result as IoResult, Write};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -11,10 +13,13 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{
-    CommonOption, PcapNgOption, opts_from_slice, validate_opts, write_bytes_option, write_opts_to,
+    CommonOption, PcapNgOption, check_opt_len, opts_from_slice, validate_opts, validate_unique_opts,
+    write_bytes_option, write_opts_to,
 };
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
+
+/* ----- NameResolutionBlock ----- */
 
 /// The Name Resolution Block (NRB) is used to support the correlation of numeric addresses
 /// (present in the captured packets) and their corresponding canonical names and it is optional.
@@ -58,6 +63,12 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         for record in &self.records {
             record.validate()?;
         }
+
+        validate_unique_opts(&self.options, |option| {
+            !matches!(option, NameResolutionOption::Common(_))
+        })
+        .map_err(BlockValidationError::Option)?;
+
         validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
     }
 
@@ -76,10 +87,8 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         writer.write_u16::<B>(0)?;
         len += 4;
 
-        len += write_opts_to::<B, _, _>(&self.options, state, None, writer).map_err(|error| match error {
-            WriteError::Io(error) => WriteError::Io(error),
-            WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
-        })?;
+        len += write_opts_to::<B, _, _>(&self.options, state, None, writer)
+            .map_err(|error| error.map_other(BlockValidationError::Option))?;
 
         Ok(len)
     }
@@ -415,6 +424,8 @@ impl<'a> UnknownRecord<'a> {
     }
 }
 
+/* ----- NameResolutionOption ----- */
+
 /// The Name Resolution Block (NRB) options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum NameResolutionOption<'a> {
@@ -422,10 +433,10 @@ pub enum NameResolutionOption<'a> {
     NsDnsName(Cow<'a, str>),
 
     /// The ns_dnsIP4addr option specifies the IPv4 address of the DNS server.
-    NsDnsIpv4Addr(Cow<'a, [u8]>),
+    NsDnsIpv4Addr(Ipv4Addr),
 
     /// The ns_dnsIP6addr option specifies the IPv6 address of the DNS server.
-    NsDnsIpv6Addr(Cow<'a, [u8]>),
+    NsDnsIpv6Addr(Ipv6Addr),
 
     /// A common option applicable to any block type.
     Common(CommonOption<'a>),
@@ -447,22 +458,14 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         let opt = match code {
             Self::NS_DNS_NAME => NameResolutionOption::NsDnsName(Cow::Borrowed(std::str::from_utf8(slice)?)),
             Self::NS_DNS_IPV4_ADDR => {
-                if slice.len() != 4 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 4,
-                        actual: slice.len(),
-                    });
-                }
-                NameResolutionOption::NsDnsIpv4Addr(Cow::Borrowed(slice))
+                check_opt_len(slice, 4)?;
+                let ip: [u8; 4] = slice.try_into().expect("slice length checked above");
+                NameResolutionOption::NsDnsIpv4Addr(Ipv4Addr::from(ip))
             }
             Self::NS_DNS_IPV6_ADDR => {
-                if slice.len() != 16 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 16,
-                        actual: slice.len(),
-                    });
-                }
-                NameResolutionOption::NsDnsIpv6Addr(Cow::Borrowed(slice))
+                check_opt_len(slice, 16)?;
+                let ip: [u8; 16] = slice.try_into().expect("slice length checked above");
+                NameResolutionOption::NsDnsIpv6Addr(Ipv6Addr::from(ip))
             }
             _ => NameResolutionOption::Common(CommonOption::from_content::<B>(code, slice)?),
         };
@@ -478,8 +481,12 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
     ) -> Result<usize, WriteError<OptionEntryError>> {
         match self {
             NameResolutionOption::NsDnsName(a) => write_bytes_option::<B, W>(writer, Self::NS_DNS_NAME, a.as_bytes()),
-            NameResolutionOption::NsDnsIpv4Addr(a) => write_bytes_option::<B, W>(writer, Self::NS_DNS_IPV4_ADDR, a),
-            NameResolutionOption::NsDnsIpv6Addr(a) => write_bytes_option::<B, W>(writer, Self::NS_DNS_IPV6_ADDR, a),
+            NameResolutionOption::NsDnsIpv4Addr(a) => {
+                write_bytes_option::<B, W>(writer, Self::NS_DNS_IPV4_ADDR, &a.octets())
+            }
+            NameResolutionOption::NsDnsIpv6Addr(a) => {
+                write_bytes_option::<B, W>(writer, Self::NS_DNS_IPV6_ADDR, &a.octets())
+            }
             NameResolutionOption::Common(a) => a.write_to::<B, W>(writer),
         }
     }

@@ -297,12 +297,11 @@ impl<'a> Block<'a> {
             Self::CustomNonCopiable(b) => inner_write_to::<B, _, W>(state, b, writer),
         };
 
-        return result.map_err(|error| match error {
-            WriteError::Io(error) => WriteError::Io(error),
-            WriteError::Other(source) => WriteError::Other(BlockError {
+        return result.map_err(|error| {
+            error.map_other(|source| BlockError {
                 type_: self.type_code(),
                 source: Box::new(source),
-            }),
+            })
         });
 
         fn inner_write_to<'block, B: ByteOrder, BL: PcapNgBlock<'block>, W: Write>(

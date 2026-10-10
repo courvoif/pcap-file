@@ -2,9 +2,12 @@
 
 //! Interface Description Block (IDB).
 
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::fmt::Display;
 use std::io::Write;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Duration;
 
 use byteorder_slice::ByteOrder;
@@ -15,12 +18,17 @@ use once_cell::sync::Lazy;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{
-    CommonOption, PcapNgOption, opts_from_slice, validate_opts, write_bytes_option, write_i64_option, write_opts_to,
-    write_u8_option, write_u32_option, write_u64_option,
+    CommonOption, PcapNgOption, RawOption, check_opt_len, opts_from_slice, validate_opts, validate_unique_opts,
+    write_bytes_option, write_i64_option, write_opts_to, write_u8_option, write_u32_option, write_u64_option,
 };
 use crate::DataLink;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, TimestampError, WriteError};
+
+/* ----- Hardware address types ----- */
+
+/// MAC and EUI address types used by interface options.
+pub use macaddr::{MacAddr6, MacAddr8};
 
 /* ----- InterfaceDescriptionBlock ----- */
 
@@ -89,15 +97,24 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         writer.write_u16::<B>(0)?;
         writer.write_u32::<B>(self.snaplen)?;
 
-        let opt_len = write_opts_to::<B, _, W>(&self.options, state, None, writer).map_err(|error| match error {
-            WriteError::Io(error) => WriteError::Io(error),
-            WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
-        })?;
+        let opt_len = write_opts_to::<B, _, W>(&self.options, state, None, writer)
+            .map_err(|error| error.map_other(BlockValidationError::Option))?;
         Ok(8 + opt_len)
     }
 
     fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
         u16::try_from(u32::from(self.linktype)).map_err(|_| BlockValidationError::InvalidLinkType(self.linktype))?;
+
+        validate_unique_opts(&self.options, |option| {
+            !matches!(
+                option,
+                InterfaceDescriptionOption::IfIpv4Addr(_)
+                    | InterfaceDescriptionOption::IfIpv6Addr(_)
+                    | InterfaceDescriptionOption::Common(_)
+            )
+        })
+        .map_err(BlockValidationError::Option)?;
+
         validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
     }
 
@@ -155,16 +172,16 @@ pub enum InterfaceDescriptionOption<'a> {
     IfDescription(Cow<'a, str>),
 
     /// The if_IPv4addr option is an IPv4 network address and corresponding netmask for the interface.
-    IfIpv4Addr(Cow<'a, [u8]>),
+    IfIpv4Addr(IfIpv4AddrOpt),
 
     /// The if_IPv6addr option is an IPv6 network address and corresponding prefix length for the interface.
-    IfIpv6Addr(Cow<'a, [u8]>),
+    IfIpv6Addr(IfIpv6AddrOpt),
 
     /// The if_MACaddr option is the Interface Hardware MAC address (48 bits), if available.
-    IfMacAddr(Cow<'a, [u8]>),
+    IfMacAddr(MacAddr6),
 
     /// The if_EUIaddr option is the Interface Hardware EUI address (64 bits), if available.
-    IfEuIAddr(u64),
+    IfEuIAddr(MacAddr8),
 
     /// The if_speed option is a 64-bit number for the Interface speed (in bits per second).
     IfSpeed(u64),
@@ -176,6 +193,7 @@ pub enum InterfaceDescriptionOption<'a> {
     IfTzone(u32),
 
     /// The if_filter option identifies the filter (e.g. "capture only TCP traffic") used to capture traffic.
+    /// Include the filter type byte before its payload.
     IfFilter(Cow<'a, [u8]>),
 
     /// The if_os option is a UTF-8 string containing the name of the operating system
@@ -226,98 +244,41 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             Self::IF_DESCRIPTION => {
                 InterfaceDescriptionOption::IfDescription(Cow::Borrowed(std::str::from_utf8(slice)?))
             }
-            Self::IF_IPV4_ADDR => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
-                InterfaceDescriptionOption::IfIpv4Addr(Cow::Borrowed(slice))
-            }
-            Self::IF_IPV6_ADDR => {
-                if slice.len() != 17 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 17,
-                        actual: slice.len(),
-                    });
-                }
-                InterfaceDescriptionOption::IfIpv6Addr(Cow::Borrowed(slice))
-            }
+            Self::IF_IPV4_ADDR => InterfaceDescriptionOption::IfIpv4Addr(IfIpv4AddrOpt::from_slice(slice)?),
+            Self::IF_IPV6_ADDR => InterfaceDescriptionOption::IfIpv6Addr(IfIpv6AddrOpt::from_slice(slice)?),
             Self::IF_MAC_ADDR => {
-                if slice.len() != 6 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 6,
-                        actual: slice.len(),
-                    });
-                }
-                InterfaceDescriptionOption::IfMacAddr(Cow::Borrowed(slice))
+                check_opt_len(slice, 6)?;
+                let address: [u8; 6] = slice.try_into().expect("slice length checked above");
+                InterfaceDescriptionOption::IfMacAddr(MacAddr6::from(address))
             }
             Self::IF_EU_ADDR => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
-                InterfaceDescriptionOption::IfEuIAddr(slice.read_u64::<B>().unwrap())
+                check_opt_len(slice, 8)?;
+                let address: [u8; 8] = slice.try_into().expect("slice length checked above");
+                InterfaceDescriptionOption::IfEuIAddr(MacAddr8::from(address))
             }
             Self::IF_SPEED => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 8)?;
                 InterfaceDescriptionOption::IfSpeed(slice.read_u64::<B>().unwrap())
             }
             Self::IF_TS_RESOL => {
-                if slice.len() != 1 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 1,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 1)?;
 
                 let raw_resol = slice.read_u8().unwrap();
                 let resol = InterfaceTsResolution::from_u8(raw_resol)?;
                 InterfaceDescriptionOption::IfTsResol(resol)
             }
             Self::IF_T_ZONE => {
-                if slice.len() != 4 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 4,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 4)?;
                 InterfaceDescriptionOption::IfTzone(slice.read_u32::<B>().unwrap())
             }
-            Self::IF_FILTER => {
-                if slice.is_empty() {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 0,
-                        actual: slice.len(),
-                    });
-                }
-                InterfaceDescriptionOption::IfFilter(Cow::Borrowed(slice))
-            }
+            Self::IF_FILTER => InterfaceDescriptionOption::IfFilter(Cow::Borrowed(slice)),
             Self::IF_OS => InterfaceDescriptionOption::IfOs(Cow::Borrowed(std::str::from_utf8(slice)?)),
             Self::IF_FCS_LEN => {
-                if slice.len() != 1 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 1,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 1)?;
                 InterfaceDescriptionOption::IfFcsLen(slice.read_u8().unwrap())
             }
             Self::IF_TS_OFFSET => {
-                if slice.len() != 8 {
-                    return Err(OptionEntryError::WrongSize {
-                        expected: 8,
-                        actual: slice.len(),
-                    });
-                }
+                check_opt_len(slice, 8)?;
                 InterfaceDescriptionOption::IfTsOffset(slice.read_i64::<B>().unwrap())
             }
             Self::IF_HARDWARE => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
@@ -339,10 +300,26 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::IfDescription(a) => {
                 write_bytes_option::<B, W>(writer, Self::IF_DESCRIPTION, a.as_bytes())
             }
-            InterfaceDescriptionOption::IfIpv4Addr(a) => write_bytes_option::<B, W>(writer, Self::IF_IPV4_ADDR, a),
-            InterfaceDescriptionOption::IfIpv6Addr(a) => write_bytes_option::<B, W>(writer, Self::IF_IPV6_ADDR, a),
-            InterfaceDescriptionOption::IfMacAddr(a) => write_bytes_option::<B, W>(writer, Self::IF_MAC_ADDR, a),
-            InterfaceDescriptionOption::IfEuIAddr(a) => write_u64_option::<B, W>(writer, Self::IF_EU_ADDR, *a),
+            InterfaceDescriptionOption::IfIpv4Addr(address) => {
+                RawOption::write_framed_to::<B, _, _>(writer, Self::IF_IPV4_ADDR, 8, |writer| {
+                    writer.write_all(&address.ip.octets())?;
+                    writer.write_all(&address.netmask)?;
+                    Ok(())
+                })
+            }
+            InterfaceDescriptionOption::IfIpv6Addr(address) => {
+                RawOption::write_framed_to::<B, _, _>(writer, Self::IF_IPV6_ADDR, 17, |writer| {
+                    writer.write_all(&address.ip.octets())?;
+                    writer.write_u8(address.prefix_len)?;
+                    Ok(())
+                })
+            }
+            InterfaceDescriptionOption::IfMacAddr(a) => {
+                write_bytes_option::<B, W>(writer, Self::IF_MAC_ADDR, a.as_bytes())
+            }
+            InterfaceDescriptionOption::IfEuIAddr(a) => {
+                write_bytes_option::<B, W>(writer, Self::IF_EU_ADDR, a.as_bytes())
+            }
             InterfaceDescriptionOption::IfSpeed(a) => write_u64_option::<B, W>(writer, Self::IF_SPEED, *a),
             InterfaceDescriptionOption::IfTsResol(a) => write_u8_option::<B, W>(writer, Self::IF_TS_RESOL, a.to_u8()),
             InterfaceDescriptionOption::IfTzone(a) => write_u32_option::<B, W>(writer, Self::IF_T_ZONE, *a),
@@ -358,6 +335,12 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
     }
 
     fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
+        if let Self::IfFilter(value) = self {
+            if value.is_empty() {
+                return Err(OptionEntryError::ContentTooSmall { needed: 1, actual: 0 });
+            }
+        }
+
         Ok(())
     }
 
@@ -399,6 +382,81 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             Self::IF_HARDWARE => "IfHardware",
             _ => CommonOption::code_name(code),
         }
+    }
+}
+
+/* ----- IfIpv4AddrOpt ----- */
+
+/// IPv4 address option value for an Interface Description Block.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct IfIpv4AddrOpt {
+    /// IPv4 address assigned to the interface.
+    pub ip: Ipv4Addr,
+    /// Network mask associated with the IPv4 address.
+    pub netmask: [u8; 4],
+}
+
+impl IfIpv4AddrOpt {
+    /// Parses an IPv4 address and network mask from an option value.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the value is not exactly eight bytes.
+    /// Provide the address followed by the four-byte network mask.
+    pub fn from_slice(slice: &[u8]) -> Result<Self, OptionEntryError> {
+        check_opt_len(slice, 8)?;
+
+        let ip: [u8; 4] = slice[..4].try_into().expect("slice has eight bytes");
+        let netmask = slice[4..].try_into().expect("slice has eight bytes");
+
+        Ok(Self {
+            ip: Ipv4Addr::from(ip),
+            netmask,
+        })
+    }
+}
+
+/* ----- IfIpv6AddrOpt ----- */
+
+/// IPv6 address option value for an Interface Description Block.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct IfIpv6AddrOpt {
+    /// IPv6 address assigned to the interface.
+    pub ip: Ipv6Addr,
+    /// Prefix length associated with the IPv6 address.
+    prefix_len: u8,
+}
+
+impl IfIpv6AddrOpt {
+    /// Creates an IPv6 address option with a checked prefix length.
+    ///
+    /// # Errors
+    ///
+    /// Use a prefix length from `0` to `128` because an IPv6 address contains 128 bits.
+    pub const fn new(ip: Ipv6Addr, prefix_len: u8) -> Result<Self, OptionEntryError> {
+        if prefix_len > 128 {
+            return Err(OptionEntryError::InvalidIpv6PrefixLen(prefix_len));
+        }
+
+        Ok(Self { ip, prefix_len })
+    }
+
+    /// Parses an IPv6 address and prefix length from an option value.
+    ///
+    /// # Errors
+    ///
+    /// Provide the address followed by a prefix length from `0` to `128` in exactly 17 bytes.
+    pub fn from_slice(slice: &[u8]) -> Result<Self, OptionEntryError> {
+        check_opt_len(slice, 17)?;
+
+        let ip: [u8; 16] = slice[..16].try_into().expect("slice has 17 bytes");
+
+        Self::new(Ipv6Addr::from(ip), slice[16])
+    }
+
+    /// Returns the prefix length in bits.
+    pub const fn prefix_len(&self) -> u8 {
+        self.prefix_len
     }
 }
 

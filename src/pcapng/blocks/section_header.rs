@@ -1,5 +1,7 @@
 //! Section Header Block.
 
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::io::Write;
 
@@ -10,11 +12,13 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{
-    CommonOption, PcapNgOption, opts_from_slice, validate_opts, write_bytes_option, write_opts_to,
+    CommonOption, PcapNgOption, opts_from_slice, validate_opts, validate_unique_opts, write_bytes_option, write_opts_to,
 };
 use crate::Endianness;
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
+
+/* ----- SectionHeaderBlock ----- */
 
 /// Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
@@ -45,6 +49,11 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
     const NAME: &'static str = "Section Header Block";
 
     fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
+        validate_unique_opts(&self.options, |option| {
+            !matches!(option, SectionHeaderOption::Common(_))
+        })
+        .map_err(BlockValidationError::Option)?;
+
         validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
     }
 
@@ -103,10 +112,8 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         writer.write_u16::<B>(self.minor_version)?;
         writer.write_i64::<B>(self.section_length)?;
 
-        let opt_len = write_opts_to::<B, _, W>(&self.options, state, None, writer).map_err(|error| match error {
-            WriteError::Io(error) => WriteError::Io(error),
-            WriteError::Other(error) => WriteError::Other(BlockValidationError::Option(error)),
-        })?;
+        let opt_len = write_opts_to::<B, _, W>(&self.options, state, None, writer)
+            .map_err(|error| error.map_other(BlockValidationError::Option))?;
 
         Ok(16 + opt_len)
     }
@@ -157,6 +164,8 @@ impl Default for SectionHeaderBlock<'static> {
         }
     }
 }
+
+/* ----- SectionHeaderOption ----- */
 
 /// Section Header Block options
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
