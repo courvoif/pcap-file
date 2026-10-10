@@ -9,8 +9,8 @@ use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
 use pcap_file::pcapng::blocks::interface_description::{
     InterfaceDescriptionBlock, InterfaceDescriptionOption, InterfaceTsResolution,
 };
+use pcap_file::pcapng::errors::{BlockValidationError, PcapNgReadErrorKind, PcapNgWriteError, TimestampError};
 use pcap_file::pcapng::{Block, PcapNgReader, PcapNgWriter};
-use pcap_file::pcapng::errors::{BlockValidationError, PcapNgReadError, PcapNgWriteError, TimestampError};
 
 #[test]
 fn writer_rejects_timestamp_before_interface_offset() {
@@ -108,8 +108,8 @@ fn reader_rejects_timestamp_before_unix_epoch() {
     let error = reader.next_block().unwrap().unwrap_err();
 
     assert!(matches!(
-        error,
-        PcapNgReadError::Block(error)
+        error.kind,
+        PcapNgReadErrorKind::Block(error)
             if matches!(
                 error.source.as_ref(),
                 BlockValidationError::Timestamp(TimestampError::DecodeOutOfRange { .. })

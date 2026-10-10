@@ -1,3 +1,7 @@
+//! Error types returned by pcap parsing, reading, and writing.
+
+/* ----- Imports ----- */
+
 use std::time::Duration;
 
 use thiserror::Error;
@@ -39,11 +43,44 @@ pub enum PcapParseError {
     Validation(#[from] PcapValidationError),
 }
 
-/* ----- enum PcapReadError ----- */
+/* ----- PcapReadError ----- */
 
-/// Errors that can occur while reading pcap data from an I/O source.
+/// A read error with the packet number and its starting byte offset.
+/// Offsets are relative to the input passed to the reader.
 #[derive(Debug, Error)]
-pub enum PcapReadError {
+#[error("Error reading pcap packet {packet_number} at byte offset {offset}: {kind}")]
+pub struct PcapReadError {
+    /// Zero-based packet number.
+    /// Global header errors also use `0`, with an offset of `0`.
+    pub packet_number: u64,
+    /// Byte offset at the start of the packet or global header.
+    pub offset: u64,
+    /// Underlying read error.
+    #[source]
+    pub kind: PcapReadErrorKind,
+}
+
+impl PcapReadError {
+    /// Creates a read error at the supplied packet position.
+    pub(crate) fn new(packet_number: u64, offset: u64, kind: PcapReadErrorKind) -> Self {
+        Self {
+            packet_number,
+            offset,
+            kind,
+        }
+    }
+
+    /// Indicates whether the error is fatal and the reader cannot continue.
+    pub fn is_fatal(&self) -> bool {
+        self.kind.is_fatal()
+    }
+}
+
+/* ----- PcapReadErrorKind ----- */
+
+/// Underlying causes of pcap read errors.
+#[derive(Debug, Error)]
+pub enum PcapReadErrorKind {
     /// An I/O error occurred while reading the pcap.
     #[error("I/O error while reading the pcap")]
     Io(#[source] std::io::Error),
@@ -52,9 +89,9 @@ pub enum PcapReadError {
     Validation(#[from] PcapValidationError),
 }
 
-impl PcapReadError {
+impl PcapReadErrorKind {
     /// Indicates whether the error is fatal and the reader cannot continue.
-    pub fn is_fatal(&self) -> bool {
+    pub(crate) fn is_fatal(&self) -> bool {
         match self {
             Self::Validation(PcapValidationError::InvalidMagicNumber(_)) => true,
             Self::Validation(_) => false,

@@ -1,8 +1,12 @@
+//! Buffered input shared by pcap and pcapng readers.
+
+/* ----- Imports ----- */
+
 use std::io::{Error, ErrorKind, Read};
 
 use crate::{
-    pcap::{PcapParseError, PcapReadError},
-    pcapng::errors::{PcapNgParseError, PcapNgReadError},
+    pcap::{PcapParseError, PcapReadErrorKind},
+    pcapng::errors::{PcapNgParseError, PcapNgReadErrorKind},
 };
 
 /* ----- ReadBuffer ----- */
@@ -94,10 +98,8 @@ impl<R: Read> ReadBuffer<R> {
         self.pos = 0;
         self.len = rem_len;
 
-
         let nb_read = self.reader.read(&mut self.buffer[rem_len..])?;
         self.len += nb_read;
-
 
         Ok(nb_read)
     }
@@ -150,22 +152,22 @@ impl<R: Read> ReadBuffer<R> {
 
 /* ----- ReadBufferParseError ----- */
 
-/// Adapter used by [`ReadBuffer::parse_with`] to share the buffered parsing loop
-/// between pcap and pcapng parsers while preserving their read error types.
+/// Converts parsing and I/O errors into pcap or pcapng read error causes.
+/// Readers attach the packet or block position to each cause.
 pub(crate) trait ReadBufferParseError {
-    /// Read-level error returned by the reader using this parse error.
+    /// Read error cause returned by the buffered parsing loop.
     type ReadError;
 
     /// Returns true when parsing failed only because more input bytes are needed.
     fn is_incomplete(&self) -> bool;
-    /// Converts an I/O error raised while filling the buffer into the read error.
+    /// Converts an I/O error raised while filling the buffer into a read error cause.
     fn from_io(error: Error) -> Self::ReadError;
-    /// Converts a terminal parse error into the read error returned to callers.
+    /// Converts a terminal parse error into a read error cause.
     fn into_read_error(self) -> Self::ReadError;
 }
 
 impl ReadBufferParseError for PcapParseError {
-    type ReadError = PcapReadError;
+    type ReadError = PcapReadErrorKind;
 
     #[inline]
     fn is_incomplete(&self) -> bool {
@@ -174,20 +176,20 @@ impl ReadBufferParseError for PcapParseError {
 
     #[inline]
     fn from_io(error: Error) -> Self::ReadError {
-        PcapReadError::Io(error)
+        PcapReadErrorKind::Io(error)
     }
 
     #[inline]
     fn into_read_error(self) -> Self::ReadError {
         match self {
-            Self::IncompleteBuffer(_, _) => PcapReadError::Io(Error::from(ErrorKind::UnexpectedEof)),
-            Self::Validation(val) => PcapReadError::Validation(val),
+            Self::IncompleteBuffer(_, _) => PcapReadErrorKind::Io(Error::from(ErrorKind::UnexpectedEof)),
+            Self::Validation(val) => PcapReadErrorKind::Validation(val),
         }
     }
 }
 
 impl ReadBufferParseError for PcapNgParseError {
-    type ReadError = PcapNgReadError;
+    type ReadError = PcapNgReadErrorKind;
 
     #[inline]
     fn is_incomplete(&self) -> bool {
@@ -196,7 +198,7 @@ impl ReadBufferParseError for PcapNgParseError {
 
     #[inline]
     fn from_io(error: Error) -> Self::ReadError {
-        PcapNgReadError::Io(error)
+        PcapNgReadErrorKind::Io(error)
     }
 
     #[inline]

@@ -86,6 +86,15 @@ Use it to inspect or write [`ts_sec`][raw-pcap-ts-sec],
 payload bytes declared by [`incl_len`][raw-pcap-incl-len] to read a complete
 packet.
 
+Read errors expose `offset`, the byte offset at the start of the packet, and
+`packet_number`, counted from `0`.
+Global header errors also use packet number `0`, with an offset of `0`.
+Offsets are relative to the input passed to the reader and also appear in the
+error message.
+**Breaking API change:** `PcapReadError` is now a struct.
+Match `error.kind` against `PcapReadErrorKind` variants instead of matching
+`PcapReadError` variants directly.
+
 ### [PcapPacketIterator][pcap-packet-iterator]
 
 Call [`PcapReader::packets()`][pcap-reader-packets] to get an iterator over
@@ -199,6 +208,16 @@ recoverable block or I/O error, call the reader again.
 Fatal errors stop the reader. Use
 [`PcapNgReadError::is_fatal()`][pcapng-read-error-is-fatal] to distinguish fatal
 errors from errors after which reading can continue.
+
+Read errors expose `offset`, the byte offset at the start of the block, and
+`block_number`, counted from `0` including the initial Section Header Block.
+Block numbers continue across sections and include non-packet blocks.
+Offsets are relative to the input passed to the reader and also appear in the
+error message.
+Packet iterators report the number and offset of the underlying block.
+**Breaking API change:** `PcapNgReadError` is now a struct.
+Match `error.kind` against `PcapNgReadErrorKind` variants instead of matching
+`PcapNgReadError` variants directly.
 
 Pass `true` as the last argument to pcapng parser, reader, and writer
 constructors to enable strict semantic validation.
@@ -427,7 +446,7 @@ To test the library I used the excellent PcapNg testing suite provided by [hadri
 [pcapng-reader-strict]: pcapng/struct.PcapNgReader.html#method.strict
 [pcapng-packet-iterator]: pcapng/struct.PcapNgPacketIterator.html
 [pcapng-writer]: pcapng/struct.PcapNgWriter.html
-[pcapng-read-error-is-fatal]: pcapng/errors/enum.PcapNgReadError.html#method.is_fatal
+[pcapng-read-error-is-fatal]: pcapng/errors/struct.PcapNgReadError.html#method.is_fatal
 [raw-block-try-into-block]: pcapng/blocks/block_common/struct.RawBlock.html#method.try_into_block
 [block-validate]: pcapng/blocks/block_common/enum.Block.html#method.validate
 [interface-description-block]: pcapng/blocks/interface_description/struct.InterfaceDescriptionBlock.html

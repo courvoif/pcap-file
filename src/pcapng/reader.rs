@@ -1,10 +1,14 @@
+//! Streaming pcapng reader and packet iterator.
+
 /* ----- Imports ----- */
 
 use std::io::Read;
 
 use super::blocks::block_common::{Block, RawBlock};
 use super::{PcapNgPacket, PcapNgParser, PcapNgState};
-use crate::pcapng::errors::{BlockError, BlockValidationError, PacketConversionError, PcapNgReadError};
+use crate::pcapng::errors::{
+    BlockError, BlockValidationError, PacketConversionError, PcapNgReadError, PcapNgReadErrorKind,
+};
 use crate::read_buffer::ReadBuffer;
 
 /* ----- Reader ----- */
@@ -30,9 +34,14 @@ use crate::read_buffer::ReadBuffer;
 /// ```
 #[derive(Debug)]
 pub struct PcapNgReader<R: Read> {
+    /// Parser and the current section and interface state.
     parser: PcapNgParser,
+    /// Buffered input and the number of consumed bytes.
     reader: ReadBuffer<R>,
+    /// Whether a fatal error prevents further reading.
     poisoned: bool,
+    /// Number of consumed blocks, including Section Header Blocks and skipped blocks.
+    blocks_read: u64,
 }
 
 impl<R: Read> PcapNgReader<R> {
@@ -49,11 +58,14 @@ impl<R: Read> PcapNgReader<R> {
     /// - The input cannot be read.
     pub fn new(reader: R, strict: bool) -> Result<Self, PcapNgReadError> {
         let mut reader = ReadBuffer::new(reader);
-        let parser = reader.parse_with(|src| PcapNgParser::new(src, strict))?;
+        let parser = reader
+            .parse_with(|src| PcapNgParser::new(src, strict))
+            .map_err(|kind| PcapNgReadError::new(0, 0, kind))?;
         Ok(Self {
             parser,
             reader,
             poisoned: false,
+            blocks_read: 1,
         })
     }
 
@@ -68,11 +80,14 @@ impl<R: Read> PcapNgReader<R> {
     /// - The input cannot be read.
     pub fn with_capacity(reader: R, capacity: usize, strict: bool) -> Result<Self, PcapNgReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
-        let parser = reader.parse_with(|src| PcapNgParser::new(src, strict))?;
+        let parser = reader
+            .parse_with(|src| PcapNgParser::new(src, strict))
+            .map_err(|kind| PcapNgReadError::new(0, 0, kind))?;
         Ok(Self {
             parser,
             reader,
             poisoned: false,
+            blocks_read: 1,
         })
     }
 
@@ -88,7 +103,8 @@ impl<R: Read> PcapNgReader<R> {
     /// mode.
     ///
     /// # Errors
-    /// - On [`PcapNgReadError::Block`], the block is skipped.
+    /// - Includes the block number and its starting byte offset.
+    /// - On [`PcapNgReadErrorKind::Block`], the block is skipped.
     /// - Retry a non-fatal I/O error by calling this method again.
     /// - A fatal error poisons the reader. Later calls return [`None`].
     #[must_use = "the result contains either the next block or a read error"]
@@ -97,14 +113,19 @@ impl<R: Read> PcapNgReader<R> {
             return None;
         }
 
+        let block_number = self.blocks_read;
+        let offset = self.reader.bytes_used;
+
         let res = match self.reader.has_data_left() {
             Ok(true) => {
-                let res: Result<RawBlock<'_>, PcapNgReadError> =
-                    self.reader.parse_with(|src| self.parser.next_raw_block(src));
+                let res: Result<RawBlock<'_>, PcapNgReadErrorKind> = self
+                    .reader
+                    .parse_with(|src| self.parser.next_raw_block(src))
+                    .inspect(|_| self.blocks_read += 1);
                 // # SAFETY
                 // The raw block borrows only from the reader's internal buffer.
                 // The returned lifetime is tied to `&'a mut self`, which prevents that buffer from being mutated.
-                let res: Result<RawBlock<'a>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
+                let res: Result<RawBlock<'a>, PcapNgReadErrorKind> = unsafe { std::mem::transmute(res) };
 
                 res.and_then(|raw_block| {
                     let block = raw_block.try_into_block(&self.parser.state)?;
@@ -117,8 +138,9 @@ impl<R: Read> PcapNgReader<R> {
                 })
             }
             Ok(false) => return None,
-            Err(e) => Err(PcapNgReadError::Io(e)),
+            Err(e) => Err(PcapNgReadErrorKind::Io(e)),
         }
+        .map_err(|kind| PcapNgReadError::new(block_number, offset, kind))
         .inspect_err(|error| {
             self.poisoned |= error.is_fatal();
         });
@@ -140,6 +162,7 @@ impl<R: Read> PcapNgReader<R> {
     /// later blocks.
     ///
     /// # Errors
+    /// - Includes the block number and its starting byte offset.
     /// - Retry a non-fatal I/O error by calling this method again.
     /// - A fatal error poisons the reader. Later calls return [`None`].
     #[must_use = "the result contains either the next raw block or a read error"]
@@ -148,20 +171,26 @@ impl<R: Read> PcapNgReader<R> {
             return None;
         }
 
+        let block_number = self.blocks_read;
+        let offset = self.reader.bytes_used;
+
         let res = match self.reader.has_data_left() {
             Ok(true) => {
-                let res: Result<RawBlock<'_>, PcapNgReadError> =
-                    self.reader.parse_with(|src| self.parser.next_raw_block(src));
+                let res: Result<RawBlock<'_>, PcapNgReadErrorKind> = self
+                    .reader
+                    .parse_with(|src| self.parser.next_raw_block(src))
+                    .inspect(|_| self.blocks_read += 1);
                 // # SAFETY
                 // The raw block borrows only from the reader's internal buffer.
                 // The returned lifetime is tied to `&'a mut self`, which prevents that buffer from being mutated.
-                let res: Result<RawBlock<'a>, PcapNgReadError> = unsafe { std::mem::transmute(res) };
+                let res: Result<RawBlock<'a>, PcapNgReadErrorKind> = unsafe { std::mem::transmute(res) };
 
                 res.map(|blk| (blk, &self.parser.state))
             }
             Ok(false) => return None,
-            Err(e) => Err(PcapNgReadError::Io(e)),
+            Err(e) => Err(PcapNgReadErrorKind::Io(e)),
         }
+        .map_err(|kind| PcapNgReadError::new(block_number, offset, kind))
         .inspect_err(|error| {
             self.poisoned |= error.is_fatal();
         });
@@ -224,7 +253,7 @@ impl<R: Read> PcapNgReader<R> {
 /// Use this to read packets from packet related Blocks.
 ///
 /// # Errors
-/// - On [`PcapNgReadError::Block`], , the error is returned and the block is skipped.
+/// - On [`PcapNgReadErrorKind::Block`], the error is returned and the block is skipped.
 /// - Retry a non-fatal I/O error by polling the iterator again.
 /// - A fatal error is yielded once. Later polls return [`None`].
 ///
@@ -266,6 +295,9 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
+            let block_number = self.reader.blocks_read;
+            let offset = self.reader.bytes_parsed();
+
             match self.reader.next_block() {
                 Some(Ok((block, state))) => {
                     let type_ = block.type_code();
@@ -273,11 +305,12 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
                         Ok(packet) => return Some(Ok(packet.into_owned())),
                         Err(PacketConversionError::NotPacket(_)) => continue,
                         Err(PacketConversionError::InvalidInterfaceId(id)) => {
-                            return Some(Err(BlockError {
+                            let kind = BlockError {
                                 type_,
                                 source: Box::new(BlockValidationError::InvalidInterfaceId(id)),
                             }
-                            .into()));
+                            .into();
+                            return Some(Err(PcapNgReadError::new(block_number, offset, kind)));
                         }
                     }
                 }

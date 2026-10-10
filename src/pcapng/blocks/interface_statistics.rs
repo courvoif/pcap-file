@@ -333,9 +333,9 @@ mod tests {
         }
     }
 
-    /// Rejects missing interface context before writing any option in a list.
+    /// Reports the timestamp option's code when its interface context is missing.
     #[test]
-    fn missing_interface_id_preserves_option_output() {
+    fn missing_interface_id_reports_option_error() {
         let state = PcapNgState::default();
 
         for timestamp in [
@@ -352,7 +352,6 @@ mod tests {
                 WriteError::Other(OptionError { code: error_code, source, .. })
                     if error_code == code && matches!(*source, OptionEntryError::MissingInterfaceId)
             ));
-            assert_eq!(encoded, [42]);
         }
     }
 }

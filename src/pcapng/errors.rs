@@ -51,9 +51,41 @@ impl From<RawBlockParseError> for PcapNgParseError {
 
 /* ----- PcapNgReadError ----- */
 
-/// Errors that can occur while reading pcapng data from an I/O source.
+/// A read error with the block number and its starting byte offset.
+/// Offsets are relative to the input passed to the reader.
 #[derive(Debug, Error)]
-pub enum PcapNgReadError {
+#[error("Error reading pcapng block {block_number} at byte offset {offset}: {kind}")]
+pub struct PcapNgReadError {
+    /// Zero-based block number, including all Section Header Blocks.
+    pub block_number: u64,
+    /// Byte offset at the start of the block.
+    pub offset: u64,
+    /// Underlying read error.
+    #[source]
+    pub kind: PcapNgReadErrorKind,
+}
+
+impl PcapNgReadError {
+    /// Creates a read error at the supplied block position.
+    pub(crate) fn new(block_number: u64, offset: u64, kind: PcapNgReadErrorKind) -> Self {
+        Self {
+            block_number,
+            offset,
+            kind,
+        }
+    }
+
+    /// Indicates whether the error is fatal and the reader cannot continue.
+    pub fn is_fatal(&self) -> bool {
+        self.kind.is_fatal()
+    }
+}
+
+/* ----- PcapNgReadErrorKind ----- */
+
+/// Underlying causes of pcapng read errors.
+#[derive(Debug, Error)]
+pub enum PcapNgReadErrorKind {
     /// An I/O error occurred while reading the pcapng stream.
     #[error("I/O error while reading the pcapng")]
     Io(#[source] std::io::Error),
@@ -68,9 +100,9 @@ pub enum PcapNgReadError {
     StateUpdate(#[from] StateUpdateError),
 }
 
-impl PcapNgReadError {
+impl PcapNgReadErrorKind {
     /// Indicates whether the error is fatal and the reader cannot continue.
-    pub fn is_fatal(&self) -> bool {
+    pub(crate) fn is_fatal(&self) -> bool {
         match self {
             Self::Block(_) => false,
             Self::InvalidFormat(_) | Self::StateUpdate(_) => true,
@@ -82,7 +114,7 @@ impl PcapNgReadError {
     }
 }
 
-impl From<PcapNgParseError> for PcapNgReadError {
+impl From<PcapNgParseError> for PcapNgReadErrorKind {
     fn from(value: PcapNgParseError) -> Self {
         match value {
             PcapNgParseError::IncompleteBuffer(_, _) => {

@@ -1,7 +1,11 @@
+//! Streaming pcap reader and packet iterator.
+
+/* ----- Imports ----- */
+
 use std::io::Read;
 
 use super::{PcapParser, RawPcapPacket};
-use crate::pcap::{PcapHeader, PcapPacket, PcapReadError};
+use crate::pcap::{PcapHeader, PcapPacket, PcapReadError, PcapReadErrorKind};
 use crate::read_buffer::ReadBuffer;
 
 /* ----- Reader ----- */
@@ -28,9 +32,14 @@ use crate::read_buffer::ReadBuffer;
 /// ```
 #[derive(Debug)]
 pub struct PcapReader<R: Read> {
+    /// Parser initialized from the global header.
     parser: PcapParser,
+    /// Buffered input and the number of consumed bytes.
     reader: ReadBuffer<R>,
+    /// Whether a fatal error prevents further reading.
     poisoned: bool,
+    /// Number of consumed packets, including packets rejected during validation.
+    packets_read: u64,
 }
 
 impl<R: Read> PcapReader<R> {
@@ -42,12 +51,15 @@ impl<R: Read> PcapReader<R> {
     /// - The underlying data are not readable.
     pub fn new(reader: R) -> Result<PcapReader<R>, PcapReadError> {
         let mut reader = ReadBuffer::new(reader);
-        let parser = reader.parse_with(PcapParser::new)?;
+        let parser = reader
+            .parse_with(PcapParser::new)
+            .map_err(|kind| PcapReadError::new(0, 0, kind))?;
 
         Ok(PcapReader {
             parser,
             reader,
             poisoned: false,
+            packets_read: 0,
         })
     }
 
@@ -60,12 +72,15 @@ impl<R: Read> PcapReader<R> {
     /// - The underlying data are not readable.
     pub fn with_capacity(reader: R, capacity: usize) -> Result<PcapReader<R>, PcapReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
-        let parser = reader.parse_with(PcapParser::new)?;
+        let parser = reader
+            .parse_with(PcapParser::new)
+            .map_err(|kind| PcapReadError::new(0, 0, kind))?;
 
         Ok(PcapReader {
             parser,
             reader,
             poisoned: false,
+            packets_read: 0,
         })
     }
 
@@ -75,7 +90,8 @@ impl<R: Read> PcapReader<R> {
     /// call returned a fatal error and the reader remains poisoned.
     ///
     /// # Errors
-    /// - On [`PcapReadError::Validation`], the packet is skipped.
+    /// - Includes the packet number and its starting byte offset
+    /// - On [`PcapReadErrorKind::Validation`], the packet is skipped.
     /// - Retry a non-fatal I/O error by calling this method again.
     /// - A fatal error is returned once. Later calls return [`None`].
     #[must_use = "the result contains either the next packet or a read error"]
@@ -84,20 +100,26 @@ impl<R: Read> PcapReader<R> {
             return None;
         }
 
+        let packet_number = self.packets_read;
+        let offset = self.reader.bytes_used;
+
         let res = match self.reader.has_data_left() {
             Ok(true) => {
-                let res: Result<RawPcapPacket<'_>, PcapReadError> =
-                    self.reader.parse_with(|src| self.parser.next_raw_packet(src));
+                let res: Result<RawPcapPacket<'_>, PcapReadErrorKind> = self
+                    .reader
+                    .parse_with(|src| self.parser.next_raw_packet(src))
+                    .inspect(|_| self.packets_read += 1);
 
                 res.and_then(|raw_packet| {
                     raw_packet
                         .try_into_pcap_packet(self.parser.header().ts_resolution, self.parser.header().snaplen)
-                        .map_err(PcapReadError::from)
+                        .map_err(PcapReadErrorKind::from)
                 })
             }
             Ok(false) => return None,
-            Err(error) => Err(PcapReadError::Io(error)),
+            Err(error) => Err(PcapReadErrorKind::Io(error)),
         }
+        .map_err(|kind| PcapReadError::new(packet_number, offset, kind))
         .inspect_err(|error| {
             self.poisoned |= error.is_fatal();
         });
@@ -114,6 +136,7 @@ impl<R: Read> PcapReader<R> {
     /// Call [`RawPcapPacket::try_into_pcap_packet`] to validate and convert it.
     ///
     /// # Errors
+    /// - Errors include the packet number and its starting byte offset.
     /// - Retry a non-fatal I/O error by calling this method again.
     /// - A fatal error is returned once. Later calls return [`None`].
     #[must_use = "the result contains either the next raw packet or a read error"]
@@ -122,11 +145,18 @@ impl<R: Read> PcapReader<R> {
             return None;
         }
 
+        let packet_number = self.packets_read;
+        let offset = self.reader.bytes_used;
+
         let res = match self.reader.has_data_left() {
-            Ok(true) => self.reader.parse_with(|src| self.parser.next_raw_packet(src)),
+            Ok(true) => self
+                .reader
+                .parse_with(|src| self.parser.next_raw_packet(src))
+                .inspect(|_| self.packets_read += 1),
             Ok(false) => return None,
-            Err(error) => Err(PcapReadError::Io(error)),
+            Err(error) => Err(PcapReadErrorKind::Io(error)),
         }
+        .map_err(|kind| PcapReadError::new(packet_number, offset, kind))
         .inspect_err(|error| {
             self.poisoned |= error.is_fatal();
         });
@@ -179,7 +209,7 @@ impl<R: Read> PcapReader<R> {
 /// Returns an iterator over owned [`PcapPacket`] values.
 ///
 /// # Errors
-/// - On [`PcapReadError::Validation`], the error is returned and the packet is skipped.
+/// - On [`PcapReadErrorKind::Validation`], the error is returned and the packet is skipped.
 /// - Retry a non-fatal I/O error by polling the iterator again.
 /// - A fatal error is yielded once. Later polls return [`None`].
 ///

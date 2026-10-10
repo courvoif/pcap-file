@@ -246,9 +246,10 @@ fn typed_reader_continues_after_packet_validation_error() {
 
     let mut reader = PcapReader::new(&pcap[..]).unwrap();
     let typed_error = reader.next_packet().unwrap().unwrap_err();
+    assert_eq!((typed_error.packet_number, typed_error.offset), (0, 24));
     assert!(matches!(
-        typed_error,
-        pcap_file::pcap::PcapReadError::Validation(PcapValidationError::OriginLenTooSmall(2, 4))
+        typed_error.kind,
+        pcap_file::pcap::PcapReadErrorKind::Validation(PcapValidationError::OriginLenTooSmall(2, 4))
     ));
 
     let packet = reader.next_packet().unwrap().unwrap();
@@ -307,15 +308,21 @@ fn pcap_with_partially_buffered_packet() -> (Vec<u8>, usize) {
 
 #[test]
 fn reader_retries_retryable_io_error_without_losing_buffered_data() {
-    let (pcap, split) = pcap_with_partially_buffered_packet();
+    let (mut pcap, split) = pcap_with_partially_buffered_packet();
+    let next_offset = pcap.len() as u64;
+    pcap.push(0);
     let source = ReadErrorOnce::new(pcap, split, std::io::ErrorKind::WouldBlock);
     let mut reader = PcapReader::new(source).unwrap();
 
     let error = reader.next_packet().unwrap().unwrap_err();
+    assert_eq!((error.packet_number, error.offset), (0, 24));
     assert!(
-        matches!(error, pcap_file::pcap::PcapReadError::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock)
+        matches!(error.kind, pcap_file::pcap::PcapReadErrorKind::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock)
     );
     assert_eq!(reader.next_packet().unwrap().unwrap().data(), [1, 2]);
+
+    let error = reader.next_packet().unwrap().unwrap_err();
+    assert_eq!((error.packet_number, error.offset), (1, next_offset));
     assert!(reader.next_packet().is_none());
 }
 
@@ -326,8 +333,9 @@ fn reader_is_poisoned_after_fatal_io_error() {
     let mut reader = PcapReader::new(source).unwrap();
 
     let error = reader.next_packet().unwrap().unwrap_err();
+    assert_eq!((error.packet_number, error.offset), (0, 24));
     assert!(
-        matches!(error, pcap_file::pcap::PcapReadError::Io(error) if error.kind() == std::io::ErrorKind::ConnectionReset)
+        matches!(error.kind, pcap_file::pcap::PcapReadErrorKind::Io(error) if error.kind() == std::io::ErrorKind::ConnectionReset)
     );
     assert!(reader.next_packet().is_none());
     assert!(reader.next_raw_packet().is_none());
