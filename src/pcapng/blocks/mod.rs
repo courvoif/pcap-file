@@ -4,6 +4,7 @@
 
 pub mod block_common;
 pub mod custom;
+pub mod decryption_secrets;
 pub mod enhanced_packet;
 pub mod interface_description;
 pub mod interface_statistics;

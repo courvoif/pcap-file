@@ -11,6 +11,7 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use derive_into_owned::IntoOwned;
 
 use super::custom::CustomBlock;
+use super::decryption_secrets::DecryptionSecretsBlock;
 use super::enhanced_packet::EnhancedPacketBlock;
 use super::interface_description::InterfaceDescriptionBlock;
 use super::interface_statistics::InterfaceStatisticsBlock;
@@ -236,6 +237,8 @@ pub enum Block<'a> {
     EnhancedPacket(EnhancedPacketBlock<'a>),
     /// Systemd Journal Export block
     SystemdJournalExport(SystemdJournalExportBlock<'a>),
+    /// Decryption Secrets block
+    DecryptionSecrets(DecryptionSecretsBlock<'a>),
     /// Custom block, copiable
     CustomCopiable(CustomBlock<'a, true>),
     /// Custom block, non-copiable
@@ -291,6 +294,9 @@ impl<'a> Block<'a> {
                 }
                 SystemdJournalExportBlock::TYPE => SystemdJournalExportBlock::from_body::<B>(state, body)
                     .map(|(_, blk)| Block::SystemdJournalExport(blk)),
+                DecryptionSecretsBlock::TYPE => {
+                    DecryptionSecretsBlock::from_body::<B>(state, body).map(|(_, blk)| Block::DecryptionSecrets(blk))
+                }
                 CustomBlock::<true>::TYPE => {
                     CustomBlock::from_body::<B>(state, body).map(|(_, blk)| Block::CustomCopiable(blk))
                 }
@@ -329,6 +335,7 @@ impl<'a> Block<'a> {
             Self::InterfaceStatistics(b) => inner_write_to::<B, _, W>(state, b, writer),
             Self::EnhancedPacket(b) => inner_write_to::<B, _, W>(state, b, writer),
             Self::SystemdJournalExport(b) => inner_write_to::<B, _, W>(state, b, writer),
+            Self::DecryptionSecrets(b) => inner_write_to::<B, _, W>(state, b, writer),
             Self::CustomCopiable(b) => inner_write_to::<B, _, W>(state, b, writer),
             Self::CustomNonCopiable(b) => inner_write_to::<B, _, W>(state, b, writer),
         };
@@ -393,6 +400,7 @@ impl<'a> Block<'a> {
             Self::InterfaceStatistics(block) => block.validate(state),
             Self::EnhancedPacket(block) => block.validate(state),
             Self::SystemdJournalExport(block) => block.validate(state),
+            Self::DecryptionSecrets(block) => block.validate(state),
             Self::CustomCopiable(block) => block.validate(state),
             Self::CustomNonCopiable(block) => block.validate(state),
         }
@@ -423,6 +431,7 @@ impl<'a> Block<'a> {
             Self::InterfaceStatistics(_) => <InterfaceStatisticsBlock as PcapNgBlock>::TYPE,
             Self::EnhancedPacket(_) => <EnhancedPacketBlock as PcapNgBlock>::TYPE,
             Self::SystemdJournalExport(_) => <SystemdJournalExportBlock as PcapNgBlock>::TYPE,
+            Self::DecryptionSecrets(_) => <DecryptionSecretsBlock as PcapNgBlock>::TYPE,
             Self::CustomCopiable(_) => <CustomBlock<'a, true> as PcapNgBlock>::TYPE,
             Self::CustomNonCopiable(_) => <CustomBlock<'a, false> as PcapNgBlock>::TYPE,
         }
@@ -488,6 +497,7 @@ pub fn block_name(type_: u32) -> &'static str {
         InterfaceStatisticsBlock::TYPE => InterfaceStatisticsBlock::NAME,
         EnhancedPacketBlock::TYPE => EnhancedPacketBlock::NAME,
         SystemdJournalExportBlock::TYPE => SystemdJournalExportBlock::NAME,
+        DecryptionSecretsBlock::TYPE => DecryptionSecretsBlock::NAME,
         CustomBlock::<true>::TYPE => CustomBlock::<true>::NAME,
         CustomBlock::<false>::TYPE => CustomBlock::<false>::NAME,
         _ => "Unknown Block",
