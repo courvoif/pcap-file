@@ -41,20 +41,6 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
     const TYPE: u32 = 0x00000005;
     /// Human-readable name of this block.
     const NAME: &'static str = "Interface Statistics Block";
-    /// Checks the constraints applicable to this value.
-    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
-        state
-            .interfaces
-            .get(self.interface_id as usize)
-            .ok_or(BlockValidationError::InvalidInterfaceId(self.interface_id))?;
-
-        validate_unique_opts(&self.options, |option| {
-            !matches!(option, InterfaceStatisticsOption::Common(_))
-        })
-        .map_err(BlockValidationError::Option)?;
-
-        validate_opts(&self.options, state, Some(self.interface_id)).map_err(BlockValidationError::Option)
-    }
 
     /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
@@ -102,6 +88,21 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
             .map_err(|error| error.map_other(BlockValidationError::Option))?;
 
         checked_body_len(opt_len, 12).map_err(WriteError::Other)
+    }
+
+    /// Checks the constraints applicable to this value.
+    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
+        state
+            .interfaces
+            .get(self.interface_id as usize)
+            .ok_or(BlockValidationError::InvalidInterfaceId(self.interface_id))?;
+
+        validate_unique_opts(&self.options, |option| {
+            !matches!(option, InterfaceStatisticsOption::Common(_))
+        })
+        .map_err(BlockValidationError::Option)?;
+
+        validate_opts(&self.options, state, Some(self.interface_id)).map_err(BlockValidationError::Option)
     }
 
     /// Returns the matching typed block variant.

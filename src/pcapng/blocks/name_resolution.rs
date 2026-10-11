@@ -39,6 +39,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
     const TYPE: u32 = 0x00000004;
     /// Human-readable name of this block.
     const NAME: &'static str = "Name Resolution Block";
+
     /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
@@ -63,20 +64,6 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         Ok((rem, block))
     }
 
-    /// Checks the constraints applicable to this value.
-    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
-        for record in &self.records {
-            record.validate()?;
-        }
-
-        validate_unique_opts(&self.options, |option| {
-            !matches!(option, NameResolutionOption::Common(_))
-        })
-        .map_err(BlockValidationError::Option)?;
-
-        validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
-    }
-
     /// Writes this block body using the supplied section state.
     /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
     fn write_body_to<B: ByteOrder, W: Write>(
@@ -99,6 +86,20 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         len = checked_body_len(len, opt_len).map_err(WriteError::Other)?;
 
         Ok(len)
+    }
+
+    /// Checks the constraints applicable to this value.
+    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
+        for record in &self.records {
+            record.validate()?;
+        }
+
+        validate_unique_opts(&self.options, |option| {
+            !matches!(option, NameResolutionOption::Common(_))
+        })
+        .map_err(BlockValidationError::Option)?;
+
+        validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
     }
 
     /// Returns the matching typed block variant.

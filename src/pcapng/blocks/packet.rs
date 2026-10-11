@@ -52,6 +52,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
     const TYPE: u32 = 0x00000002;
     /// Human-readable name of this block.
     const NAME: &'static str = "Packet Block";
+
     /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
@@ -98,38 +99,6 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         Ok((slice, block))
     }
 
-    /// Checks the constraints applicable to this value.
-    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
-        let captured_len = u32::try_from(self.data.len()).map_err(|_| BlockValidationError::BlockTooLarge {
-            actual: self.data.len() as u64,
-            maximum: u32::MAX as u64,
-        })?;
-
-        let interface = state
-            .interfaces
-            .get(self.interface_id as usize)
-            .ok_or(BlockValidationError::InvalidInterfaceId(self.interface_id as u32))?;
-
-        if self.original_len < captured_len {
-            return Err(BlockValidationError::InvalidOriginalLen(
-                self.original_len,
-                self.data.len(),
-            ));
-        }
-
-        if interface.snaplen != 0 && captured_len > interface.snaplen {
-            return Err(BlockValidationError::CapturedLengthExceedsSnaplen {
-                captured_len: self.data.len(),
-                snaplen: interface.snaplen,
-            });
-        }
-
-        validate_unique_opts(&self.options, |option| matches!(option, PacketOption::Flags(_)))
-            .map_err(BlockValidationError::Option)?;
-
-        validate_opts(&self.options, state, Some(self.interface_id as u32)).map_err(BlockValidationError::Option)
-    }
-
     /// Writes this block body using the supplied section state.
     /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
     fn write_body_to<B: ByteOrder, W: Write>(
@@ -165,6 +134,38 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
             .map_err(|error| error.map_other(BlockValidationError::Option))?;
 
         checked_body_len(body_len, opt_len).map_err(WriteError::Other)
+    }
+
+    /// Checks the constraints applicable to this value.
+    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
+        let captured_len = u32::try_from(self.data.len()).map_err(|_| BlockValidationError::BlockTooLarge {
+            actual: self.data.len() as u64,
+            maximum: u32::MAX as u64,
+        })?;
+
+        let interface = state
+            .interfaces
+            .get(self.interface_id as usize)
+            .ok_or(BlockValidationError::InvalidInterfaceId(self.interface_id as u32))?;
+
+        if self.original_len < captured_len {
+            return Err(BlockValidationError::InvalidOriginalLen(
+                self.original_len,
+                self.data.len(),
+            ));
+        }
+
+        if interface.snaplen != 0 && captured_len > interface.snaplen {
+            return Err(BlockValidationError::CapturedLengthExceedsSnaplen {
+                captured_len: self.data.len(),
+                snaplen: interface.snaplen,
+            });
+        }
+
+        validate_unique_opts(&self.options, |option| matches!(option, PacketOption::Flags(_)))
+            .map_err(BlockValidationError::Option)?;
+
+        validate_opts(&self.options, state, Some(self.interface_id as u32)).map_err(BlockValidationError::Option)
     }
 
     /// Returns the matching typed block variant.

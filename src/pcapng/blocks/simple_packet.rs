@@ -88,6 +88,24 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         Ok((slice, packet))
     }
 
+    /// Writes this block body using the supplied section state.
+    /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
+    fn write_body_to<B: ByteOrder, W: Write>(
+        &self,
+        _state: &PcapNgState,
+        writer: &mut W,
+    ) -> Result<usize, WriteError<BlockValidationError>> {
+        let pad_len = (4 - (self.data.len() % 4)) % 4;
+        let body_len = checked_body_len(self.data.len(), 4 + pad_len).map_err(WriteError::Other)?;
+
+        writer.write_u32::<B>(self.original_len)?;
+        writer.write_all(&self.data)?;
+
+        writer.write_all(&[0_u8; 3][..pad_len])?;
+
+        Ok(body_len)
+    }
+
     /// Checks the constraints applicable to this value.
     fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
         if (self.original_len as usize) < self.data.len() {
@@ -113,24 +131,6 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         }
 
         Ok(())
-    }
-
-    /// Writes this block body using the supplied section state.
-    /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
-    fn write_body_to<B: ByteOrder, W: Write>(
-        &self,
-        _state: &PcapNgState,
-        writer: &mut W,
-    ) -> Result<usize, WriteError<BlockValidationError>> {
-        let pad_len = (4 - (self.data.len() % 4)) % 4;
-        let body_len = checked_body_len(self.data.len(), 4 + pad_len).map_err(WriteError::Other)?;
-
-        writer.write_u32::<B>(self.original_len)?;
-        writer.write_all(&self.data)?;
-
-        writer.write_all(&[0_u8; 3][..pad_len])?;
-
-        Ok(body_len)
     }
 
     /// Returns the matching typed block variant.

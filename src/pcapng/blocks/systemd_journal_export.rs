@@ -29,10 +29,6 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
     const TYPE: u32 = 0x00000009;
     /// Human-readable name of this block.
     const NAME: &'static str = "systemd Journal Export Block";
-    /// Checks the constraints applicable to this value.
-    fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError> {
-        Ok(())
-    }
 
     /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
@@ -60,6 +56,11 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
         Ok(body_len)
+    }
+
+    /// Checks the constraints applicable to this value.
+    fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError> {
+        Ok(())
     }
 
     /// Returns the matching typed block variant.
