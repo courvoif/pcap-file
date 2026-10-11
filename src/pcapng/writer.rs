@@ -248,7 +248,7 @@ impl<W: Write> PcapNgWriter<W> {
         // The state is updated only after a successful write.
         // The endianness is determined before the write to handle endianness changes when a new SectionHeader is encountered in the block list.
         raw_block.validate()?;
-        let opt_block = self.state.decode_block_if_needed(raw_block)?;
+        let opt_block = self.state.decode_block_if_needed(raw_block, false)?;
         let endianess = self.state.block_endianness(opt_block.as_ref());
 
         // Write the block to the writer

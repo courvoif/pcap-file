@@ -31,14 +31,11 @@ pub struct SectionHeaderBlock<'a> {
     pub major_version: u16,
 
     /// Minor version of the format.
-    /// Current value is 0.
+    /// Supported values are 0 and 2 for major version 1.
     pub minor_version: u16,
 
     /// Length in bytes of the following section excluding this block.
-    ///
-    /// This block can be used to skip the section for faster navigation in
-    /// large files.
-    /// Length of -1i64 means that the length is unspecified.
+    /// Use `-1` for an unspecified length or a nonnegative multiple of four.
     pub section_length: i64,
 
     /// Options
@@ -50,15 +47,6 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
     const TYPE: u32 = 0x0A0D0D0A;
     /// Human-readable name of this block.
     const NAME: &'static str = "Section Header Block";
-    /// Checks the constraints applicable to this value.
-    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
-        validate_unique_opts(&self.options, |option| {
-            !matches!(option, SectionHeaderOption::Common(_))
-        })
-        .map_err(BlockValidationError::Option)?;
-
-        validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
-    }
 
     /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
@@ -125,47 +113,30 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         Ok(16 + opt_len)
     }
 
+    /// Checks the section version, length, and options.
+    fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
+        if self.major_version != 1 || !matches!(self.minor_version, 0 | 2) {
+            return Err(BlockValidationError::InvalidSectionVersion {
+                major: self.major_version,
+                minor: self.minor_version,
+            });
+        }
+
+        if self.section_length < -1 || (self.section_length > 0 && self.section_length % 4 != 0) {
+            return Err(BlockValidationError::InvalidSectionLength(self.section_length));
+        }
+
+        validate_unique_opts(&self.options, |option| {
+            !matches!(option, SectionHeaderOption::Common(_))
+        })
+        .map_err(BlockValidationError::Option)?;
+
+        validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
+    }
+
     /// Returns the matching typed block variant.
     fn into_block(self) -> Block<'a> {
         Block::SectionHeader(self)
-    }
-}
-
-/* ----- Tests ----- */
-
-/// Checks this module's capture behavior.
-#[cfg(test)]
-mod tests {
-    /* ----- Imports ----- */
-
-    use byteorder_slice::BigEndian;
-
-    use super::{SectionHeaderBlock, SectionHeaderOption};
-    use crate::Endianness;
-    use crate::pcapng::PcapNgState;
-    use crate::pcapng::blocks::PcapNgBlock;
-
-    /* ----- Section byte order ----- */
-
-    /// Checks that section magic determines the option byte order.
-    #[test]
-    fn parses_little_endian_options_using_magic_number() {
-        let body = [
-            0x4D, 0x3C, 0x2B, 0x1A, // little-endian magic number
-            0x01, 0x00, // major version
-            0x00, 0x00, // minor version
-            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // section length = -1
-            0x03, 0x00, // shb_os
-            0x08, 0x00, // option length = 8
-            b'l', b'i', b'n', b'u', b'x', b'-', b'x', b'6', 0x00, 0x00, 0x00, 0x00, // opt_endofopt
-        ];
-
-        let (_, block) = SectionHeaderBlock::from_body::<BigEndian>(&PcapNgState::default(), &body).unwrap();
-
-        assert_eq!(block.endianness, Endianness::Little);
-        assert_eq!(block.major_version, 1);
-        assert_eq!(block.minor_version, 0);
-        assert_eq!(block.options, vec![SectionHeaderOption::OS("linux-x6".into())]);
     }
 }
 
@@ -173,7 +144,7 @@ impl Default for SectionHeaderBlock<'static> {
     /// Returns the default capture settings.
     fn default() -> Self {
         Self {
-            endianness: Endianness::Big,
+            endianness: Endianness::native(),
             major_version: 1,
             minor_version: 0,
             section_length: -1,
@@ -268,5 +239,43 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
             Self::USER_APPLICATION => "UserApplication",
             _ => CommonOption::code_name(code),
         }
+    }
+}
+
+/* ----- Tests ----- */
+
+/// Checks this module's capture behavior.
+#[cfg(test)]
+mod tests {
+    /* ----- Imports ----- */
+
+    use byteorder_slice::BigEndian;
+
+    use super::{SectionHeaderBlock, SectionHeaderOption};
+    use crate::Endianness;
+    use crate::pcapng::PcapNgState;
+    use crate::pcapng::blocks::PcapNgBlock;
+
+    /* ----- Section byte order ----- */
+
+    /// Checks that section magic determines the option byte order.
+    #[test]
+    fn parses_little_endian_options_using_magic_number() {
+        let body = [
+            0x4D, 0x3C, 0x2B, 0x1A, // little-endian magic number
+            0x01, 0x00, // major version
+            0x00, 0x00, // minor version
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, // section length = -1
+            0x03, 0x00, // shb_os
+            0x08, 0x00, // option length = 8
+            b'l', b'i', b'n', b'u', b'x', b'-', b'x', b'6', 0x00, 0x00, 0x00, 0x00, // opt_endofopt
+        ];
+
+        let (_, block) = SectionHeaderBlock::from_body::<BigEndian>(&PcapNgState::default(), &body).unwrap();
+
+        assert_eq!(block.endianness, Endianness::Little);
+        assert_eq!(block.major_version, 1);
+        assert_eq!(block.minor_version, 0);
+        assert_eq!(block.options, vec![SectionHeaderOption::OS("linux-x6".into())]);
     }
 }

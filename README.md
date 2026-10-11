@@ -73,9 +73,12 @@ Run any [example][examples-directory] linked below with
 ### Validation and raw blocks
 
 - **Strict mode:** Pass `true` to [`PcapNgParser::new`][pcapng-parser-new],
-  [`PcapNgReader::new`][pcapng-reader-new], or [`PcapNgWriter::new`][pcapng-writer-new] for semantic validation of typed blocks.
+  [`PcapNgReader::new`][pcapng-reader-new], or [`PcapNgWriter::new`][pcapng-writer-new] for semantic validation of the initial section header and typed blocks.
   With `false`, typed decoding and encoding still check representations and individual options.
-- **State validity:** Parsers and readers always validate section and interface blocks, including on raw reads.
+- **State checks:** Section and interface blocks are decoded before state changes.
+  Strict typed reads also validate their semantics; failures poison the reader.
+- **Raw reads:** Check framing and state-changing block decoding, regardless of strict mode.
+  Other block bodies remain undecoded.
 - **Manual decoding:** Call [`RawBlock::try_into_block`][raw-block-try-into-block],
   then [`Block::validate`][block-validate] with the current state for semantic checks.
 - **Parser recovery:** On [`PcapNgParseError::Block`][pcapng-parse-error-block],

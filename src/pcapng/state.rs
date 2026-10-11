@@ -30,13 +30,9 @@ use {
 /// [`PcapNgWriter`], but it's also possible to create a new [`PcapNgState`]
 /// with [`PcapNgState::default`], and then update it by calling
 /// [`PcapNgState::update_from_block`].
-/// Validate state-changing blocks before
-/// applying them.
-///
 /// For raw blocks, call [`PcapNgState::decode_block_if_needed`] first.
-/// When it
-/// returns a block, validate it against the current state before calling
-/// [`PcapNgState::update_from_block`].
+/// Returned blocks can be applied directly with [`PcapNgState::update_from_block`].
+/// Set `strict` to validate their semantics before updating the state.
 ///
 #[derive(Debug, Default)]
 pub struct PcapNgState {
@@ -64,20 +60,28 @@ impl PcapNgState {
         self.section.endianness
     }
 
-    /// Decode the given [`RawBlock`] if it contains state information.
+    /// Decodes raw blocks containing section or interface state.
     ///
     /// Returns [`None`] for blocks that don't affect the state.
     /// Representations and individual options are checked during decoding.
-    /// Other block semantic constraints are not checked here.
+    /// With `strict`, also validates block semantics before returning the block.
+    /// Otherwise, only decoding checks needed to maintain the state are applied.
     /// Validate manually constructed raw framing before calling this method.
-    /// Call [`Block::validate`] before passing the decoded block to [`Self::update_from_block`].
     ///
     /// # Errors
-    /// Correct the state-changing block's encoded content before updating the state.
-    pub fn decode_block_if_needed<'a>(&self, raw_block: &RawBlock<'a>) -> Result<Option<Block<'a>>, StateUpdateError> {
+    /// Correct decoding or validation failures before updating the state.
+    pub fn decode_block_if_needed<'a>(
+        &self,
+        raw_block: &RawBlock<'a>,
+        strict: bool,
+    ) -> Result<Option<Block<'a>>, StateUpdateError> {
         match raw_block.type_ {
             SectionHeaderBlock::TYPE | InterfaceDescriptionBlock::TYPE => {
                 let block = raw_block.try_into_block(self)?;
+                if strict {
+                    block.validate(self)?;
+                }
+
                 Ok(Some(block))
             }
             _ => Ok(None),
@@ -87,8 +91,8 @@ impl PcapNgState {
     /// Updates the state based on the next [`Block`].
     ///
     /// This method does not validate the block.
-    /// Call [`Block::validate`] first
-    /// when the block comes from an untrusted or raw source.
+    /// Use [`Self::decode_block_if_needed`] first for raw blocks.
+    /// Call [`Block::validate`] first when semantic checks are needed for manually constructed typed blocks.
     pub fn update_from_block(&mut self, block: &Block) {
         match block {
             Block::SectionHeader(blk) => {

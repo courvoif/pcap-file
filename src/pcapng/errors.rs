@@ -222,7 +222,7 @@ pub enum PacketConversionError<'a> {
 /// Errors that can occur while updating the pcapng state.
 #[derive(Debug, Error)]
 pub enum StateUpdateError {
-    /// A state-changing block could not be decoded while preparing a state update.
+    /// A state-changing block could not be decoded or validated while preparing a state update.
     #[error("Invalid state-changing block: {0}")]
     InvalidStateBlock(#[from] BlockError),
 }
@@ -246,6 +246,17 @@ pub enum BlockValidationError {
     /// The Section Header Block magic number is invalid.
     #[error("Invalid magic number: {0:#X}")]
     InvalidMagicNumber(u32),
+    /// The Section Header Block version is neither 1.0 nor 1.2.
+    #[error("Invalid section version: {major}.{minor}; expected 1.0 or 1.2")]
+    InvalidSectionVersion {
+        /// Major version from the section header.
+        major: u16,
+        /// Minor version from the section header.
+        minor: u16,
+    },
+    /// The section length is neither unspecified nor a nonnegative multiple of four.
+    #[error("Invalid section length: {0}; expected -1 or a nonnegative multiple of 4")]
+    InvalidSectionLength(i64),
     /// The link type does not fit in its encoded field.
     #[error("Invalid link type: {0:?}")]
     InvalidLinkType(DataLink),

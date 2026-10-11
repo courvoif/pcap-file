@@ -52,17 +52,15 @@ pub struct PcapNgReader<R: Read> {
 
 impl<R: Read> PcapNgReader<R> {
     /// Creates a [`PcapNgReader`] from a reader.
-    /// The input must start with a valid pcapng capture.
+    /// The input must start with a decodable Section Header Block.
     /// Uses a fixed buffer of `8_000_000` bytes; see [`Self::with_capacity`] for larger records.
     ///
-    /// Set `strict` to `true` to validate blocks returned by
-    /// [`Self::next_block`].
-    /// Section Header and Interface Description blocks must be valid in either
-    /// mode.
+    /// Set `strict` to `true` to validate the initial section header and typed blocks.
+    /// With `false`, only decoding checks needed to maintain the state are applied.
     /// Typed decoding checks representations and individual options even when `strict` is false.
     ///
     /// # Errors
-    /// - The capture does not start with a valid Section Header Block.
+    /// - The initial Section Header Block cannot be decoded or fails strict validation.
     /// - The input cannot be read.
     pub fn new(reader: R, strict: bool) -> Result<Self, PcapNgReadError> {
         let mut reader = ReadBuffer::new(reader);
@@ -86,7 +84,7 @@ impl<R: Read> PcapNgReader<R> {
     /// Set `strict` as in [`Self::new`].
     ///
     /// # Errors
-    /// - The capture does not start with a valid Section Header Block.
+    /// - The initial Section Header Block cannot be decoded or fails strict validation.
     /// - The input cannot be read.
     pub fn with_capacity(reader: R, capacity: usize, strict: bool) -> Result<Self, PcapNgReadError> {
         let mut reader = ReadBuffer::with_capacity(reader, capacity);
@@ -109,13 +107,13 @@ impl<R: Read> PcapNgReader<R> {
     /// Use this when you need typed block data.
     ///
     /// The `strict` setting controls validation of blocks.
-    /// Section Header and Interface Description blocks must be valid in either
-    /// mode.
+    /// State-changing blocks are checked before updating the state.
     /// Typed decoding checks representations and individual options even when `strict` is false.
     ///
     /// # Errors
     /// - Includes the block number and its starting byte offset.
     /// - On [`PcapNgReadErrorKind::Block`], the block is skipped.
+    /// - State-changing block failures return [`PcapNgReadErrorKind::StateUpdate`] and poison the reader without changing state.
     /// - Retry a non-fatal I/O error by calling this method again.
     /// - A fatal error poisons the reader.
     ///   Later calls return [`None`].
@@ -132,17 +130,19 @@ impl<R: Read> PcapNgReader<R> {
             Ok(true) => {
                 let res: Result<RawBlock<'_>, PcapNgReadErrorKind> = self
                     .reader
-                    .parse_with(|src| self.parser.next_raw_block(src))
+                    .parse_with(|src| self.parser.parse_raw_block(src, self.parser.strict()))
                     .inspect(|_| self.blocks_read += 1);
+
                 // # SAFETY
                 // The raw block borrows only from the reader's internal buffer.
                 // The returned lifetime is tied to `&'a mut self`, which prevents that buffer from being mutated.
                 let res: Result<RawBlock<'a>, PcapNgReadErrorKind> = unsafe { std::mem::transmute(res) };
-
                 res.and_then(|raw_block| {
                     let block = raw_block.try_into_block(&self.parser.state)?;
 
-                    if self.parser.strict() {
+                    if self.parser.strict()
+                        && !matches!(&block, Block::SectionHeader(_) | Block::InterfaceDescription(_))
+                    {
                         block.validate(&self.parser.state)?;
                     }
 
@@ -170,8 +170,10 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// Use the returned state with [`RawBlock::try_into_block`] to decode a
     /// block, then with [`Block::validate`] to check it semantically.
-    /// Section Header and Interface Description blocks must be valid to read
-    /// later blocks.
+    /// The `strict` setting does not affect this method.
+    /// Checks framing and decodes state-changing blocks without semantic validation.
+    /// Decoding still checks representations and individual options.
+    /// Other block bodies remain undecoded.
     ///
     /// # Errors
     /// - Includes the block number and its starting byte offset.
@@ -193,11 +195,11 @@ impl<R: Read> PcapNgReader<R> {
                     .reader
                     .parse_with(|src| self.parser.next_raw_block(src))
                     .inspect(|_| self.blocks_read += 1);
+
                 // # SAFETY
                 // The raw block borrows only from the reader's internal buffer.
                 // The returned lifetime is tied to `&'a mut self`, which prevents that buffer from being mutated.
                 let res: Result<RawBlock<'a>, PcapNgReadErrorKind> = unsafe { std::mem::transmute(res) };
-
                 res.map(|blk| (blk, &self.parser.state))
             }
             Ok(false) => return None,
@@ -211,6 +213,12 @@ impl<R: Read> PcapNgReader<R> {
         Some(res)
     }
 
+    /// Returns whether a fatal error has poisoned the reader.
+    /// While poisoned, subsequent reads return [`None`].
+    pub fn poisoned(&self) -> bool {
+        self.poisoned
+    }
+
     /// Allows reading again after a fatal error.
     /// This keeps the buffered bytes and section and interface state unchanged.
     ///
@@ -222,9 +230,7 @@ impl<R: Read> PcapNgReader<R> {
         self.poisoned = false;
     }
 
-    /// Returns whether this reader and its packet iterator validate blocks.
-    ///
-    /// Section Header and Interface Description blocks are always validated.
+    /// Returns whether the initial section header and typed blocks are semantically validated.
     pub fn strict(&self) -> bool {
         self.parser.strict()
     }

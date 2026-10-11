@@ -19,7 +19,7 @@ use pcap_file::pcapng::blocks::name_resolution::{NameResolutionBlock, NameResolu
 use pcap_file::pcapng::blocks::opt_common::{CommonOption, PacketHash, UnknownOption};
 use pcap_file::pcapng::blocks::packet::{PacketBlock, PacketOption};
 use pcap_file::pcapng::blocks::section_header::{SectionHeaderBlock, SectionHeaderOption};
-use pcap_file::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
+use pcap_file::pcapng::errors::{BlockValidationError, OptionEntryError, PcapNgReadErrorKind, WriteError};
 use pcap_file::pcapng::{Block, PcapNgBlock, PcapNgReader, PcapNgState, PcapNgWriter};
 use pcap_file::{DataLink, Endianness};
 
@@ -229,8 +229,17 @@ fn assert_duplicate_option(block: Block<'_>, code: u16) {
             Block::InterfaceDescription(_)
         ));
 
-        if strict || matches!(&block, Block::SectionHeader(_) | Block::InterfaceDescription(_)) {
-            assert!(reader.next_block().unwrap().is_err());
+        if strict {
+            let error = reader.next_block().unwrap().unwrap_err();
+            let changes_state = matches!(&block, Block::SectionHeader(_) | Block::InterfaceDescription(_));
+            assert_eq!(error.is_fatal(), changes_state);
+            assert_eq!(reader.poisoned(), changes_state);
+            if changes_state {
+                assert!(matches!(error.kind, PcapNgReadErrorKind::StateUpdate(_)));
+                assert!(reader.next_block().is_none());
+            } else {
+                assert!(matches!(error.kind, PcapNgReadErrorKind::Block(_)));
+            }
             assert_eq!(reader.state().section(), &previous_section);
             assert_eq!(reader.state().interfaces(), previous_interfaces);
         } else {
