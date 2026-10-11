@@ -1,5 +1,7 @@
 //! Simple Packet Block (SPB).
 
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::cmp::min;
 use std::io::Write;
@@ -13,9 +15,12 @@ use super::block_common::{Block, PcapNgBlock};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, WriteError};
 
+/* ----- Simple packets ----- */
+
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
 ///
-/// Its presence is optional.
+/// Uses interface zero in the current section and has no timestamp.
+/// Captured data must have length `min(original_len, snaplen)`, or `original_len` when snaplen is zero.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SimplePacketBlock<'a> {
     /// Actual length of the packet when it was transmitted on the network.
@@ -26,9 +31,11 @@ pub struct SimplePacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
+    /// Numeric type code of this block.
     const TYPE: u32 = 0x00000003;
+    /// Human-readable name of this block.
     const NAME: &'static str = "Simple Packet Block";
-
+    /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
@@ -76,6 +83,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         Ok((slice, packet))
     }
 
+    /// Checks the constraints applicable to this value.
     fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
         if (self.original_len as usize) < self.data.len() {
             return Err(BlockValidationError::InvalidOriginalLen(
@@ -102,6 +110,8 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         Ok(())
     }
 
+    /// Writes this block body using the supplied section state.
+    /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
     fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         _state: &PcapNgState,
@@ -116,13 +126,19 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         Ok(4 + self.data.len() + pad_len)
     }
 
+    /// Returns the matching typed block variant.
     fn into_block(self) -> Block<'a> {
         Block::SimplePacket(self)
     }
 }
 
+/* ----- Tests ----- */
+
+/// Checks this module's capture behavior.
 #[cfg(test)]
 mod tests {
+    /* ----- Imports ----- */
+
     use std::borrow::Cow;
 
     use byteorder_slice::BigEndian;
@@ -134,12 +150,18 @@ mod tests {
     use crate::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
     use crate::pcapng::errors::BlockValidationError;
 
+    /* ----- Test state ----- */
+
+    /// Builds interface state with the requested capture limit.
     fn state_with_snaplen(snaplen: u32) -> PcapNgState {
         let mut state = PcapNgState::default();
         state.update_from_block(&InterfaceDescriptionBlock::new(DataLink::ETHERNET, snaplen).into_block());
         state
     }
 
+    /* ----- Packet validation and encoding ----- */
+
+    /// Checks that Simple Packet decoding requires interface zero.
     #[test]
     fn parse_rejects_simple_packet_without_interface() {
         let data = [0, 0, 0, 4, 0, 1, 2, 3];
@@ -148,6 +170,7 @@ mod tests {
         assert!(matches!(err, BlockValidationError::NoInterface));
     }
 
+    /// Checks Simple Packet capture truncation and padding consumption.
     #[test]
     fn parse_truncates_simple_packet_to_snaplen_and_consumes_padding() {
         let state = state_with_snaplen(2);
@@ -164,6 +187,7 @@ mod tests {
         assert!(rem.is_empty());
     }
 
+    /// Checks that Simple Packet validation requires interface zero.
     #[test]
     fn validate_rejects_simple_packet_without_interface() {
         let packet = SimplePacketBlock {
@@ -175,6 +199,7 @@ mod tests {
         assert!(matches!(err, BlockValidationError::NoInterface));
     }
 
+    /// Checks that an unlimited capture requires the complete Simple Packet payload.
     #[test]
     fn validate_rejects_simple_packet_shorter_than_expected_with_unlimited_snaplen() {
         let state = state_with_snaplen(0);
@@ -190,6 +215,7 @@ mod tests {
         ));
     }
 
+    /// Checks that a Simple Packet truncated to snaplen can be written.
     #[test]
     fn write_accepts_simple_packet_truncated_to_snaplen() {
         let state = state_with_snaplen(2);
@@ -204,6 +230,7 @@ mod tests {
         );
     }
 
+    /// Checks that Simple Packet validation rejects an excessive payload length.
     #[test]
     fn validate_rejects_simple_packet_longer_than_snaplen() {
         let state = state_with_snaplen(2);

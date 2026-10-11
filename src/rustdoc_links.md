@@ -1,0 +1,31 @@
+<!-- Local API targets take precedence when this README is included by rustdoc. -->
+
+[pcap-module]: pcap/index.html
+[pcap-parser]: pcap/struct.PcapParser.html
+[pcap-reader-next-packet]: pcap/struct.PcapReader.html#method.next_packet
+[pcap-reader-next-raw-packet]: pcap/struct.PcapReader.html#method.next_raw_packet
+[pcap-packet-iterator]: pcap/struct.PcapPacketIterator.html
+[pcap-writer]: pcap/struct.PcapWriter.html
+[pcapng-module]: pcapng/index.html
+[pcapng-parser]: pcapng/struct.PcapNgParser.html
+[pcapng-reader-next-block]: pcapng/struct.PcapNgReader.html#method.next_block
+[pcapng-reader-next-raw-block]: pcapng/struct.PcapNgReader.html#method.next_raw_block
+[pcapng-packet-iterator]: pcapng/struct.PcapNgPacketIterator.html
+[pcapng-writer]: pcapng/struct.PcapNgWriter.html
+[custom-block-payload]: pcapng/blocks/custom/trait.CustomBlockPayload.html
+[custom-option-payload]: pcapng/blocks/custom/trait.CustomOptionPayload.html
+[custom-payload-copiable]: pcapng/blocks/custom/trait.CustomPayloadCopiable.html
+[custom-payload-non-copiable]: pcapng/blocks/custom/trait.CustomPayloadNonCopiable.html
+[pcap-reader-packets]: pcap/struct.PcapReader.html#method.packets
+[pcap-reader-with-capacity]: pcap/struct.PcapReader.html#method.with_capacity
+[pcap-read-error-is-fatal]: pcap/struct.PcapReadError.html#method.is_fatal
+[pcapng-parser-new]: pcapng/struct.PcapNgParser.html#method.new
+[pcapng-parser-next-raw-block]: pcapng/struct.PcapNgParser.html#method.next_raw_block
+[pcapng-reader-new]: pcapng/struct.PcapNgReader.html#method.new
+[pcapng-reader-packets]: pcapng/struct.PcapNgReader.html#method.packets
+[pcapng-reader-with-capacity]: pcapng/struct.PcapNgReader.html#method.with_capacity
+[pcapng-read-error-is-fatal]: pcapng/errors/struct.PcapNgReadError.html#method.is_fatal
+[raw-block-try-into-block]: pcapng/blocks/block_common/struct.RawBlock.html#method.try_into_block
+[block-validate]: pcapng/blocks/block_common/enum.Block.html#method.validate
+[pcapng-writer-new]: pcapng/struct.PcapNgWriter.html#method.new
+[pcapng-parse-error-block]: pcapng/errors/enum.PcapNgParseError.html#variant.Block

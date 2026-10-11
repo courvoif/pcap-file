@@ -1,6 +1,6 @@
 #![allow(clippy::unreadable_literal)]
 #![warn(missing_docs)]
-#![doc = include_str!("../README.md")]
+#![doc = concat!(include_str!("rustdoc_links.md"), include_str!("../README.md"))]
 
 /* ----- Public exports ----- */
 

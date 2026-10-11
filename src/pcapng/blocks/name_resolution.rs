@@ -33,9 +33,11 @@ pub struct NameResolutionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
+    /// Numeric type code of this block.
     const TYPE: u32 = 0x00000004;
+    /// Human-readable name of this block.
     const NAME: &'static str = "Name Resolution Block";
-
+    /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
@@ -59,6 +61,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         Ok((rem, block))
     }
 
+    /// Checks the constraints applicable to this value.
     fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
         for record in &self.records {
             record.validate()?;
@@ -72,6 +75,8 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
     }
 
+    /// Writes this block body using the supplied section state.
+    /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
     fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -93,6 +98,7 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
         Ok(len)
     }
 
+    /// Returns the matching typed block variant.
     fn into_block(self) -> Block<'a> {
         Block::NameResolution(self)
     }
@@ -101,9 +107,9 @@ impl<'a> PcapNgBlock<'a> for NameResolutionBlock<'a> {
 /// Resolution block record types
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub enum Record<'a> {
-    /// Ipv4 records
+    /// IPv4 address and names carried by a Name Resolution record.
     Ipv4(Ipv4Record<'a>),
-    /// Ipv6 records
+    /// IPv6 address and names carried by a Name Resolution record.
     Ipv6(Ipv6Record<'a>),
     /// Unknown records
     Unknown(UnknownRecord<'a>),
@@ -111,6 +117,10 @@ pub enum Record<'a> {
 
 impl<'a> Record<'a> {
     /// Validates names and the encoded record size.
+    ///
+    /// # Errors
+    /// Use at least one nonempty name without embedded NUL bytes for known address records.
+    /// Keep each encoded value within `u16::MAX` bytes and unknown record codes above `2`.
     pub fn validate(&self) -> Result<(), BlockValidationError> {
         match self {
             Self::Ipv4(record) => record.validate(),
@@ -129,8 +139,11 @@ impl<'a> Record<'a> {
         }
     }
 
-    /// Parses a record, returning `None` for the end marker.
+    /// Returns a framed record and the remaining input, or `None` for the end marker.
     /// Semantic validation is left to the caller.
+    ///
+    /// # Errors
+    /// Supply complete record bytes and valid UTF-8 names for known address records.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Option<Self>), BlockValidationError> {
         if slice.len() < 4 {
             return Err(BlockValidationError::ContentTooSmall {
@@ -184,7 +197,12 @@ impl<'a> Record<'a> {
         Ok((&slice[len..], Some(record)))
     }
 
-    /// Write a [`Record`] to a writer
+    /// Writes a framed record, including its type, length, and alignment padding.
+    /// Call [`Self::validate`] first to check names and unknown type codes.
+    ///
+    /// # Errors
+    /// An I/O failure can leave a partial record in the output.
+    /// Use [`Self::validate`] to reject invalid values before writing.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, WriteError<BlockValidationError>> {
         match self {
             Record::Ipv4(a) => {
@@ -248,17 +266,21 @@ impl<'a> Record<'a> {
     }
 }
 
-/// Ipv4 records
+/// IPv4 address and names carried by a Name Resolution record.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct Ipv4Record<'a> {
     /// IPv4 Addr
     pub ip_addr: Ipv4Addr,
-    /// Fqdn
+    /// Nonempty UTF-8 names for this address, without embedded NUL bytes.
     pub names: Vec<Cow<'a, str>>,
 }
 
 impl<'a> Ipv4Record<'a> {
     /// Validates names and their total encoded size.
+    ///
+    /// # Errors
+    /// Use at least one nonempty name without embedded NUL bytes.
+    /// Keep the address and NUL-terminated names within `u16::MAX` encoded bytes.
     pub fn validate(&self) -> Result<(), BlockValidationError> {
         if self.names.is_empty() {
             return Err(BlockValidationError::RecordNamesEmpty);
@@ -282,7 +304,11 @@ impl<'a> Ipv4Record<'a> {
         Ok(())
     }
 
-    /// Parse a [`Ipv4Record`] from a slice
+    /// Decodes an IPv4 address and its names from an unframed record value.
+    /// Call [`Self::validate`] to check the decoded names.
+    ///
+    /// # Errors
+    /// Supply complete record bytes and valid UTF-8 names for known address records.
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockValidationError> {
         if slice.len() < 4 {
             return Err(BlockValidationError::RecordWrongMinSize {
@@ -309,7 +335,12 @@ impl<'a> Ipv4Record<'a> {
         Ok(record)
     }
 
-    /// Write an [`Ipv4Record`] to a writer
+    /// Writes the address and NUL-terminated names without record framing or padding.
+    /// Call [`Self::validate`] before writing manually constructed names.
+    ///
+    /// # Errors
+    /// An I/O failure can leave a partial record in the output.
+    /// Use [`Self::validate`] to reject invalid values before writing.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 4;
 
@@ -327,17 +358,21 @@ impl<'a> Ipv4Record<'a> {
     }
 }
 
-/// Ipv6 records
+/// IPv6 address and names carried by a Name Resolution record.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct Ipv6Record<'a> {
     /// Ipv6 addr
     pub ip_addr: Ipv6Addr,
-    /// Fqdn
+    /// Nonempty UTF-8 names for this address, without embedded NUL bytes.
     pub names: Vec<Cow<'a, str>>,
 }
 
 impl<'a> Ipv6Record<'a> {
     /// Validates names and their total encoded size.
+    ///
+    /// # Errors
+    /// Use at least one nonempty name without embedded NUL bytes.
+    /// Keep the address and NUL-terminated names within `u16::MAX` encoded bytes.
     pub fn validate(&self) -> Result<(), BlockValidationError> {
         if self.names.is_empty() {
             return Err(BlockValidationError::RecordNamesEmpty);
@@ -361,7 +396,11 @@ impl<'a> Ipv6Record<'a> {
         Ok(())
     }
 
-    /// Parse a [`Ipv6Record`] from a slice
+    /// Decodes an IPv6 address and its names from an unframed record value.
+    /// Call [`Self::validate`] to check the decoded names.
+    ///
+    /// # Errors
+    /// Supply complete record bytes and valid UTF-8 names for known address records.
     pub fn from_slice(mut slice: &'a [u8]) -> Result<Self, BlockValidationError> {
         if slice.len() < 16 {
             return Err(BlockValidationError::RecordWrongMinSize {
@@ -388,7 +427,12 @@ impl<'a> Ipv6Record<'a> {
         Ok(record)
     }
 
-    /// Write an [`Ipv6Record`] to a writer
+    /// Writes the address and NUL-terminated names without record framing or padding.
+    /// Call [`Self::validate`] before writing manually constructed names.
+    ///
+    /// # Errors
+    /// An I/O failure can leave a partial record in the output.
+    /// Use [`Self::validate`] to reject invalid values before writing.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
         let mut len = 16;
 
@@ -443,12 +487,16 @@ pub enum NameResolutionOption<'a> {
 }
 
 impl NameResolutionOption<'_> {
+    /// Encoded option code for `NS_DNS_NAME`.
     const NS_DNS_NAME: u16 = 2;
+    /// Encoded option code for `NS_DNS_IPV4_ADDR`.
     const NS_DNS_IPV4_ADDR: u16 = 3;
+    /// Encoded option code for `NS_DNS_IPV6_ADDR`.
     const NS_DNS_IPV6_ADDR: u16 = 4;
 }
 
 impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
+    /// Decodes an option value for the supplied option code.
     fn from_content<B: ByteOrder>(
         _state: &PcapNgState,
         _interface_id: Option<u32>,
@@ -473,6 +521,7 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         Ok(opt)
     }
 
+    /// Writes this value using the selected byte order.
     fn write_to<B: ByteOrder, W: Write>(
         &self,
         _state: &PcapNgState,
@@ -491,10 +540,12 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         }
     }
 
+    /// Checks the constraints applicable to this value.
     fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
         Ok(())
     }
 
+    /// Returns the encoded option code.
     fn code(&self) -> u16 {
         match self {
             Self::NsDnsName(_) => Self::NS_DNS_NAME,
@@ -504,6 +555,7 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
         }
     }
 
+    /// Returns the option name for its code.
     fn name(code: u16) -> &'static str {
         match code {
             Self::NS_DNS_NAME => "NsDnsName",
@@ -514,8 +566,13 @@ impl<'a> PcapNgOption<'a> for NameResolutionOption<'a> {
     }
 }
 
+/* ----- Tests ----- */
+
+/// Checks this module's capture behavior.
 #[cfg(test)]
 mod tests {
+    /* ----- Imports ----- */
+
     use std::borrow::Cow;
 
     use byteorder_slice::BigEndian;
@@ -523,7 +580,9 @@ mod tests {
     use super::{NameResolutionBlock, NameResolutionOption, PcapNgBlock};
     use crate::pcapng::PcapNgState;
     use crate::pcapng::errors::{BlockValidationError, OptionEntryError, OptionError, WriteError};
+    /* ----- Option validation ----- */
 
+    /// Checks that oversized Name Resolution option values return errors.
     #[test]
     fn write_rejects_oversized_name_resolution_option() {
         let block = NameResolutionBlock {

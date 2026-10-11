@@ -1,3 +1,7 @@
+//! Timestamp conversion checks for positive and negative pcapng interface offsets.
+
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::time::Duration;
 
@@ -12,6 +16,9 @@ use pcap_file::pcapng::blocks::interface_description::{
 use pcap_file::pcapng::errors::{BlockValidationError, PcapNgReadErrorKind, PcapNgWriteError, TimestampError};
 use pcap_file::pcapng::{Block, PcapNgReader, PcapNgWriter};
 
+/* ----- Timestamp offset checks ----- */
+
+/// Checks that a timestamp before a positive interface offset cannot be encoded.
 #[test]
 fn writer_rejects_timestamp_before_interface_offset() {
     let interface = InterfaceDescriptionBlock {
@@ -41,6 +48,7 @@ fn writer_rejects_timestamp_before_interface_offset() {
     ));
 }
 
+/// Checks that a negative interface offset preserves a timestamp at the Unix epoch.
 #[test]
 fn negative_offset_roundtrip_accepts_timestamp_at_unix_epoch() {
     let interface = InterfaceDescriptionBlock {
@@ -74,6 +82,7 @@ fn negative_offset_roundtrip_accepts_timestamp_at_unix_epoch() {
     assert_eq!(packet.timestamp, Duration::ZERO);
 }
 
+/// Checks that raw timestamps representing dates before the Unix epoch cannot be decoded.
 #[test]
 fn reader_rejects_timestamp_before_unix_epoch() {
     let interface = InterfaceDescriptionBlock {

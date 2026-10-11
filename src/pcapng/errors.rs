@@ -41,6 +41,7 @@ impl PcapNgParseError {
 }
 
 impl From<RawBlockParseError> for PcapNgParseError {
+    /// Converts raw framing failures into parser errors, preserving incomplete-input details.
     fn from(value: RawBlockParseError) -> Self {
         match value {
             RawBlockParseError::IncompleteBuffer(needed, actual) => Self::IncompleteBuffer(needed, actual),
@@ -115,6 +116,7 @@ impl PcapNgReadErrorKind {
 }
 
 impl From<PcapNgParseError> for PcapNgReadErrorKind {
+    /// Converts terminal parser failures into read errors, treating incomplete input as unexpected EOF.
     fn from(value: PcapNgParseError) -> Self {
         match value {
             PcapNgParseError::IncompleteBuffer(_, _) => {
@@ -458,7 +460,7 @@ pub enum OptionEntryError {
 /// Errors that can occur while writing a typed pcapng block.
 #[derive(Debug, Error)]
 pub enum WriteError<E: std::error::Error> {
-    /// An I/O error occurred while writing the option list terminator.
+    /// An I/O error occurred while writing block or option bytes.
     #[error("I/O error while writing the option list")]
     Io(#[from] std::io::Error),
     /// A typed block encoding error occurred.
@@ -477,6 +479,7 @@ impl<E: std::error::Error> WriteError<E> {
 }
 
 impl From<WriteError<BlockError>> for PcapNgWriteError {
+    /// Converts typed block write failures into the writer error type.
     fn from(error: WriteError<BlockError>) -> Self {
         match error {
             WriteError::Io(error) => Self::Io(error),

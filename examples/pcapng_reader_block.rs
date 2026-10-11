@@ -13,12 +13,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open("tests/pcapng/little_endian/basic/test001.pcapng")?;
     let mut reader = PcapNgReader::new(file, true)?;
 
+    // Each returned record borrows the reader buffer until the next read.
     while let Some(result) = reader.next_block() {
         match result {
-            Ok((block, _state)) => println!(
-                "block type: {:#010x}",
-                block.type_code()
-            ),
+            Ok((block, _state)) => println!("block type: {:#010x}", block.type_code()),
             Err(error) if !error.is_fatal() => eprintln!("recoverable read error: {error}"),
             Err(error) => return Err(error.into()),
         }

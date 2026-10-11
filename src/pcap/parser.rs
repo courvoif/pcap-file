@@ -1,3 +1,7 @@
+//! Slice-based classic pcap parsing.
+
+/* ----- Imports ----- */
+
 use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::RawPcapPacket;
@@ -6,41 +10,44 @@ use crate::pcap::PcapHeader;
 use crate::pcap::PcapPacket;
 use crate::pcap::PcapParseError;
 
+/* ----- Parser ----- */
+
 /// Parses a Pcap from a slice of bytes.
 ///
 /// You can match on [`PcapParseError::IncompleteBuffer`](crate::pcap::PcapParseError) to know if the parser needs more data.
 ///
 /// # Example
-/// ```no_run
+/// ```rust,no_run
 /// use pcap_file::pcap::{PcapParseError, PcapParser};
 ///
-/// let pcap = std::fs::read("test.pcap").expect("Error reading file");
-/// let mut src = &pcap[..];
 ///
-/// // Creates a new parser and parse the pcap header
-/// let (rem, pcap_parser) = PcapParser::new(&pcap[..]).unwrap();
-/// src = rem;
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let capture = std::fs::read("tests/pcap/little_endian.pcap")?;
+///     // The parser reads the global header and returns the remaining packet bytes.
+///     let (mut remaining, parser) = PcapParser::new(&capture)?;
 ///
-/// while !src.is_empty() {
-///     match pcap_parser.next_packet(src) {
-///         Ok((rem, packet)) => {
-///             // Do something
-///
-///             // Don't forget to update src
-///             src = rem;
-///
-///         },
-///         Err(PcapParseError::IncompleteBuffer(_,_)) => {
-///             // Load more data into src if parsing a stream.
-///         },
-///         Err(_) => {
-///             // Parsing error, unrecoverable
-///         },
+///     while !remaining.is_empty() {
+///         match parser.next_packet(remaining) {
+///             Ok((rest, packet)) => {
+///                 println!("{} bytes", packet.len());
+///                 remaining = rest;
+///             }
+///             Err(PcapParseError::Validation(error)) => {
+///                 eprintln!("skipping invalid packet: {error}");
+///                 // The raw parser can advance past a packet that failed validation.
+///                 let (rest, _) = parser.next_raw_packet(remaining)?;
+///                 remaining = rest;
+///             }
+///             Err(error) => return Err(error.into()),
+///         }
 ///     }
+///
+///     Ok(())
 /// }
 /// ```
 #[derive(Debug)]
 pub struct PcapParser {
+    /// Global capture header used to interpret packet records.
     header: PcapHeader,
 }
 

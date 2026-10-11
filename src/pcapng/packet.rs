@@ -7,8 +7,8 @@ use std::time::Duration;
 
 use derive_into_owned::IntoOwned;
 
-use super::blocks::Block;
 use super::PcapNgState;
+use super::blocks::Block;
 use crate::DataLink;
 use crate::pcapng::errors::PacketConversionError;
 
@@ -22,7 +22,7 @@ use crate::pcapng::errors::PacketConversionError;
 pub struct PcapNgPacket<'a> {
     /// Link-layer type resolved from the packet's interface in the current section.
     pub datalink: DataLink,
-    /// Packet timestamp, or [`None`] for a Simple Packet Block.
+    /// Duration since the Unix epoch, or [`None`] for a Simple Packet Block.
     pub timestamp: Option<Duration>,
     /// Original packet length on the wire, before capture truncation.
     pub original_len: u32,
@@ -76,6 +76,7 @@ impl<'a> PcapNgPacket<'a> {
 
 /* ----- Tests ----- */
 
+/// Checks this module's capture behavior.
 #[cfg(test)]
 mod tests {
     /* ----- Imports ----- */
@@ -89,6 +90,7 @@ mod tests {
 
     /* ----- Test state ----- */
 
+    /// Builds interface state for packet conversion checks.
     fn state() -> PcapNgState {
         let mut state = PcapNgState::default();
         for datalink in [DataLink::ETHERNET, DataLink::RAW, DataLink::USER0] {
@@ -101,6 +103,7 @@ mod tests {
 
     /* ----- Packet conversions ----- */
 
+    /// Checks packet views for all three supported packet block types.
     #[test]
     fn packet_conversions_cover_all_packet_block_types() {
         let blocks = [
@@ -151,6 +154,7 @@ mod tests {
         }
     }
 
+    /// Checks that failed packet conversion returns the original non-packet block.
     #[test]
     fn non_packet_conversion_preserves_original_block() {
         let block = Block::SectionHeader(SectionHeaderBlock::default());
@@ -162,6 +166,7 @@ mod tests {
         }
     }
 
+    /// Checks that packet conversion rejects missing interfaces.
     #[test]
     fn conversion_rejects_missing_interfaces() {
         let blocks = [
@@ -196,6 +201,7 @@ mod tests {
         ));
     }
 
+    /// Checks that packet conversion retains an owned data allocation.
     #[test]
     fn conversion_preserves_owned_data_without_copying() {
         let data = vec![1, 2];
@@ -216,6 +222,7 @@ mod tests {
         }
     }
 
+    /// Checks that owned packets outlive their borrowed input.
     #[test]
     fn into_owned_detaches_borrowed_data() {
         let packet = {
@@ -235,6 +242,7 @@ mod tests {
         assert!(matches!(packet.data, Cow::Owned(_)));
     }
 
+    /// Checks the captured data of an empty packet.
     #[test]
     fn empty_packet_has_no_captured_data() {
         let packet = PcapNgPacket {

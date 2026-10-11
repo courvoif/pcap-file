@@ -19,15 +19,21 @@ use crate::read_buffer::ReadBuffer;
 ///
 /// use pcap_file::pcap::PcapReader;
 ///
-/// let file_in = File::open("test.pcap").expect("Error opening file");
-/// let mut pcap_reader = PcapReader::new(file_in).unwrap();
 ///
-/// // Read test.pcap
-/// while let Some(pkt) = pcap_reader.next_packet() {
-///     //Check if there is no error
-///     let pkt = pkt.unwrap();
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let file = File::open("tests/pcap/little_endian.pcap")?;
+///     let mut reader = PcapReader::new(file)?;
 ///
-///     //Do something
+///     // Each returned record borrows the reader buffer until the next read.
+///     while let Some(result) = reader.next_packet() {
+///         match result {
+///             Ok(packet) => println!("{} bytes", packet.len()),
+///             Err(error) if !error.is_fatal() => eprintln!("recoverable read error: {error}"),
+///             Err(error) => return Err(error.into()),
+///         }
+///     }
+///
+///     Ok(())
 /// }
 /// ```
 #[derive(Debug)]
@@ -45,6 +51,7 @@ pub struct PcapReader<R: Read> {
 impl<R: Read> PcapReader<R> {
     /// Creates a [`PcapReader`] from a reader.
     /// The reader must start with a valid pcap capture.
+    /// Uses a fixed buffer of `8_000_000` bytes; see [`Self::with_capacity`] for larger records.
     ///
     /// # Errors
     /// - The data stream is not in a valid pcap file format.
@@ -65,7 +72,9 @@ impl<R: Read> PcapReader<R> {
 
     /// Creates a [`PcapReader`] with a custom capacity.
     ///
-    /// Set `capacity` large enough for the largest packet you expect to read.
+    /// The buffer does not grow.
+    /// A record exceeding its capacity produces a fatal I/O `UnexpectedEof` error.
+    /// Allow at least 24 bytes for the global header and 16 bytes plus the payload for each packet.
     ///
     /// # Errors
     /// - The data stream is not in a valid pcap file format.
@@ -93,7 +102,8 @@ impl<R: Read> PcapReader<R> {
     /// - Includes the packet number and its starting byte offset
     /// - On [`PcapReadErrorKind::Validation`], the packet is skipped.
     /// - Retry a non-fatal I/O error by calling this method again.
-    /// - A fatal error is returned once. Later calls return [`None`].
+    /// - A fatal error is returned once.
+    ///   Later calls return [`None`].
     #[must_use = "the result contains either the next packet or a read error"]
     pub fn next_packet<'a>(&'a mut self) -> Option<Result<PcapPacket<'a>, PcapReadError>> {
         if self.poisoned {
@@ -138,7 +148,8 @@ impl<R: Read> PcapReader<R> {
     /// # Errors
     /// - Errors include the packet number and its starting byte offset.
     /// - Retry a non-fatal I/O error by calling this method again.
-    /// - A fatal error is returned once. Later calls return [`None`].
+    /// - A fatal error is returned once.
+    ///   Later calls return [`None`].
     #[must_use = "the result contains either the next raw packet or a read error"]
     pub fn next_raw_packet<'a>(&'a mut self) -> Option<Result<RawPcapPacket<'a>, PcapReadError>> {
         if self.poisoned {
@@ -182,23 +193,28 @@ impl<R: Read> PcapReader<R> {
 
     /// Consumes the reader and returns an iterator over owned packets.
     ///
-    /// Non-fatal errors are yielded without stopping the iterator. A fatal
+    /// Non-fatal errors are yielded without stopping the iterator.
+    /// A fatal
     /// error is yielded once, then iteration ends.
     pub fn packets(self) -> PcapPacketIterator<R> {
         PcapPacketIterator { reader: self }
     }
 
     /// Gets a reference to the wrapped reader.
+    /// Its position may be ahead of [`Self::bytes_parsed`] because of buffered input.
     pub fn get_ref(&self) -> &R {
         self.reader.get_ref()
     }
 
-    /// Consumes the [`PcapReader`], returning the wrapped reader.
+    /// Consumes the capture reader and returns the wrapped reader.
+    /// Unread buffered bytes are discarded.
+    /// The wrapped reader may be positioned beyond [`Self::bytes_parsed`].
     pub fn into_inner(self) -> R {
         self.reader.into_inner()
     }
 
-    /// Returns the number of bytes parsed so far.
+    /// Returns the consumed byte count, including the initial header and skipped records.
+    /// This can be smaller than the bytes read from the wrapped reader.
     pub fn bytes_parsed(&self) -> u64 {
         self.reader.bytes_used
     }
@@ -211,7 +227,8 @@ impl<R: Read> PcapReader<R> {
 /// # Errors
 /// - On [`PcapReadErrorKind::Validation`], the error is returned and the packet is skipped.
 /// - Retry a non-fatal I/O error by polling the iterator again.
-/// - A fatal error is yielded once. Later polls return [`None`].
+/// - A fatal error is yielded once.
+///   Later polls return [`None`].
 ///
 /// # Example
 ///
@@ -220,17 +237,26 @@ impl<R: Read> PcapReader<R> {
 ///
 /// use pcap_file::pcap::PcapReader;
 ///
-/// let file_in = File::open("test.pcap").expect("Error opening file");
-/// let pcap_reader = PcapReader::new(file_in).unwrap();
 ///
-/// for pkt in pcap_reader.packets() {
-///     let pkt = pkt.unwrap();
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let file = File::open("tests/pcap/little_endian.pcap")?;
+///     let reader = PcapReader::new(file)?;
 ///
-///     //Do something
+///     // Iterator packets own their data and can be retained after the next poll.
+///     for result in reader.packets() {
+///         match result {
+///             Ok(packet) => println!("{} bytes", packet.len()),
+///             Err(error) if !error.is_fatal() => eprintln!("recoverable read error: {error}"),
+///             Err(error) => return Err(error.into()),
+///         }
+///     }
+///
+///     Ok(())
 /// }
 /// ```
 #[derive(Debug)]
 pub struct PcapPacketIterator<R: Read> {
+    /// Capture reader supplying owned iterator packets.
     reader: PcapReader<R>,
 }
 
@@ -247,8 +273,9 @@ impl<R: Read> PcapPacketIterator<R> {
 }
 
 impl<R: Read> Iterator for PcapPacketIterator<R> {
+    /// Owned packet or positioned read error yielded by this iterator.
     type Item = Result<PcapPacket<'static>, PcapReadError>;
-
+    /// Returns the next owned packet or read error.
     fn next(&mut self) -> Option<Self::Item> {
         self.reader
             .next_packet()

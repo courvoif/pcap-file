@@ -21,15 +21,21 @@ use crate::read_buffer::ReadBuffer;
 ///
 /// use pcap_file::pcapng::PcapNgReader;
 ///
-/// let file_in = File::open("test.pcapng").expect("Error opening file");
-/// let mut pcapng_reader = PcapNgReader::new(file_in, true).unwrap();
 ///
-/// // Read test.pcapng
-/// while let Some(block) = pcapng_reader.next_block() {
-///     //Check if there is no error
-///     let (block, state) = block.unwrap();
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let file = File::open("tests/pcapng/little_endian/basic/test001.pcapng")?;
+///     let mut reader = PcapNgReader::new(file, true)?;
 ///
-///     //Do something
+///     // Each returned record borrows the reader buffer until the next read.
+///     while let Some(result) = reader.next_block() {
+///         match result {
+///             Ok((block, _state)) => println!("block type: {:#010x}", block.type_code()),
+///             Err(error) if !error.is_fatal() => eprintln!("recoverable read error: {error}"),
+///             Err(error) => return Err(error.into()),
+///         }
+///     }
+///
+///     Ok(())
 /// }
 /// ```
 #[derive(Debug)]
@@ -47,11 +53,13 @@ pub struct PcapNgReader<R: Read> {
 impl<R: Read> PcapNgReader<R> {
     /// Creates a [`PcapNgReader`] from a reader.
     /// The input must start with a valid pcapng capture.
+    /// Uses a fixed buffer of `8_000_000` bytes; see [`Self::with_capacity`] for larger records.
     ///
     /// Set `strict` to `true` to validate blocks returned by
     /// [`Self::next_block`].
     /// Section Header and Interface Description blocks must be valid in either
     /// mode.
+    /// Typed decoding checks representations and individual options even when `strict` is false.
     ///
     /// # Errors
     /// - The capture does not start with a valid Section Header Block.
@@ -71,7 +79,9 @@ impl<R: Read> PcapNgReader<R> {
 
     /// Creates a [`PcapNgReader`] with a custom capacity.
     ///
-    /// Set `capacity` large enough for the largest block you expect to read.
+    /// The buffer does not grow.
+    /// A record exceeding its capacity produces a fatal I/O `UnexpectedEof` error.
+    /// Include the full framing of every block, including the initial Section Header Block.
     ///
     /// Set `strict` as in [`Self::new`].
     ///
@@ -101,12 +111,14 @@ impl<R: Read> PcapNgReader<R> {
     /// The `strict` setting controls validation of blocks.
     /// Section Header and Interface Description blocks must be valid in either
     /// mode.
+    /// Typed decoding checks representations and individual options even when `strict` is false.
     ///
     /// # Errors
     /// - Includes the block number and its starting byte offset.
     /// - On [`PcapNgReadErrorKind::Block`], the block is skipped.
     /// - Retry a non-fatal I/O error by calling this method again.
-    /// - A fatal error poisons the reader. Later calls return [`None`].
+    /// - A fatal error poisons the reader.
+    ///   Later calls return [`None`].
     #[must_use = "the result contains either the next block or a read error"]
     pub fn next_block<'a>(&'a mut self) -> Option<Result<(Block<'a>, &'a PcapNgState), PcapNgReadError>> {
         if self.poisoned {
@@ -164,7 +176,8 @@ impl<R: Read> PcapNgReader<R> {
     /// # Errors
     /// - Includes the block number and its starting byte offset.
     /// - Retry a non-fatal I/O error by calling this method again.
-    /// - A fatal error poisons the reader. Later calls return [`None`].
+    /// - A fatal error poisons the reader.
+    ///   Later calls return [`None`].
     #[must_use = "the result contains either the next raw block or a read error"]
     pub fn next_raw_block<'a>(&'a mut self) -> Option<Result<(RawBlock<'a>, &'a PcapNgState), PcapNgReadError>> {
         if self.poisoned {
@@ -223,24 +236,29 @@ impl<R: Read> PcapNgReader<R> {
 
     /// Consumes the reader and returns an iterator over owned packets.
     ///
-    /// Non-packet blocks are skipped. Non-fatal errors are yielded without
+    /// Non-packet blocks are skipped.
+    /// Non-fatal errors are yielded without
     /// stopping the iterator; polling it again continues reading.
     /// A fatal error is yielded once, then iteration ends.
     pub fn packets(self) -> PcapNgPacketIterator<R> {
         PcapNgPacketIterator { reader: self }
     }
 
-    /// Consumes the [`Self`], returning the wrapped reader.
+    /// Consumes the capture reader and returns the wrapped reader.
+    /// Unread buffered bytes are discarded.
+    /// The wrapped reader may be positioned beyond [`Self::bytes_parsed`].
     pub fn into_inner(self) -> R {
         self.reader.into_inner()
     }
 
     /// Gets a reference to the wrapped reader.
+    /// Its position may be ahead of [`Self::bytes_parsed`] because of buffered input.
     pub fn get_ref(&self) -> &R {
         self.reader.get_ref()
     }
 
-    /// Returns the number of bytes parsed so far.
+    /// Returns the consumed byte count, including the initial header and skipped records.
+    /// This can be smaller than the bytes read from the wrapped reader.
     pub fn bytes_parsed(&self) -> u64 {
         self.reader.bytes_used
     }
@@ -255,7 +273,8 @@ impl<R: Read> PcapNgReader<R> {
 /// # Errors
 /// - On [`PcapNgReadErrorKind::Block`], the error is returned and the block is skipped.
 /// - Retry a non-fatal I/O error by polling the iterator again.
-/// - A fatal error is yielded once. Later polls return [`None`].
+/// - A fatal error is yielded once.
+///   Later polls return [`None`].
 ///
 /// # Example
 ///
@@ -264,17 +283,26 @@ impl<R: Read> PcapNgReader<R> {
 ///
 /// use pcap_file::pcapng::PcapNgReader;
 ///
-/// let file_in = File::open("test.pcapng").expect("Error opening file");
-/// let pcapng_reader = PcapNgReader::new(file_in, true).unwrap();
 ///
-/// for packet in pcapng_reader.packets() {
-///     let packet = packet.unwrap();
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let file = File::open("tests/pcapng/little_endian/basic/test001.pcapng")?;
+///     let reader = PcapNgReader::new(file, true)?;
 ///
-///     //Do something
+///     // Iterator packets own their data and can be retained after the next poll.
+///     for result in reader.packets() {
+///         match result {
+///             Ok(packet) => println!("{} bytes", packet.data.len()),
+///             Err(error) if !error.is_fatal() => eprintln!("recoverable read error: {error}"),
+///             Err(error) => return Err(error.into()),
+///         }
+///     }
+///
+///     Ok(())
 /// }
 /// ```
 #[derive(Debug)]
 pub struct PcapNgPacketIterator<R: Read> {
+    /// Capture reader supplying owned iterator packets.
     reader: PcapNgReader<R>,
 }
 
@@ -291,8 +319,9 @@ impl<R: Read> PcapNgPacketIterator<R> {
 }
 
 impl<R: Read> Iterator for PcapNgPacketIterator<R> {
+    /// Owned packet or positioned read error yielded by this iterator.
     type Item = Result<PcapNgPacket<'static>, PcapNgReadError>;
-
+    /// Returns the next owned packet or read error.
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             let block_number = self.reader.blocks_read;

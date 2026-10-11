@@ -17,8 +17,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     while let Some(result) = reader.next_raw_packet() {
         match result {
             Ok(raw_packet) => {
+                // Interpret fractional ticks using the global header timestamp resolution.
                 println!(
-                    "timestamp: {}.{}, captured: {} bytes, original: {} bytes",
+                    "seconds: {}, fractional ticks: {}, captured: {} bytes, original: {} bytes",
                     raw_packet.ts_sec, raw_packet.ts_frac, raw_packet.incl_len, raw_packet.orig_len
                 );
 

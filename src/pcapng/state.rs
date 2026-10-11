@@ -1,3 +1,7 @@
+//! Section metadata, interfaces, and timestamp conversion for pcapng.
+
+/* ----- Imports ----- */
+
 use std::time::Duration;
 
 use super::blocks::PcapNgBlock;
@@ -13,6 +17,8 @@ use {
     crate::pcapng::{PcapNgReader, PcapNgWriter},
 };
 
+/* ----- Capture state ----- */
+
 /// State that must be maintained whilst reading or writing a PcapNg stream.
 ///
 /// This state is necessary because the encoding of blocks depends on
@@ -23,10 +29,12 @@ use {
 /// Normally this state is maintained internally by a [`PcapNgReader`] or
 /// [`PcapNgWriter`], but it's also possible to create a new [`PcapNgState`]
 /// with [`PcapNgState::default`], and then update it by calling
-/// [`PcapNgState::update_from_block`]. Validate state-changing blocks before
+/// [`PcapNgState::update_from_block`].
+/// Validate state-changing blocks before
 /// applying them.
 ///
-/// For raw blocks, call [`PcapNgState::decode_block_if_needed`] first. When it
+/// For raw blocks, call [`PcapNgState::decode_block_if_needed`] first.
+/// When it
 /// returns a block, validate it against the current state before calling
 /// [`PcapNgState::update_from_block`].
 ///
@@ -46,7 +54,7 @@ impl PcapNgState {
         &self.section
     }
 
-    /// Returns all the current [`InterfaceDescriptionBlock`].
+    /// Returns the interfaces in the current section, indexed by interface ID.
     pub fn interfaces(&self) -> &[InterfaceDescriptionBlock<'static>] {
         &self.interfaces[..]
     }
@@ -59,8 +67,13 @@ impl PcapNgState {
     /// Decode the given [`RawBlock`] if it contains state information.
     ///
     /// Returns [`None`] for blocks that don't affect the state.
-    /// The returned block is decoded but not semantically validated.
-    /// Call [`Block::validate`] before passing it to [`Self::update_from_block`].
+    /// Representations and individual options are checked during decoding.
+    /// Other block semantic constraints are not checked here.
+    /// Validate manually constructed raw framing before calling this method.
+    /// Call [`Block::validate`] before passing the decoded block to [`Self::update_from_block`].
+    ///
+    /// # Errors
+    /// Correct the state-changing block's encoded content before updating the state.
     pub fn decode_block_if_needed<'a>(&self, raw_block: &RawBlock<'a>) -> Result<Option<Block<'a>>, StateUpdateError> {
         match raw_block.type_ {
             SectionHeaderBlock::TYPE | InterfaceDescriptionBlock::TYPE => {
@@ -73,7 +86,8 @@ impl PcapNgState {
 
     /// Updates the state based on the next [`Block`].
     ///
-    /// This method does not validate the block. Call [`Block::validate`] first
+    /// This method does not validate the block.
+    /// Call [`Block::validate`] first
     /// when the block comes from an untrusted or raw source.
     pub fn update_from_block(&mut self, block: &Block) {
         match block {
@@ -92,7 +106,7 @@ impl PcapNgState {
         }
     }
 
-    /// Return the endianness to use to write the [`Block`].
+    /// Returns the byte order for a block, honoring a new Section Header Block.
     ///
     /// Takes an optional block as an argument to be used in conjunction with [`Self::decode_block_if_needed`].
     pub fn block_endianness(&self, block: Option<&Block>) -> Endianness {
@@ -102,9 +116,13 @@ impl PcapNgState {
         }
     }
 
-    /// Decode a timestamp using the correct format for the current state.
+    /// Returns the duration since the Unix epoch using the interface resolution and offset.
+    /// Binary timestamp fractions are rounded down to nanoseconds.
     ///
-    /// Returns the time elapsed since 1970-01-01 00:00:00 UTC.
+    /// # Errors
+    /// Supply an interface present in this section.
+    /// Dates before the Unix epoch or outside [`Duration`]'s range cannot be decoded.
+    /// Use raw blocks to inspect those encoded timestamps.
     pub fn decode_timestamp(
         &self,
         interface_id: u32,
@@ -134,9 +152,13 @@ impl PcapNgState {
         })
     }
 
-    /// Encode a timestamp using the correct format for the current state.
+    /// Returns the high and low timestamp words using the interface resolution and offset.
+    /// `timestamp` is the time elapsed since the Unix epoch.
+    /// The interface-relative duration is rounded down to whole ticks.
     ///
-    /// `timestamp` is the time elapsed since 1970-01-01 00:00:00 UTC.
+    /// # Errors
+    /// Supply an interface present in this section and a timestamp at or after its offset.
+    /// Choose a resolution and offset that fit the relative timestamp in `u64` ticks.
     pub fn encode_timestamp(&self, interface_id: u32, timestamp: Duration) -> Result<(u32, u32), TimestampError> {
         let (ts_resolution, ts_offset) = self
             .ts_parameters
@@ -170,10 +192,18 @@ impl PcapNgState {
     }
 }
 
+/* ----- Tests ----- */
+
+/// Checks this module's capture behavior.
 #[cfg(test)]
 mod tests {
+    /* ----- Imports ----- */
+
     use super::*;
 
+    /* ----- Timestamp conversion ----- */
+
+    /// Checks that decoded timestamps cannot precede the Unix epoch.
     #[test]
     fn decode_timestamp_rejects_dates_before_unix_epoch() {
         let mut state = PcapNgState::default();
@@ -200,6 +230,7 @@ mod tests {
         ));
     }
 
+    /// Checks that encoding rejects timestamps before the interface offset.
     #[test]
     fn encode_timestamp_rejects_timestamp_before_interface_offset() {
         let mut state = PcapNgState::default();
@@ -220,6 +251,7 @@ mod tests {
         ));
     }
 
+    /// Checks that unrepresentable binary timestamps return errors.
     #[test]
     fn encode_timestamp_rejects_binary_resolution_arithmetic_overflow() {
         let mut state = PcapNgState::default();
@@ -241,6 +273,7 @@ mod tests {
         ));
     }
 
+    /// Checks that timestamp conversion discards fractions below the interface resolution.
     #[test]
     fn timestamp_roundtrip_uses_duration() {
         let mut state = PcapNgState::default();

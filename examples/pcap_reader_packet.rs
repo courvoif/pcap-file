@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open("tests/pcap/little_endian.pcap")?;
     let mut reader = PcapReader::new(file)?;
 
+    // Each returned record borrows the reader buffer until the next read.
     while let Some(result) = reader.next_packet() {
         match result {
             Ok(packet) => println!("{} bytes", packet.len()),

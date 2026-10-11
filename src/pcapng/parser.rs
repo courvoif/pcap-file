@@ -1,3 +1,5 @@
+//! Slice-based pcapng parsing with section and interface state.
+
 /* ----- Imports ----- */
 
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
@@ -18,33 +20,36 @@ use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError, StateUpdateErro
 /// use pcap_file::pcapng::PcapNgParser;
 /// use pcap_file::pcapng::errors::PcapNgParseError;
 ///
-/// let pcap = std::fs::read("test.pcapng").expect("Error reading file");
-/// let mut src = &pcap[..];
 ///
-/// let (rem, mut pcapng_parser) = PcapNgParser::new(src, true).unwrap();
-/// src = rem;
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let capture = std::fs::read("tests/pcapng/little_endian/basic/test001.pcapng")?;
+///     // The parser reads the section header and returns the remaining block bytes.
+///     let (mut remaining, mut parser) = PcapNgParser::new(&capture, true)?;
 ///
-/// while !src.is_empty() {
-///     match pcapng_parser.next_block(src) {
-///         Ok((rem, block)) => {
-///             // Do something
-///
-///             // Don't forget to update src
-///             src = rem;
-///         },
-///         Err(PcapNgParseError::IncompleteBuffer(_,_)) => {
-///             // Load more data into src if parsing a stream.
-///         },
-///         Err(_) => {
-///             // Handle parsing error
-///         },
+///     while !remaining.is_empty() {
+///         match parser.next_block(remaining) {
+///             Ok((rest, block)) => {
+///                 println!("block type: {:#010x}", block.type_code());
+///                 remaining = rest;
+///             }
+///             Err(error @ PcapNgParseError::Block(_)) => {
+///                 eprintln!("skipping undecodable block: {error}");
+///                 // Its framing is valid, so the raw parser can move to the next block.
+///                 let (rest, _) = parser.next_raw_block(remaining)?;
+///                 remaining = rest;
+///             }
+///             Err(error) => return Err(error.into()),
+///         }
 ///     }
+///
+///     Ok(())
 /// }
 /// ```
 #[derive(Debug)]
 pub struct PcapNgParser {
     /// Current state of the pcapng format.
     pub(crate) state: PcapNgState,
+    /// Whether ordinary typed blocks receive block semantic validation.
     strict: bool,
 }
 
@@ -53,11 +58,12 @@ impl PcapNgParser {
     /// remaining input.
     /// The input must start with a valid Section Header Block.
     ///
-    /// Set `strict` to `true` to reject when reading them with
+    /// Set `strict` to `true` to reject semantically invalid ordinary blocks with
     /// [`Self::next_block`].
     /// Set it to `false` to validate those blocks yourself.
     /// Section Header and Interface Description blocks must be valid in either
     /// mode.
+    /// Typed decoding checks representations and individual options even when `strict` is false.
     ///
     /// # Errors
     /// - On [`PcapNgParseError::IncompleteBuffer`], provide the rest of the
@@ -141,6 +147,7 @@ impl PcapNgParser {
     /// The `strict` setting does not affect this method.
     /// Section Header and Interface Description blocks must be valid in either
     /// mode.
+    /// Typed decoding checks representations and individual options even when `strict` is false.
     ///
     /// # Errors
     /// - On [`PcapNgParseError::IncompleteBuffer`], provide more bytes and retry

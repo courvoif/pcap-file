@@ -1,3 +1,7 @@
+//! Validated and raw classic pcap packet records.
+
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::io::Write;
 use std::time::Duration;
@@ -9,12 +13,14 @@ use derive_into_owned::IntoOwned;
 
 use crate::pcap::{PcapParseError, PcapTsResolution, PcapValidationError, PcapWriteError};
 
+/* ----- Validated packets ----- */
+
 /// A valid pcap packet.
 ///
 /// The payload can be owned or borrowed.
 #[derive(Clone, Debug)]
 pub struct PcapPacket<'a> {
-    /// Timestamp EPOCH of the packet
+    /// Time elapsed since 1970-01-01 00:00:00 UTC.
     timestamp: Duration,
     /// Original length of the packet when captured on the wire
     orig_len: u32,
@@ -23,7 +29,12 @@ pub struct PcapPacket<'a> {
 }
 
 impl<'a> PcapPacket<'a> {
-    /// Creates a new [`PcapPacket`] with the given parameters.
+    /// Creates a validated packet from its timestamp, original length, and captured bytes.
+    /// `timestamp` is the time elapsed since the Unix epoch.
+    ///
+    /// # Errors
+    /// Keep the seconds and captured length within `u32::MAX`.
+    /// Set `orig_len` to at least the captured data length.
     pub fn new(
         timestamp: Duration,
         orig_len: u32,
@@ -51,7 +62,7 @@ impl<'a> PcapPacket<'a> {
         })
     }
 
-    /// Returns the packet timestamp.
+    /// Returns the time elapsed since 1970-01-01 00:00:00 UTC.
     pub fn timestamp(&self) -> Duration {
         self.timestamp
     }
@@ -61,7 +72,7 @@ impl<'a> PcapPacket<'a> {
         self.orig_len
     }
 
-    /// Returns the length of the packet.
+    /// Returns the captured data length in bytes.
     pub fn len(&self) -> u32 {
         self.data
             .len()
@@ -74,12 +85,12 @@ impl<'a> PcapPacket<'a> {
         self.data.is_empty()
     }
 
-    /// Returns the packet payload as a slice.
+    /// Returns captured bytes, including link-layer headers, as a slice.
     pub fn data(&self) -> &[u8] {
         &self.data
     }
 
-    /// Returns the packet payload.
+    /// Returns the captured bytes, retaining their ownership.
     pub fn into_data(self) -> Cow<'a, [u8]> {
         self.data
     }
@@ -100,7 +111,13 @@ impl<'a> PcapPacket<'a> {
         }
     }
 
-    /// Tries to create a [`PcapPacket`] from a [`RawPcapPacket`].
+    /// Converts raw packet fields into a validated packet using the capture header settings.
+    ///
+    /// # Errors
+    /// Correct the fractional timestamp or lengths before retrying.
+    /// The declared captured length must match the data length.
+    /// The declared captured length must not exceed `snap_len`, and the original
+    /// length must not be smaller than the data length.
     pub fn try_from_raw_packet(
         raw: RawPcapPacket<'a>,
         ts_resolution: PcapTsResolution,
@@ -131,6 +148,10 @@ impl<'a> PcapPacket<'a> {
         let timestamp = Duration::new(ts_sec as u64, ts_nsec);
 
         // Validate lengths //
+        if raw.incl_len as usize != raw.data.len() {
+            return Err(PcapValidationError::IncludedLenMismatch(raw.incl_len, raw.data.len()));
+        }
+
         if raw.incl_len > snap_len {
             return Err(PcapValidationError::IncludedLenTooBig(raw.incl_len, snap_len));
         }
@@ -138,7 +159,8 @@ impl<'a> PcapPacket<'a> {
         Self::new(timestamp, raw.orig_len, raw.data)
     }
 
-    /// Converts a [`PcapPacket`] into a [`RawPcapPacket`].
+    /// Converts this packet into raw fields, retaining its data ownership.
+    /// Microsecond resolution truncates submicrosecond precision.
     pub fn into_raw_packet(self, ts_resolution: PcapTsResolution) -> RawPcapPacket<'a> {
         let (ts_sec, ts_frac, incl_len, orig_len) = self.build_raw_header(ts_resolution);
         RawPcapPacket {
@@ -150,7 +172,8 @@ impl<'a> PcapPacket<'a> {
         }
     }
 
-    /// Converts a [`PcapPacket`] into a [`RawPcapPacket`].
+    /// Returns raw fields borrowing this packet's captured bytes.
+    /// Microsecond resolution truncates submicrosecond precision.
     pub fn as_raw_packet<'pkt>(&'pkt self, ts_resolution: PcapTsResolution) -> RawPcapPacket<'pkt> {
         let (ts_sec, ts_frac, incl_len, orig_len) = self.build_raw_header(ts_resolution);
         RawPcapPacket {
@@ -188,14 +211,16 @@ impl<'a> PcapPacket<'a> {
     }
 }
 
+/* ----- Raw packets ----- */
+
 /// Raw Pcap packet with its header and data.
 /// The fields of the packet are not validated.
 /// The payload can be owned or borrowed.
 #[derive(Clone, Debug, IntoOwned)]
 pub struct RawPcapPacket<'a> {
-    /// Timestamp in seconds
+    /// Whole seconds elapsed since the Unix epoch.
     pub ts_sec: u32,
-    /// Nanosecond or microsecond part of the timestamp
+    /// Fractional timestamp ticks in the resolution specified by the global header.
     pub ts_frac: u32,
     /// Number of octets of the packet saved in file
     pub incl_len: u32,
@@ -206,7 +231,11 @@ pub struct RawPcapPacket<'a> {
 }
 
 impl<'a> RawPcapPacket<'a> {
-    /// Parses a new borrowed [`RawPcapPacket`] from a slice.
+    /// Returns the next borrowed raw packet and the remaining input using byte order `B`.
+    ///
+    /// # Errors
+    /// Supply the complete 16-byte header and the payload declared by `incl_len`.
+    /// Retry incomplete input with additional bytes.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapParseError> {
         // Check header length
         if slice.len() < 16 {
@@ -237,7 +266,11 @@ impl<'a> RawPcapPacket<'a> {
     }
 
     /// Writes a [`RawPcapPacket`] to a writer.
-    /// The fields of the packet are not validated.
+    /// Fields are written using `B` without semantic validation.
+    /// Match `incl_len` to the captured data length when constructing records manually.
+    ///
+    /// # Errors
+    /// An I/O failure can leave a partial packet in the output.
     pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
         writer
             .write_u32::<B>(self.ts_sec)
@@ -258,7 +291,8 @@ impl<'a> RawPcapPacket<'a> {
         Ok(16 + self.data.len())
     }
 
-    /// Tries to convert a [`RawPcapPacket`] into a [`PcapPacket`].
+    /// Converts this record to a validated packet using the capture header settings.
+    /// See [`PcapPacket::try_from_raw_packet`] for validation and errors.
     pub fn try_into_pcap_packet(
         self,
         ts_resolution: PcapTsResolution,

@@ -139,6 +139,12 @@ pub enum PcapValidationError {
     /// The timestamp is too large to be represented in a 32-bit seconds field.
     #[error("Timestamp too big: {0:?} > 2^32 seconds")]
     TimestampTooBig(Duration),
+    /// The declared captured length differs from the actual packet data length.
+    /// # Fields
+    /// - 0: declared captured length
+    /// - 1: actual packet data length
+    #[error("included_len != data length: {0} != {1}")]
+    IncludedLenMismatch(u32, usize),
     /// The captured packet length is larger than the file snaplen.
     #[error("included_len > snap_len: {0} > {1}")]
     IncludedLenTooBig(u32, u32),

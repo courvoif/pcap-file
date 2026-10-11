@@ -1,4 +1,10 @@
-//! Custom Block.
+//! Custom blocks, options, and payload codecs.
+//!
+//! Use copiable payloads when bytes remain valid after being copied between sections.
+//! Use non-copiable payloads when section or interface state is required.
+//! Decoded custom block payloads include alignment padding; option values do not.
+
+/* ----- Imports ----- */
 
 use std::borrow::Cow;
 use std::error::Error;
@@ -27,7 +33,11 @@ pub trait CustomPayloadCopiable<'a> {
     /// Error returned by [`CustomPayloadCopiable::write_to()`].
     type WriteToError: Error + Sync + Send + 'static;
 
-    /// Try to parse this payload from a slice.
+    /// Decodes a recognized payload, returning `None` for an unrecognized payload format.
+    /// Custom block slices can include trailing alignment padding.
+    ///
+    /// # Errors
+    /// Return an error when a recognized format contains invalid or incomplete data.
     fn from_slice(slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
     where
         Self: Sized;
@@ -66,7 +76,11 @@ pub trait CustomPayloadNonCopiable<'a> {
     /// Error returned by [`CustomPayloadNonCopiable::write_to()`].
     type WriteToError: Error + Sync + Send + 'static;
 
-    /// Try to parse this payload from a slice.
+    /// Decodes a recognized payload, returning `None` for an unrecognized payload format.
+    /// Custom block slices can include trailing alignment padding.
+    ///
+    /// # Errors
+    /// Return an error when a recognized format contains invalid or incomplete data.
     fn from_slice(state: &Self::State, slice: &'a [u8]) -> Result<Option<Self>, Self::FromSliceError>
     where
         Self: Sized;
@@ -94,7 +108,7 @@ pub trait CustomPayloadNonCopiable<'a> {
 /// Common interface for custom block payloads.
 ///
 /// # Important
-/// Any implementor must also implements [`CustomPayloadCopiable`] and/or [`CustomPayloadNonCopiable`].
+/// Implement [`CustomPayloadCopiable`] or [`CustomPayloadNonCopiable`] to choose the encoding API.
 pub trait CustomBlockPayload<'a> {
     /// Convert this payload into a copiable [`CustomBlock`].
     ///
@@ -132,7 +146,7 @@ pub trait CustomBlockPayload<'a> {
 /// Common interface for custom option payloads.
 ///
 /// # Important
-/// Any implementor must also implements [`CustomPayloadCopiable`] and/or [`CustomPayloadNonCopiable`].
+/// Implement [`CustomPayloadCopiable`] or [`CustomPayloadNonCopiable`] to choose the encoding API.
 pub trait CustomOptionPayload<'a> {
     /// Convert this payload into a copiable [`CustomBinaryOption`].
     ///
@@ -172,7 +186,7 @@ pub trait CustomOptionPayload<'a> {
 
 /* ----- Custom Error ----- */
 
-/// Error in custom conversion
+/// Payload codec error associated with a private enterprise number.
 #[derive(Debug, Error)]
 #[error("Error in custom conversion for PEN {pen:#X}")]
 pub struct CustomError {
@@ -185,12 +199,14 @@ pub struct CustomError {
 
 /* ----- struct CustomBlock ----- */
 
-/// Custom block
+/// Opaque custom block identified by a private enterprise number.
+/// `COPIABLE` selects whether its bytes can be copied unchanged between sections.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CustomBlock<'a, const COPIABLE: bool> {
     /// Private Enterprise Number of the entity which defined this block.
     pub pen: u32,
-    /// Payload of this block.
+    /// Payload bytes, including any block alignment padding when decoded.
+    /// Use an aligned fixed-size format or store a payload length to distinguish padding.
     pub payload: Cow<'a, [u8]>,
 }
 
@@ -209,6 +225,10 @@ impl<'a, const COPIABLE: bool> CustomBlock<'a, COPIABLE> {
 
 impl<'a> CustomBlock<'a, true> {
     /// Converts this block's payload into a copiable custom payload type.
+    /// Returns `None` if the PEN differs or the decoder does not recognize the format.
+    ///
+    /// # Errors
+    /// Inspect the source error for a recognized payload that cannot be decoded.
     pub fn interpret<T>(&'a self) -> Result<Option<T>, CustomError>
     where
         T: CustomPayloadCopiable<'a> + CustomBlockPayload<'a>,
@@ -226,6 +246,10 @@ impl<'a> CustomBlock<'a, true> {
 
 impl<'a> CustomBlock<'a, false> {
     /// Converts this block's payload into a non-copiable custom payload type.
+    /// Returns `None` if the PEN differs or the decoder does not recognize the format.
+    ///
+    /// # Errors
+    /// Inspect the source error for a recognized payload that cannot be decoded.
     pub fn interpret<T>(&'a self, state: &T::State) -> Result<Option<T>, CustomError>
     where
         T: CustomPayloadNonCopiable<'a> + CustomBlockPayload<'a>,
@@ -242,17 +266,20 @@ impl<'a> CustomBlock<'a, false> {
 }
 
 impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
+    /// Numeric type code of this block.
     const TYPE: u32 = if COPIABLE { 0x00000BAD } else { 0x40000BAD };
+    /// Human-readable name of this block.
     const NAME: &'static str = if COPIABLE {
         "Custom Block (Copiable)"
     } else {
         "Custom Block (Non-Copiable)"
     };
-
+    /// Checks the constraints applicable to this value.
     fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError> {
         Ok(())
     }
 
+    /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         _state: &PcapNgState,
         mut slice: &'a [u8],
@@ -277,6 +304,8 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
         ))
     }
 
+    /// Writes this block body using the supplied section state.
+    /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
     fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         _state: &PcapNgState,
@@ -287,6 +316,7 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
         Ok(4 + self.payload.len())
     }
 
+    /// Returns the matching typed block variant.
     fn into_block(self) -> Block<'a> {
         if COPIABLE {
             Block::CustomCopiable(CustomBlock {
@@ -304,7 +334,7 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
 
 /* ----- struct CustomBinaryOption ----- */
 
-/// Custom binary option
+/// Custom binary option value, excluding its framing and padding.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
     /// Option PEN identifier
@@ -314,7 +344,10 @@ pub struct CustomBinaryOption<'a, const COPIABLE: bool> {
 }
 
 impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
-    /// Parse an [`CustomBinaryOption`] from a slice
+    /// Decodes a PEN and binary value from unpadded option content using `B`.
+    ///
+    /// # Errors
+    /// Provide at least four PEN bytes followed by the payload.
     pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, OptionEntryError> {
         let pen = src.read_u32::<B>().map_err(|_| OptionEntryError::WrongSize {
             expected: 4,
@@ -338,6 +371,10 @@ impl<'a, const COPIABLE: bool> CustomBinaryOption<'a, COPIABLE> {
 
 impl<'a> CustomBinaryOption<'a, true> {
     /// Converts this option's value into a copiable custom payload type.
+    /// Returns `None` if the PEN differs or the decoder does not recognize the format.
+    ///
+    /// # Errors
+    /// Inspect the source error for a recognized payload that cannot be decoded.
     pub fn interpret<T>(&'a self) -> Result<Option<T>, CustomError>
     where
         T: CustomPayloadCopiable<'a> + CustomOptionPayload<'a>,
@@ -360,6 +397,10 @@ impl<'a> CustomBinaryOption<'a, true> {
 
 impl<'a> CustomBinaryOption<'a, false> {
     /// Converts this option's value into a non-copiable custom payload type.
+    /// Returns `None` if the PEN differs or the decoder does not recognize the format.
+    ///
+    /// # Errors
+    /// Inspect the source error for a recognized payload that cannot be decoded.
     pub fn interpret<T>(&'a self, state: &T::State) -> Result<Option<T>, CustomError>
     where
         T: CustomPayloadNonCopiable<'a> + CustomOptionPayload<'a>,
@@ -382,7 +423,7 @@ impl<'a> CustomBinaryOption<'a, false> {
 
 /* ----- struct CustomUtf8Option ----- */
 
-/// Custom string (UTF-8) option
+/// Custom UTF-8 option value, excluding its framing and padding.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
     /// Option PEN identifier
@@ -392,7 +433,10 @@ pub struct CustomUtf8Option<'a, const COPIABLE: bool> {
 }
 
 impl<'a, const COPIABLE: bool> CustomUtf8Option<'a, COPIABLE> {
-    /// Parse a [`CustomUtf8Option`] from a slice
+    /// Decodes a PEN and UTF-8 value from unpadded option content using `B`.
+    ///
+    /// # Errors
+    /// Provide at least four PEN bytes followed by valid UTF-8.
     pub fn from_slice<B: ByteOrder>(mut src: &'a [u8]) -> Result<Self, OptionEntryError> {
         let pen = src.read_u32::<B>().map_err(|_| OptionEntryError::WrongSize {
             expected: 4,

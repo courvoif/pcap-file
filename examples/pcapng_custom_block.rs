@@ -19,7 +19,8 @@ use pcap_file::pcapng::{Block, PcapNgReader, PcapNgWriter};
 /* ----- Custom payload ----- */
 
 /// Stores an interface ID and timestamp as three big endian words.
-/// The timestamp uses the interface resolution from pcapng state.
+/// The timestamp uses the interface resolution and offset from pcapng state.
+/// The 12-byte layout is aligned, so no extra block padding reaches the decoder.
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct StatefulPayload {
     /// Interface that supplies the timestamp resolution.
@@ -45,10 +46,14 @@ enum PayloadError {
 /* ----- Custom block implementation ----- */
 
 impl<'a> CustomPayloadNonCopiable<'a> for StatefulPayload {
+    /// Example private enterprise number used to identify this payload.
     const PEN: u32 = 70_000;
 
+    /// Section and interface state used by the payload codec.
     type State = PcapNgState;
+    /// Failure returned when encoding the payload.
     type WriteToError = PayloadError;
+    /// Failure returned when decoding the payload.
     type FromSliceError = PayloadError;
 
     /// Writes the payload using the current interface timestamp settings.
@@ -99,11 +104,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let custom_block = custom_payload.into_custom_block_non_copiable(writer.state())?;
     writer.write_pcapng_block(custom_block)?;
 
-    // Read back the data we just write
+    // Decode with the section and interface state reconstructed from the capture.
     let capture = writer.into_inner();
     let mut reader = PcapNgReader::new(Cursor::new(capture), true)?;
 
-    // The 1st block should be the interface block since the section block is consumed by PcapNgReader::new()
+    // The constructor consumed the section header; the first returned block is the interface.
     let (first_block, _) = reader.next_block().expect("interface block")?;
     assert!(matches!(first_block, Block::InterfaceDescription(_)));
 

@@ -53,9 +53,11 @@ pub struct InterfaceDescriptionBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
+    /// Numeric type code of this block.
     const TYPE: u32 = 0x00000001;
+    /// Human-readable name of this block.
     const NAME: &'static str = "Interface Description Block";
-
+    /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
@@ -84,6 +86,8 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         Ok((slice, block))
     }
 
+    /// Writes this block body using the supplied section state.
+    /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
     fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -102,6 +106,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         Ok(8 + opt_len)
     }
 
+    /// Checks the constraints applicable to this value.
     fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
         u16::try_from(u32::from(self.linktype)).map_err(|_| BlockValidationError::InvalidLinkType(self.linktype))?;
 
@@ -118,6 +123,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
     }
 
+    /// Returns the matching typed block variant.
     fn into_block(self) -> Block<'a> {
         Block::InterfaceDescription(self)
     }
@@ -216,23 +222,38 @@ pub enum InterfaceDescriptionOption<'a> {
 }
 
 impl InterfaceDescriptionOption<'_> {
+    /// Encoded option code for `IF_NAME`.
     const IF_NAME: u16 = 2;
+    /// Encoded option code for `IF_DESCRIPTION`.
     const IF_DESCRIPTION: u16 = 3;
+    /// Encoded option code for `IF_IPV4_ADDR`.
     const IF_IPV4_ADDR: u16 = 4;
+    /// Encoded option code for `IF_IPV6_ADDR`.
     const IF_IPV6_ADDR: u16 = 5;
+    /// Encoded option code for `IF_MAC_ADDR`.
     const IF_MAC_ADDR: u16 = 6;
+    /// Encoded option code for `IF_EU_ADDR`.
     const IF_EU_ADDR: u16 = 7;
+    /// Encoded option code for `IF_SPEED`.
     const IF_SPEED: u16 = 8;
+    /// Encoded option code for `IF_TS_RESOL`.
     const IF_TS_RESOL: u16 = 9;
+    /// Encoded option code for `IF_T_ZONE`.
     const IF_T_ZONE: u16 = 10;
+    /// Encoded option code for `IF_FILTER`.
     const IF_FILTER: u16 = 11;
+    /// Encoded option code for `IF_OS`.
     const IF_OS: u16 = 12;
+    /// Encoded option code for `IF_FCS_LEN`.
     const IF_FCS_LEN: u16 = 13;
+    /// Encoded option code for `IF_TS_OFFSET`.
     const IF_TS_OFFSET: u16 = 14;
+    /// Encoded option code for `IF_HARDWARE`.
     const IF_HARDWARE: u16 = 15;
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
+    /// Decodes an option value for the supplied option code.
     fn from_content<B: ByteOrder>(
         _state: &PcapNgState,
         _interface_id: Option<u32>,
@@ -289,6 +310,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
         Ok(opt)
     }
 
+    /// Writes this value using the selected byte order.
     fn write_to<B: ByteOrder, W: Write>(
         &self,
         _state: &PcapNgState,
@@ -334,6 +356,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
         }
     }
 
+    /// Checks the constraints applicable to this value.
     fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
         if let Self::IfFilter(value) = self {
             if value.is_empty() {
@@ -344,6 +367,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
         Ok(())
     }
 
+    /// Returns the encoded option code.
     fn code(&self) -> u16 {
         match self {
             Self::IfName(_) => Self::IF_NAME,
@@ -364,6 +388,7 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
         }
     }
 
+    /// Returns the option name for its code.
     fn name(code: u16) -> &'static str {
         match code {
             Self::IF_NAME => "IfName",
@@ -462,6 +487,7 @@ impl IfIpv6AddrOpt {
 
 /* ----- TsResolution ----- */
 
+/// Nanoseconds per tick for supported decimal timestamp resolutions.
 static TS_RESOL_DEC_TO_DURATION: Lazy<Vec<u128>> = Lazy::new(|| (0..10).map(|i| 10_u128.pow(9 - i)).collect());
 
 /// Timestamp resolution of an interface.
@@ -497,10 +523,10 @@ impl InterfaceTsResolution {
         resol: 9,
     };
 
-    /// Creates a new [`InterfaceTsResolution`].
+    /// Creates a binary or decimal timestamp resolution from its exponent.
     ///
-    /// - If binary, the resolution must be in the range [0-29].
-    /// - If decimal, the resolution must be in the range [0-9].
+    /// # Errors
+    /// Choose an exponent from `0..=29` for binary resolution or `0..=9` for decimal resolution.
     pub fn new(is_bin: bool, resol: u8) -> Result<Self, TimestampError> {
         // 2^29 is the last power of 2 inferior to 1_000_000_000 which is the number of nanosec in one second
         if is_bin && resol > 29 {
@@ -524,10 +550,10 @@ impl InterfaceTsResolution {
         Ok(InterfaceTsResolution { is_bin, resol })
     }
 
-    /// Creates a new [`InterfaceTsResolution`] from a [`u8`].
+    /// Decodes a timestamp resolution byte, whose high bit selects binary resolution.
     ///
-    /// - If binary, the resolution must be in the range [0-29].
-    /// - If decimal, the resolution must be in the range [0-9].
+    /// # Errors
+    /// Choose an exponent from `0..=29` for binary resolution or `0..=9` for decimal resolution.
     pub fn from_u8(ts_resol: u8) -> Result<Self, TimestampError> {
         let is_bin = (ts_resol >> 7) & 0x1 == 1;
         let resol = ts_resol & 0x7F;
@@ -540,7 +566,9 @@ impl InterfaceTsResolution {
         (self.is_bin as u8) << 7 | self.resol
     }
 
-    /// Decode an encoded timestamp using the current resolution.
+    /// Returns the duration represented by a raw tick count at this resolution.
+    /// Binary timestamps are rounded down to whole nanoseconds.
+    /// Encoding the returned duration can therefore change the original tick count.
     pub fn decode_timestamp(&self, ts_raw: u64) -> Duration {
         let timestamp_ns = if self.is_bin {
             // We don't use a pre-computed TS_RESOL_BIN here because we would lose too much precision for higher resolutions.
@@ -553,7 +581,8 @@ impl InterfaceTsResolution {
         Duration::from_nanos_u128(timestamp_ns)
     }
 
-    /// Encode a timestamp with the current resolution.
+    /// Returns the tick count for a duration, rounded down to this resolution.
+    /// Subtick precision is discarded.
     ///
     /// # Errors
     /// - Timestamp can't be encoded with the current resolution on a u64
@@ -598,6 +627,7 @@ impl Default for InterfaceTsResolution {
 }
 
 impl Display for InterfaceTsResolution {
+    /// Formats the timestamp resolution as seconds per tick.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_bin {
             write!(f, "2^-{}s", self.resol)
@@ -607,8 +637,13 @@ impl Display for InterfaceTsResolution {
     }
 }
 
+/* ----- Tests ----- */
+
+/// Checks this module's capture behavior.
 #[cfg(test)]
 mod tests {
+    /* ----- Imports ----- */
+
     use std::time::Duration;
 
     use super::InterfaceTsResolution;
@@ -642,6 +677,7 @@ mod tests {
         assert_eq!(raw, 18446744073709551614);
     }
 
+    /// Checks that binary timestamp overflow returns a conversion error.
     #[test]
     fn binary_timestamp_encode_overflow_returns_invalid_timestamp() {
         let resolution = InterfaceTsResolution::new(true, 29).unwrap();

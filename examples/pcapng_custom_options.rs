@@ -21,6 +21,7 @@ use pcap_file::pcapng::{Block, PcapNgReader, PcapNgWriter};
 /* ----- Custom option payload ----- */
 
 /// Sample option payload encoded in the current section byte order.
+/// Option framing removes padding before this payload is decoded.
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ExampleOptionPayload {
     /// Value carried by this custom option.
@@ -41,10 +42,14 @@ enum OptionPayloadError {
 /* ----- Custom option payload traits ----- */
 
 impl<'a> CustomPayloadNonCopiable<'a> for ExampleOptionPayload {
+    /// Example private enterprise number used to identify this payload.
     const PEN: u32 = 70_001;
 
+    /// Section and interface state used by the payload codec.
     type State = PcapNgState;
+    /// Failure returned when encoding the payload.
     type WriteToError = OptionPayloadError;
+    /// Failure returned when decoding the payload.
     type FromSliceError = OptionPayloadError;
 
     /// Encodes this option using the current section state.
@@ -99,11 +104,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     writer.write_pcapng_block(packet)?;
 
-    // Read back the data we just write
+    // Decode with the section and interface state reconstructed from the capture.
     let capture = writer.into_inner();
     let mut reader = PcapNgReader::new(Cursor::new(capture), true)?;
 
-    // The 1st block should be the interface block since the section block is consumed by PcapNgReader::new()
+    // The constructor consumed the section header; the first returned block is the interface.
     let (first_block, _) = reader.next_block().expect("interface block")?;
     assert!(matches!(first_block, Block::InterfaceDescription(_)));
 

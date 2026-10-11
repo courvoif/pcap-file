@@ -1,3 +1,7 @@
+//! Classic pcap global header decoding and encoding.
+
+/* ----- Imports ----- */
+
 use std::io::Write;
 
 use byteorder_slice::byteorder::WriteBytesExt;
@@ -6,6 +10,8 @@ use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
 use crate::pcap::{PcapParseError, PcapTsResolution, PcapValidationError, PcapWriteError};
 use crate::{DataLink, Endianness};
+
+/* ----- Global header ----- */
 
 /// Pcap Global Header
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -36,14 +42,15 @@ pub struct PcapHeader {
 }
 
 impl PcapHeader {
-    /// Creates a new [`PcapHeader`] from a slice of bytes.
+    /// Returns the global header and the remaining input after its 24 bytes.
+    /// The magic number selects byte order and timestamp resolution.
+    /// Other header fields are preserved without semantic validation.
     ///
-    /// Returns an error if the reader doesn't contain a valid pcap
-    /// or if there is a reading error.
-    ///
-    /// [`PcapParseError::IncompleteBuffer`] indicates that there is not enough data in the buffer.
+    /// # Errors
+    /// Supply the complete header on [`PcapParseError::IncompleteBuffer`].
+    /// A rejected magic number means the input is not a supported classic pcap header.
     pub fn from_slice(mut slice: &[u8]) -> Result<(&[u8], PcapHeader), PcapParseError> {
-        // Check that slice.len() > PcapHeader length
+        // The complete global header must be available before decoding its fields.
         if slice.len() < 24 {
             return Err(PcapParseError::IncompleteBuffer(24, slice.len()));
         }
@@ -64,6 +71,7 @@ impl PcapHeader {
 
         // Inner function used for the initialisation of the PcapHeader.
         // Must check the src length before calling it.
+        /// Decodes the fields following a validated global header magic number.
         fn init_pcap_header<B: ByteOrder>(
             mut src: &[u8],
             ts_resolution: PcapTsResolution,
@@ -86,13 +94,17 @@ impl PcapHeader {
 
     /// Writes a [`PcapHeader`] to a writer.
     ///
-    /// Uses the endianness of the header.
+    /// Uses the byte order and timestamp resolution stored in the header.
+    ///
+    /// # Errors
+    /// An I/O failure can leave a partial global header in the output.
     pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
         return match self.endianness {
             Endianness::Big => write_header::<_, BigEndian>(self, writer),
             Endianness::Little => write_header::<_, LittleEndian>(self, writer),
         };
 
+        /// Writes the global header using the selected byte order.
         fn write_header<W: Write, B: ByteOrder>(header: &PcapHeader, writer: &mut W) -> Result<usize, PcapWriteError> {
             let magic_number = match header.ts_resolution {
                 PcapTsResolution::MicroSecond => 0xA1B2C3D4,
@@ -126,6 +138,8 @@ impl PcapHeader {
     }
 }
 
+/* ----- Default header ----- */
+
 /// Creates a new [`PcapHeader`] with these parameters:
 ///
 /// ```rust
@@ -144,6 +158,7 @@ impl PcapHeader {
 /// };
 /// ```
 impl Default for PcapHeader {
+    /// Returns the default capture settings.
     fn default() -> Self {
         PcapHeader {
             version_major: 2,

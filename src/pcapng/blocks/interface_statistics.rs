@@ -37,9 +37,11 @@ pub struct InterfaceStatisticsBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
+    /// Numeric type code of this block.
     const TYPE: u32 = 0x00000005;
+    /// Human-readable name of this block.
     const NAME: &'static str = "Interface Statistics Block";
-
+    /// Checks the constraints applicable to this value.
     fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
         state
             .interfaces
@@ -54,6 +56,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         validate_opts(&self.options, state, Some(self.interface_id)).map_err(BlockValidationError::Option)
     }
 
+    /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
@@ -80,6 +83,8 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         Ok((slice, block))
     }
 
+    /// Writes this block body using the supplied section state.
+    /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
     fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -99,6 +104,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         Ok(12 + opt_len)
     }
 
+    /// Returns the matching typed block variant.
     fn into_block(self) -> Block<'a> {
         Block::InterfaceStatistics(self)
     }
@@ -144,16 +150,24 @@ pub enum InterfaceStatisticsOption<'a> {
 }
 
 impl InterfaceStatisticsOption<'_> {
+    /// Encoded option code for `ISB_START_TIME`.
     const ISB_START_TIME: u16 = 2;
+    /// Encoded option code for `ISB_END_TIME`.
     const ISB_END_TIME: u16 = 3;
+    /// Encoded option code for `ISB_IF_RECV`.
     const ISB_IF_RECV: u16 = 4;
+    /// Encoded option code for `ISB_IF_DROP`.
     const ISB_IF_DROP: u16 = 5;
+    /// Encoded option code for `ISB_FILTER_ACCEPT`.
     const ISB_FILTER_ACCEPT: u16 = 6;
+    /// Encoded option code for `ISB_OS_DROP`.
     const ISB_OS_DROP: u16 = 7;
+    /// Encoded option code for `ISB_USR_DELIV`.
     const ISB_USR_DELIV: u16 = 8;
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
+    /// Decodes an option value for the supplied option code.
     fn from_content<B: ByteOrder>(
         state: &PcapNgState,
         interface_id: Option<u32>,
@@ -214,6 +228,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         Ok(opt)
     }
 
+    /// Writes this value using the selected byte order.
     fn write_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -238,10 +253,12 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         }
     }
 
+    /// Checks the constraints applicable to this value.
     fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
         Ok(())
     }
 
+    /// Returns the encoded option code.
     fn code(&self) -> u16 {
         match self {
             Self::IsbStartTime(_) => Self::ISB_START_TIME,
@@ -255,6 +272,7 @@ impl<'a> PcapNgOption<'a> for InterfaceStatisticsOption<'a> {
         }
     }
 
+    /// Returns the option name for its code.
     fn name(code: u16) -> &'static str {
         match code {
             Self::ISB_START_TIME => "IsbStartTime",

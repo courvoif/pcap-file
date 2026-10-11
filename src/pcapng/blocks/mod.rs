@@ -1,5 +1,7 @@
 //! Contains the PcapNg blocks.
 
+/* ----- Modules ----- */
+
 pub mod block_common;
 pub mod custom;
 pub mod enhanced_packet;
@@ -11,5 +13,7 @@ pub mod packet;
 pub mod section_header;
 pub mod simple_packet;
 pub mod systemd_journal_export;
+
+/* ----- Public exports ----- */
 
 pub use block_common::*;

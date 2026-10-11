@@ -1,5 +1,7 @@
 //! Systemd Journal Export Block.
 
+/* ----- Imports ----- */
+
 use std::borrow::Cow;
 use std::io::Write;
 
@@ -12,21 +14,27 @@ use crate::pcapng::{
     errors::{BlockValidationError, WriteError},
 };
 
+/* ----- Journal entries ----- */
+
 /// The Systemd Journal Export Block is a lightweight container for systemd Journal Export Format entry data.
 #[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
 pub struct SystemdJournalExportBlock<'a> {
-    /// A journal entry as described in the Journal Export Format documentation.
+    /// Journal Export Format bytes, including trailing block padding when decoded.
+    /// The library does not validate the journal entry format.
     pub journal_entry: Cow<'a, [u8]>,
 }
 
 impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
+    /// Numeric type code of this block.
     const TYPE: u32 = 0x00000009;
+    /// Human-readable name of this block.
     const NAME: &'static str = "systemd Journal Export Block";
-
+    /// Checks the constraints applicable to this value.
     fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError> {
         Ok(())
     }
 
+    /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         _state: &PcapNgState,
         slice: &'a [u8],
@@ -37,6 +45,8 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
         Ok((&[], packet))
     }
 
+    /// Writes this block body using the supplied section state.
+    /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
     fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         _state: &PcapNgState,
@@ -50,6 +60,7 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
         Ok(self.journal_entry.len() + pad_len)
     }
 
+    /// Returns the matching typed block variant.
     fn into_block(self) -> Block<'a> {
         Block::SystemdJournalExport(self)
     }

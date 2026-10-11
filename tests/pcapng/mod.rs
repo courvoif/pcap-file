@@ -1,3 +1,5 @@
+//! Pcapng fixture roundtrips, custom payloads, and state and reader recovery checks.
+
 /* ----- Imports ----- */
 
 use std::fs::File;
@@ -11,6 +13,7 @@ use pcap_file::pcapng::{Block, PcapNgParser, PcapNgReader, PcapNgWriter};
 
 /* ----- Reader, parser, and writer tests ----- */
 
+/// Checks that typed readers accept all pcapng fixtures.
 #[test]
 fn reader() {
     for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
@@ -27,6 +30,7 @@ fn reader() {
     }
 }
 
+/// Checks that packet iterators accept all pcapng fixtures.
 #[test]
 fn reader_iterator() {
     for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
@@ -41,6 +45,7 @@ fn reader_iterator() {
     }
 }
 
+/// Checks that slice parsing consumes all blocks in each pcapng fixture.
 #[test]
 fn parser() {
     for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
@@ -70,6 +75,7 @@ fn parser() {
     }
 }
 
+/// Checks that typed block copying preserves each pcapng fixture byte for byte.
 #[test]
 fn writer() {
     for entry in glob("tests/pcapng/**/**/*.pcapng").expect("Failed to read glob pattern") {
@@ -116,6 +122,9 @@ fn writer() {
     }
 }
 
+/* ----- Packet conversion and recovery ----- */
+
+/// Checks that packet iteration matches packet views collected from typed block reading.
 #[test]
 fn packet_iterator_matches_typed_packet_traversal() {
     use pcap_file::pcapng::PcapNgPacket;
@@ -141,6 +150,7 @@ fn packet_iterator_matches_typed_packet_traversal() {
     }
 }
 
+/// Checks that packet iteration recovers from missing interfaces in both strict modes.
 #[test]
 fn packet_iterator_continues_after_non_fatal_error() {
     let pcapng = pcapng_with_invalid_and_valid_packet_blocks();
@@ -154,6 +164,7 @@ fn packet_iterator_continues_after_non_fatal_error() {
     }
 }
 
+/// Returns a capture containing an invalid interface reference followed by a valid packet.
 fn pcapng_with_invalid_and_valid_packet_blocks() -> Vec<u8> {
     use std::borrow::Cow;
 
@@ -195,6 +206,7 @@ fn pcapng_with_invalid_and_valid_packet_blocks() -> Vec<u8> {
     writer.into_inner()
 }
 
+/// Returns a capture containing an invalid original packet length followed by a valid packet.
 fn pcapng_with_semantically_invalid_packet() -> Vec<u8> {
     use std::borrow::Cow;
 
@@ -222,15 +234,23 @@ fn pcapng_with_semantically_invalid_packet() -> Vec<u8> {
     writer.into_inner()
 }
 
+/* ----- I/O test helpers ----- */
+
+/// Fixture reader that injects one I/O error at a selected byte boundary.
 #[derive(Debug)]
 struct ReadErrorOnce {
+    /// Capture bytes supplied to the reader.
     data: Vec<u8>,
+    /// Next unread byte in the capture.
     pos: usize,
+    /// Boundary at which the next read returns the configured error.
     split: usize,
+    /// Error to inject, cleared after it is returned once.
     error: Option<std::io::ErrorKind>,
 }
 
 impl ReadErrorOnce {
+    /// Creates a fixture reader that fails once at the requested byte boundary.
     fn new(data: Vec<u8>, split: usize, error: std::io::ErrorKind) -> Self {
         Self {
             data,
@@ -242,6 +262,7 @@ impl ReadErrorOnce {
 }
 
 impl Read for ReadErrorOnce {
+    /// Reads fixture bytes and injects the configured I/O error once at the split point.
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if self.pos == self.split {
             if let Some(error) = self.error.take() {
@@ -261,6 +282,7 @@ impl Read for ReadErrorOnce {
     }
 }
 
+/// Returns a capture and a split point inside an interface block for I/O retry checks.
 fn pcapng_with_partially_buffered_interface() -> (Vec<u8>, usize) {
     use pcap_file::DataLink;
     use pcap_file::pcapng::blocks::PcapNgBlock;
@@ -276,6 +298,7 @@ fn pcapng_with_partially_buffered_interface() -> (Vec<u8>, usize) {
 
 /* ----- Reader error behavior tests ----- */
 
+/// Checks that strict reading rejects an invalid packet length and then reads the following packet.
 #[test]
 fn strict_reader_validates_typed_blocks_and_advances_after_validation_error() {
     use pcap_file::pcapng::errors::PcapNgReadErrorKind;
@@ -306,6 +329,7 @@ fn strict_reader_validates_typed_blocks_and_advances_after_validation_error() {
     assert_eq!(packet.data.as_ref(), [3]);
 }
 
+/// Checks that an undecodable interface block stops typed and raw reads.
 #[test]
 fn typed_reader_is_poisoned_after_fatal_state_error() {
     use byteorder_slice::BigEndian;
@@ -333,6 +357,7 @@ fn typed_reader_is_poisoned_after_fatal_state_error() {
     assert!(reader.next_raw_block().is_none());
 }
 
+/// Checks that mismatched block lengths stop raw and typed reads.
 #[test]
 fn raw_reader_is_poisoned_after_fatal_format_error() {
     use pcap_file::pcapng::errors::PcapNgReadErrorKind;
@@ -353,6 +378,7 @@ fn raw_reader_is_poisoned_after_fatal_format_error() {
     assert!(reader.next_block().is_none());
 }
 
+/// Checks that retrying a temporary I/O failure preserves buffered bytes and block positions.
 #[test]
 fn reader_retries_retryable_io_error_without_losing_buffered_data() {
     let (mut pcapng, split) = pcapng_with_partially_buffered_interface();
@@ -375,6 +401,7 @@ fn reader_retries_retryable_io_error_without_losing_buffered_data() {
     assert_eq!((error.block_number, error.offset), (2, next_offset));
 }
 
+/// Checks that a fatal I/O failure prevents further block reading.
 #[test]
 fn reader_is_poisoned_after_fatal_io_error() {
     let (pcapng, split) = pcapng_with_partially_buffered_interface();
@@ -389,6 +416,7 @@ fn reader_is_poisoned_after_fatal_io_error() {
     assert!(reader.next_block().is_none());
 }
 
+/// Checks that invalid raw framing leaves writer output and interface state unchanged.
 #[test]
 fn raw_writer_rejects_invalid_state_block_lengths_without_state_update() {
     use pcap_file::Endianness;
@@ -425,6 +453,9 @@ fn raw_writer_rejects_invalid_state_block_lengths_without_state_update() {
     assert_eq!(writer.get_ref().len(), len_before);
 }
 
+/* ----- Copiable custom payloads ----- */
+
+/// Checks that a copiable payload roundtrips through custom blocks and section options.
 #[test]
 fn test_custom_block() {
     use byteorder_slice::{
@@ -434,24 +465,32 @@ fn test_custom_block() {
     use pcap_file::pcapng::blocks::{custom::*, opt_common::*, section_header::*, *};
     use std::io::{Error as IoError, Write};
 
-    // 1. Define a new custom block payload
+    /* ----- Payload type ----- */
+
+    /// Marker encoded independently of section and interface state.
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct MyCustomPayload {
+        /// Marker used to check payload preservation.
         magic_number: u64,
     }
 
-    // 2. Implement the required traits for the custom payload
+    /* ----- Payload codec ----- */
+
     impl CustomPayloadCopiable<'_> for MyCustomPayload {
-        // A unique PEN for our test block
+        /// Private enterprise number used by the fixture codec.
         const PEN: u32 = 70000;
+        /// Failure returned when encoding the fixture payload.
         type WriteToError = IoError;
+        /// Failure returned when decoding the fixture payload.
         type FromSliceError = IoError;
 
+        /// Encodes the test marker as one big endian word.
         fn write_to<W: Write>(&self, writer: &mut W) -> Result<(), IoError> {
             writer.write_u64::<BigEndian>(self.magic_number)?;
             Ok(())
         }
 
+        /// Decodes the test marker from one big endian word.
         fn from_slice(slice: &[u8]) -> Result<Option<MyCustomPayload>, IoError> {
             let mut cursor = std::io::Cursor::new(slice);
             let magic_number = cursor.read_u64::<BigEndian>()?;
@@ -543,6 +582,9 @@ fn test_custom_block() {
     assert!(remaining_data.is_empty(), "Expected all data to be consumed");
 }
 
+/* ----- Section byte order ----- */
+
+/// Checks that parsing a new section uses its byte order when decoding options.
 #[test]
 fn parser_handles_section_endianness_switch() {
     use pcap_file::pcapng::blocks::section_header::SectionHeaderOption;
@@ -567,6 +609,7 @@ fn parser_handles_section_endianness_switch() {
     assert_eq!(section.options, vec![SectionHeaderOption::OS("linux-x6".into())]);
 }
 
+/// Checks that writing a new section changes byte order and resets interface state.
 #[test]
 fn writer_handles_section_endianness_switch() {
     use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
@@ -617,6 +660,9 @@ fn writer_handles_section_endianness_switch() {
     assert!(rem.is_empty());
 }
 
+/* ----- Capacity and recovery ----- */
+
+/// Checks that a custom buffer capacity supports blocks larger than the default buffer.
 #[test]
 fn reader_with_capacity_handles_large_blocks() {
     use std::borrow::Cow;
@@ -653,6 +699,7 @@ fn reader_with_capacity_handles_large_blocks() {
     assert!(reader.next_block().is_none());
 }
 
+/// Checks that typed block reading recovers from an invalid interface reference.
 #[test]
 fn typed_reader_continues_after_non_fatal_block_error() {
     use pcap_file::pcapng::errors::PcapNgReadErrorKind;
@@ -681,6 +728,9 @@ fn typed_reader_continues_after_non_fatal_block_error() {
     assert!(reader.next_block().is_none());
 }
 
+/* ----- State-dependent custom payloads ----- */
+
+/// Checks that state-dependent payloads roundtrip through custom blocks and packet options.
 #[test]
 fn test_stateful_custom_block() {
     use byteorder_slice::{
@@ -693,39 +743,54 @@ fn test_stateful_custom_block() {
     use std::borrow::Cow;
     use std::io::Write;
 
-    // 1. Define a new custom block payload
+    /* ----- Payload type ----- */
+
+    /// Marker and timestamp encoded using the current section and interface state.
     #[derive(Clone, Debug, PartialEq, Eq)]
     struct MyStatefulPayload {
+        /// Marker used to check payload preservation.
         magic_number: u64,
+        /// Interface supplying the timestamp resolution and offset.
         interface_id: u32,
+        /// Time elapsed since the Unix epoch.
         timestamp: Duration,
     }
 
-    // 1.1 Define a new custom error if needed
+    /* ----- Payload errors ----- */
+
+    /// Encoding and decoding failures for the state-dependent test payload.
     #[derive(Debug, thiserror::Error)]
     enum MyCustomPayloadError {
+        /// A payload read or write failed.
         #[error(transparent)]
         Io(#[from] std::io::Error),
 
+        /// The timestamp cannot be represented using the interface settings.
         #[error(transparent)]
         Timestamp(#[from] TimestampError),
     }
 
-    // 2. Implement the required traits for the custom payload
+    /* ----- Payload codec ----- */
+
     impl CustomPayloadNonCopiable<'_> for MyStatefulPayload {
-        // A unique PEN for our test block
+        /// Private enterprise number used by the fixture codec.
         const PEN: u32 = 70000;
 
+        /// Section and interface state required by the fixture codec.
         type State = PcapNgState;
+        /// Failure returned when encoding the fixture payload.
         type WriteToError = MyCustomPayloadError;
+        /// Failure returned when decoding the fixture payload.
         type FromSliceError = MyCustomPayloadError;
 
+        /// Encodes the payload using interface timestamp settings and section byte order.
         fn write_to<W: Write>(&self, state: &PcapNgState, writer: &mut W) -> Result<(), MyCustomPayloadError> {
             return match state.section().endianness {
                 Endianness::Big => inner::<BigEndian, _>(self, state, writer),
                 Endianness::Little => inner::<LittleEndian, _>(self, state, writer),
             };
 
+            /// Encodes the payload using the selected byte order.
             fn inner<B: ByteOrder, W: Write>(
                 payload: &MyStatefulPayload,
                 state: &PcapNgState,
@@ -742,12 +807,14 @@ fn test_stateful_custom_block() {
             }
         }
 
+        /// Decodes the payload using interface timestamp settings and section byte order.
         fn from_slice(state: &PcapNgState, slice: &[u8]) -> Result<Option<MyStatefulPayload>, MyCustomPayloadError> {
             return match state.section().endianness {
                 Endianness::Big => inner::<BigEndian>(state, slice),
                 Endianness::Little => inner::<LittleEndian>(state, slice),
             };
 
+            /// Decodes the payload using the selected byte order.
             fn inner<B: ByteOrder>(
                 state: &PcapNgState,
                 mut slice: &[u8],

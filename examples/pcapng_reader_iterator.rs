@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open("tests/pcapng/little_endian/basic/test001.pcapng")?;
     let reader = PcapNgReader::new(file, true)?;
 
+    // Iterator packets own their data and can be retained after the next poll.
     for result in reader.packets() {
         match result {
             Ok(packet) => println!("{} bytes", packet.data.len()),

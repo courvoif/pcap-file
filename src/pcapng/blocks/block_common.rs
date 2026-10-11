@@ -52,7 +52,12 @@ pub struct RawBlock<'a> {
 }
 
 impl<'a> RawBlock<'a> {
-    /// Parses a borrowed [`RawBlock`] from a slice.
+    /// Returns a borrowed raw block and the remaining input using byte order `B`.
+    /// Section Header Blocks detect their own byte order from their magic number.
+    ///
+    /// # Errors
+    /// Supply more bytes for incomplete input.
+    /// Correct invalid framing before parsing the following block.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), RawBlockParseError> {
         if slice.len() < 12 {
             return Err(RawBlockParseError::IncompleteBuffer(12, slice.len()));
@@ -80,6 +85,7 @@ impl<'a> RawBlock<'a> {
         };
 
         // Section Header parsing
+        /// Decodes a raw block body and trailer after its leading fields.
         fn inner_parse<B: ByteOrder>(
             slice: &[u8],
             type_: u32,
@@ -119,7 +125,12 @@ impl<'a> RawBlock<'a> {
 
     /// Writes a [`RawBlock`] to a writer.
     ///
-    /// Uses the endianness of the header.
+    /// Uses `B` for the type and length fields and copies the body unchanged.
+    /// Choose the byte order matching the section in which the block is written.
+    ///
+    /// # Errors
+    /// Correct invalid framing before retrying.
+    /// An I/O error can leave a partial block in the output.
     pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapNgWriteError> {
         self.validate()?;
 
@@ -132,6 +143,9 @@ impl<'a> RawBlock<'a> {
     }
 
     /// Validates that the raw block length fields match its body.
+    ///
+    /// # Errors
+    /// Correct the length fields and body size before decoding or writing a manually constructed block.
     pub fn validate(&self) -> Result<(), PcapNgFormatError> {
         if self.initial_len != self.trailer_len {
             return Err(PcapNgFormatError::BlockLengthMismatch(
@@ -159,9 +173,15 @@ impl<'a> RawBlock<'a> {
         Ok(())
     }
 
-    /// Decodes a raw block after checking framing, without semantic validation.
-    /// Call [`Block::validate`] explicitly to validate the decoded content.
-    /// The byteorder is defined by the `state`.
+    /// Decodes the raw block body without checking its length fields.
+    /// Call [`Self::validate`] first for manually constructed raw blocks.
+    /// Typed decoding checks representations and individual options.
+    /// Call [`Block::validate`] for the remaining block semantic constraints.
+    /// Uses the state's byte order, except that Section Header Blocks detect their own.
+    ///
+    /// # Errors
+    /// Use the matching section and interface state for supported block types.
+    /// Unsupported or undecodable blocks remain available in their raw form.
     pub fn try_into_block(&self, state: &PcapNgState) -> Result<Block<'a>, BlockError> {
         match state.section.endianness {
             crate::Endianness::Big => Block::try_from_raw_block::<BigEndian>(state, self),
@@ -169,9 +189,15 @@ impl<'a> RawBlock<'a> {
         }
     }
 
-    /// Decodes a raw block after checking framing, without semantic validation.
-    /// Call [`Block::validate`] explicitly to validate the decoded content.
-    /// The byteorder is defined by the caller.
+    /// Decodes the raw block body without checking its length fields.
+    /// Call [`Self::validate`] first for manually constructed raw blocks.
+    /// Typed decoding checks representations and individual options.
+    /// Call [`Block::validate`] for the remaining block semantic constraints.
+    /// Uses `B`, except that Section Header Blocks detect their own byte order.
+    ///
+    /// # Errors
+    /// Use the matching section and interface state for supported block types.
+    /// Unsupported or undecodable blocks remain available in their raw form.
     pub fn try_into_block_with_byteorder<B: ByteOrder>(&self, state: &PcapNgState) -> Result<Block<'a>, BlockError> {
         Block::try_from_raw_block::<B>(state, self)
     }
@@ -224,7 +250,10 @@ impl<'a> Block<'a> {
     ///
     /// If `raw_block` owns its body, the block content is parsed and then
     /// converted into an owned [`Block`] before being returned.
-    /// Framing is checked, but semantic validation is left to [`Self::validate`].
+    /// Call [`RawBlock::validate`] first for manually constructed raw blocks.
+    /// Typed decoding checks representations and individual options.
+    /// Block semantic validation is left to [`Self::validate`].
+    /// Choose `B` for the block's section; Section Header Blocks detect their own byte order.
     pub fn try_from_raw_block<B: ByteOrder>(
         state: &PcapNgState,
         raw_block: &RawBlock<'a>,
@@ -236,6 +265,7 @@ impl<'a> Block<'a> {
             Cow::Owned(body) => parse_body::<B>(state, type_, body).map(|block| block.into_owned()),
         };
 
+        /// Decodes the selected typed block body.
         fn parse_body<'a, B: ByteOrder>(
             state: &PcapNgState,
             type_: u32,
@@ -278,7 +308,13 @@ impl<'a> Block<'a> {
 
     /// Encodes a framed block without semantic validation.
     /// Call [`Self::validate`] explicitly, or use a strict [`crate::pcapng::PcapNgWriter`].
-    /// Encoding conversions and size limits are checked in either case.
+    /// Encoding conversions, size limits, and individual options are checked in either case.
+    /// Choose `B` for the destination section, matching `endianness` for a Section Header Block.
+    /// Use [`crate::pcapng::PcapNgWriter`] to select byte order and maintain state automatically.
+    ///
+    /// # Errors
+    /// Correct encoding failures before retrying; they leave the output unchanged.
+    /// An I/O failure can leave a partial block in the output.
     pub fn write_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -304,6 +340,7 @@ impl<'a> Block<'a> {
             })
         });
 
+        /// Writes a framed typed block after checking its encoded size.
         fn inner_write_to<'block, B: ByteOrder, BL: PcapNgBlock<'block>, W: Write>(
             state: &PcapNgState,
             block: &BL,
@@ -344,6 +381,10 @@ impl<'a> Block<'a> {
     }
 
     /// Validates the block's semantic constraints against the current state.
+    ///
+    /// # Errors
+    /// Correct the block's fields or options before retrying.
+    /// Interface-dependent blocks need their interface in the supplied state.
     pub fn validate(&self, state: &PcapNgState) -> Result<(), BlockError> {
         match self {
             Self::SectionHeader(block) => block.validate(state),
@@ -403,13 +444,19 @@ pub trait PcapNgBlock<'a> {
     fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError>;
 
     /// Decodes a block body using the supplied state, without semantic validation.
-    /// Required bounds and representation checks still apply.
+    /// Bounds, representation checks, and individual option validation still apply.
+    /// Choose `B` for the source section; Section Header Blocks detect their own byte order.
     fn from_body<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockValidationError>
     where
         Self: std::marker::Sized;
 
     /// Encodes a block body without semantic validation.
-    /// Required conversions return errors even if [`Self::validate`] was not called.
+    /// Required conversions and individual option validation still apply.
+    /// When writing a Section Header Block, choose `B` to match its `endianness`.
+    ///
+    /// # Errors
+    /// Encoding or I/O failures can leave a partial body in the output.
+    /// Use [`Block::write_to`] or [`crate::pcapng::PcapNgWriter`] to check encoding before writing output.
     fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -441,6 +488,7 @@ pub fn block_name(type_: u32) -> &'static str {
 
 /* ----- Tests ----- */
 
+/// Checks this module's capture behavior.
 #[cfg(test)]
 mod tests {
     /* ----- Imports ----- */
@@ -456,6 +504,7 @@ mod tests {
 
     /* ----- Block metadata ----- */
 
+    /// Checks the supported block codes and names against their encoded values.
     #[test]
     fn block_type_codes_and_names_match_wire_format() {
         let blocks = [
@@ -491,6 +540,7 @@ mod tests {
 
     /* ----- Raw block conversion and validation ----- */
 
+    /// Checks that owned raw bodies yield owned typed blocks.
     #[test]
     fn try_from_raw_block_accepts_owned_bodies() {
         let raw_block = RawBlock {
@@ -518,6 +568,7 @@ mod tests {
         }
     }
 
+    /// Checks that raw length validation rejects a mismatched body size.
     #[test]
     fn raw_block_validation_rejects_body_length_mismatch() {
         let raw_block = RawBlock {

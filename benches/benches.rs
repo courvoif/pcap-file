@@ -1,9 +1,15 @@
+//! Throughput comparisons for typed and raw capture parsers and readers.
+
+/* ----- Imports ----- */
+
 use criterion::{Criterion, criterion_group, criterion_main};
 use pcap_file::pcap::{PcapParseError, PcapParser, PcapReader};
-use pcap_file::pcapng::{PcapNgParser, PcapNgReader};
 use pcap_file::pcapng::errors::PcapNgParseError;
+use pcap_file::pcapng::{PcapNgParser, PcapNgReader};
 
-/// Bench and compare Pcap readers and parsers
+/* ----- Classic pcap throughput ----- */
+
+/// Compares typed and raw classic pcap parsing and reading throughput.
 pub fn pcap(c: &mut Criterion) {
     let pcap = std::fs::read("benches/bench.pcap").unwrap();
 
@@ -59,7 +65,9 @@ pub fn pcap(c: &mut Criterion) {
     });
 }
 
-/// Bench and compare PcapNg readers and parsers
+/* ----- Pcapng throughput ----- */
+
+/// Compares typed and raw pcapng parsing and reading throughput.
 pub fn pcapng(c: &mut Criterion) {
     let pcapng = std::fs::read("benches/bench.pcapng").unwrap();
 
@@ -112,6 +120,8 @@ pub fn pcapng(c: &mut Criterion) {
         })
     });
 }
+
+/* ----- Benchmark registration ----- */
 
 criterion_group!(benches, pcap, pcapng);
 criterion_main!(benches);

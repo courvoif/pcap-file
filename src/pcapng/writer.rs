@@ -1,3 +1,7 @@
+//! Typed and raw pcapng block writing.
+
+/* ----- Imports ----- */
+
 use std::io::Write;
 
 use byteorder_slice::{BigEndian, LittleEndian};
@@ -8,27 +12,30 @@ use super::{PcapNgState, RawBlock};
 use crate::Endianness;
 use crate::pcapng::errors::PcapNgWriteError;
 
+/* ----- Writer ----- */
+
 /// Write a PcapNg to a writer.
 ///
 /// # Examples
 /// ```rust,no_run
 /// use std::fs::File;
-///
 /// use pcap_file::pcapng::{PcapNgReader, PcapNgWriter};
 ///
-/// let file_in = File::open("test.pcapng").expect("Error opening file");
-/// let mut pcapng_reader = PcapNgReader::new(file_in, true).unwrap();
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let file = File::open("tests/pcapng/little_endian/basic/test001.pcapng")?;
+///     let mut reader = PcapNgReader::new(file, true)?;
 ///
-/// let out = Vec::new();
-/// let mut pcapng_writer = PcapNgWriter::new(out, true).unwrap();
+///     // The constructor consumed the first section header; preserve it explicitly.
+///     let section = reader.state().section().clone();
+///     let mut writer = PcapNgWriter::with_section_header(Vec::new(), section, true)?;
+///     while let Some(result) = reader.next_block() {
+///         // Interface blocks update the writer state before their packets are written.
+///         let (block, _) = result?;
+///         writer.write_block(&block)?;
+///     }
 ///
-/// // Read test.pcapng
-/// while let Some(block) = pcapng_reader.next_block() {
-///     // Check if there is no error
-///     let (block, _) = block.unwrap();
-///
-///     // Write back parsed Block
-///     pcapng_writer.write_block(&block).unwrap();
+///     println!("copied {} bytes", writer.into_inner().len());
+///     Ok(())
 /// }
 /// ```
 pub struct PcapNgWriter<W: Write> {
@@ -36,15 +43,17 @@ pub struct PcapNgWriter<W: Write> {
     state: PcapNgState,
     /// Wrapped writer to which the block are written to.
     writer: W,
+    /// Whether typed blocks receive block semantic validation.
     strict: bool,
 }
 
 impl<W: Write> PcapNgWriter<W> {
     /// Create a new [`PcapNgWriter`] from an existing writer.
     ///
-    /// Defaults to native byte order. When `strict` is true, typed blocks are
-    /// semantically validated before writing. Raw operations leave semantic
-    /// validation to the caller; framing and required conversions are always checked.
+    /// Writes a default Section Header Block using native byte order.
+    /// When `strict` is true, typed blocks are validated before writing.
+    /// Encoding always checks representations and individual options.
+    /// See [`Self::write_raw_block`] for the validation rules of raw operations.
     ///
     /// Writes this section header to the file:
     /// ```rust
@@ -61,13 +70,18 @@ impl<W: Write> PcapNgWriter<W> {
     /// ```
     ///
     /// # Errors
-    /// The writer can't be written to.
+    /// An I/O failure can leave a partial initial section header in the output.
     pub fn new(writer: W, strict: bool) -> Result<Self, PcapNgWriteError> {
         Self::with_endianness(writer, Endianness::default(), strict)
     }
 
     /// Creates a writer with the given byte order.
-    /// When `strict` is true, typed blocks are semantically validated before writing.
+    /// Writes a default Section Header Block in that byte order.
+    /// When `strict` is true, typed blocks are validated before writing.
+    /// Representations and individual options are checked in either mode.
+    ///
+    /// # Errors
+    /// An I/O failure can leave a partial initial header in the output.
     pub fn with_endianness(writer: W, endianness: Endianness, strict: bool) -> Result<Self, PcapNgWriteError> {
         let section = SectionHeaderBlock {
             endianness,
@@ -78,7 +92,13 @@ impl<W: Write> PcapNgWriter<W> {
     }
 
     /// Creates a writer with the given section header.
-    /// `strict` controls semantic validation, including for the initial header.
+    /// Writes the initial Section Header Block immediately.
+    /// `strict` controls block validation, including for the initial header.
+    /// Representations and individual options are checked in either mode.
+    ///
+    /// # Errors
+    /// Correct an invalid section header before retrying.
+    /// An I/O failure can leave a partial initial header in the output.
     pub fn with_section_header(
         writer: W,
         section: SectionHeaderBlock<'_>,
@@ -100,37 +120,47 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Writes a typed block, validating its content first in strict mode.
     ///
-    /// I/O errors can leave the output stream partially written. After any error,
-    /// callers should assume the pcapng stream is no longer usable.
+    /// Validation and encoding errors leave the output and writer state unchanged.
+    /// An I/O error can leave the stream partially written; discard or repair that output.
     ///
     /// # Example
-    /// ```rust,no_run
+    /// ```rust
     /// use std::borrow::Cow;
-    /// use std::fs::File;
+    /// use std::time::Duration;
     ///
+    /// use pcap_file::DataLink;
+    /// use pcap_file::pcapng::{PcapNgBlock, PcapNgWriter};
     /// use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     /// use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-    /// use pcap_file::pcapng::{PcapNgBlock, PcapNgWriter};
-    /// use pcap_file::DataLink;
     ///
-    /// let data = [0u8; 10];
     ///
-    /// let interface = InterfaceDescriptionBlock {
-    ///     linktype: DataLink::ETHERNET,
-    ///     snaplen: 0xFFFF,
-    ///     options: vec![],
-    /// };
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let mut writer = PcapNgWriter::new(Vec::new(), true)?;
     ///
-    /// let mut packet = EnhancedPacketBlock::default();
-    /// packet.original_len = data.len() as u32;
-    /// packet.data = Cow::Borrowed(&data);
+    ///     // Packet blocks use an interface by index; this packet uses interface 0.
+    ///     let interface = InterfaceDescriptionBlock::new(DataLink::ETHERNET, 65_535);
+    ///     writer.write_block(&interface.into_block())?;
     ///
-    /// let file = File::create("out.pcapng").expect("Error creating file");
-    /// let mut pcap_ng_writer = PcapNgWriter::new(file, true).unwrap();
+    ///     // These bytes are just example packet data.
+    ///     let data = [0_u8; 64];
+    ///     let packet = EnhancedPacketBlock {
+    ///         timestamp: Duration::from_secs(1),
+    ///         original_len: data.len() as u32,
+    ///         data: Cow::Borrowed(&data),
+    ///         ..Default::default()
+    ///     };
+    ///     writer.write_block(&packet.into_block())?;
     ///
-    /// pcap_ng_writer.write_block(&interface.into_block()).unwrap();
-    /// pcap_ng_writer.write_block(&packet.into_block()).unwrap();
+    ///     let capture = writer.into_inner();
+    ///     println!("wrote {} bytes", capture.len());
+    ///
+    ///     Ok(())
+    /// }
     /// ```
+    ///
+    /// # Errors
+    /// Correct validation or encoding failures and retry with the writer state unchanged.
+    /// If an I/O error occurs, discard or repair any partially written block.
     pub fn write_block(&mut self, block: &Block) -> Result<usize, PcapNgWriteError> {
         // The order of operation is important to prevent writing invalid files in case of error.
         // The state is updated only after a successful write.
@@ -153,52 +183,66 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Write a [`PcapNgBlock`].
     ///
-    /// I/O errors can leave the output stream partially written. After any error,
-    /// callers should assume the pcapng stream is no longer usable.
+    /// Validation and encoding errors leave the output and writer state unchanged.
+    /// An I/O error can leave the stream partially written; discard or repair that output.
     ///
     /// # Example
-    /// ```rust,no_run
+    /// ```rust
     /// use std::borrow::Cow;
-    /// use std::fs::File;
+    /// use std::time::Duration;
     ///
+    /// use pcap_file::DataLink;
+    /// use pcap_file::pcapng::PcapNgWriter;
     /// use pcap_file::pcapng::blocks::enhanced_packet::EnhancedPacketBlock;
     /// use pcap_file::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
-    /// use pcap_file::pcapng::{PcapNgBlock, PcapNgWriter};
-    /// use pcap_file::DataLink;
     ///
-    /// let data = [0u8; 10];
     ///
-    /// let interface = InterfaceDescriptionBlock {
-    ///     linktype: DataLink::ETHERNET,
-    ///     snaplen: 0xFFFF,
-    ///     options: vec![],
-    /// };
+    /// fn main() -> Result<(), Box<dyn std::error::Error>> {
+    ///     let mut writer = PcapNgWriter::new(Vec::new(), true)?;
     ///
-    /// let mut packet = EnhancedPacketBlock::default();
-    /// packet.original_len = data.len() as u32;
-    /// packet.data = Cow::Borrowed(&data);
+    ///     // Packet blocks use an interface by index; this packet uses interface 0.
+    ///     writer.write_pcapng_block(InterfaceDescriptionBlock::new(DataLink::ETHERNET, 65_535))?;
     ///
-    /// let file = File::create("out.pcapng").expect("Error creating file");
-    /// let mut pcap_ng_writer = PcapNgWriter::new(file, true).unwrap();
+    ///     // These bytes are just example packet data.
+    ///     let data = [0_u8; 64];
+    ///     let packet = EnhancedPacketBlock {
+    ///         timestamp: Duration::from_secs(1),
+    ///         original_len: data.len() as u32,
+    ///         data: Cow::Borrowed(&data),
+    ///         ..Default::default()
+    ///     };
+    ///     writer.write_pcapng_block(packet)?;
     ///
-    /// pcap_ng_writer.write_pcapng_block(interface).unwrap();
-    /// pcap_ng_writer.write_pcapng_block(packet).unwrap();
+    ///     let capture = writer.into_inner();
+    ///     println!("wrote {} bytes", capture.len());
+    ///
+    ///     Ok(())
+    /// }
     /// ```
+    ///
+    /// # Errors
+    /// Correct validation or encoding failures and retry with the writer state unchanged.
+    /// If an I/O error occurs, discard or repair any partially written block.
     pub fn write_pcapng_block<'a, B: PcapNgBlock<'a>>(&mut self, block: B) -> Result<usize, PcapNgWriteError> {
         self.write_block(&block.into_block())
     }
 
     /// Write a [`RawBlock`].
     ///
-    /// I/O errors can leave the output stream partially written. After any error,
-    /// callers should assume the pcapng stream is no longer usable.
+    /// Validation and encoding errors leave the output and writer state unchanged.
+    /// An I/O error can leave the stream partially written; discard or repair that output.
     ///
-    /// Validates raw framing, but never semantically validates block contents,
-    /// regardless of strict mode. The caller can decode and validate explicitly.
+    /// Validates raw framing without calling [`Block::validate`], regardless of strict mode.
+    /// Decode and validate explicitly when block semantic checks are needed.
     ///
-    /// Section Header and Interface Description raw blocks are decoded before writing
-    /// so the writer can update its state after a successful write. If decoding fails,
-    /// nothing is written and the writer state is unchanged.
+    /// Section Header and Interface Description raw blocks are decoded before writing.
+    /// Their representations and individual options must be valid in either mode.
+    /// If decoding fails, nothing is written and the writer state is unchanged.
+    /// The state is updated after a successful write.
+    ///
+    /// # Errors
+    /// Correct validation or encoding failures and retry with the writer state unchanged.
+    /// If an I/O error occurs, discard or repair any partially written block.
     pub fn write_raw_block(&mut self, raw_block: &RawBlock) -> Result<usize, PcapNgWriteError> {
         // The order of operation is important to prevent writing invalid files in case of error.
         // The state is updated only after a successful write.
@@ -232,7 +276,8 @@ impl<W: Write> PcapNgWriter<W> {
 
     /// Get a mutable reference to the underlying writer.
     ///
-    /// Should not be used unless you really know what you're doing
+    /// Bytes written directly must preserve block framing and the current section state.
+    /// Flush buffered output through this reference when needed.
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.writer
     }

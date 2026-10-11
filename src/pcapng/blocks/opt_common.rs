@@ -97,7 +97,8 @@ pub(crate) fn opts_from_slice<'a, B: ByteOrder, O: PcapNgOption<'a>>(
     Ok((slice, options))
 }
 
-/// Validates and writes all options followed by an end-of-options entry.
+/// Validates and writes a nonempty option list followed by its end-of-options entry.
+/// An empty list writes no bytes, including no terminator.
 pub(crate) fn write_opts_to<'a, B: ByteOrder, O: PcapNgOption<'a>, W: Write>(
     options: &[O],
     state: &PcapNgState,
@@ -565,6 +566,8 @@ impl<'a> PacketHash<'a> {
 /// Checks option framing, parsing, and validation behavior.
 #[cfg(test)]
 mod tests {
+    /* ----- Imports ----- */
+
     use std::io::Write;
 
     use byteorder_slice::BigEndian;
@@ -609,6 +612,7 @@ mod tests {
     }
 
     impl<'a> PcapNgOption<'a> for PcapNgOptionImpl {
+        /// Returns a dummy option for list framing checks.
         fn from_content<B: byteorder_slice::ByteOrder>(
             _state: &PcapNgState,
             _interface_id: Option<u32>,
@@ -621,6 +625,7 @@ mod tests {
             Ok(Self {})
         }
 
+        /// Returns zero written bytes without changing the output.
         fn write_to<B: byteorder_slice::ByteOrder, W: std::io::Write>(
             &self,
             _state: &PcapNgState,
@@ -630,14 +635,17 @@ mod tests {
             Ok(0)
         }
 
+        /// Accepts the dummy option without additional constraints.
         fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
             Ok(())
         }
 
+        /// Returns the comment code used by the framing fixture.
         fn code(&self) -> u16 {
             1
         }
 
+        /// Returns the fixture option name.
         fn name(_code: u16) -> &'static str {
             "Option"
         }
@@ -664,6 +672,7 @@ mod tests {
     }
 
     impl<'a> PcapNgOption<'a> for ValidatedOption {
+        /// Decodes an option value for the supplied option code.
         fn from_content<B: byteorder_slice::ByteOrder>(
             _state: &PcapNgState,
             _interface_id: Option<u32>,
@@ -673,14 +682,17 @@ mod tests {
             Ok(Self { valid: true })
         }
 
+        /// Returns the option name for its code.
         fn name(_code: u16) -> &'static str {
             "ValidatedOption"
         }
 
+        /// Returns the encoded option code.
         fn code(&self) -> u16 {
             1
         }
 
+        /// Checks the constraints applicable to this value.
         fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
             if self.valid {
                 Ok(())
@@ -689,6 +701,7 @@ mod tests {
             }
         }
 
+        /// Writes this value using the selected byte order.
         fn write_to<B: byteorder_slice::ByteOrder, W: std::io::Write>(
             &self,
             _state: &PcapNgState,

@@ -48,9 +48,11 @@ pub struct PacketBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
+    /// Numeric type code of this block.
     const TYPE: u32 = 0x00000002;
+    /// Human-readable name of this block.
     const NAME: &'static str = "Packet Block";
-
+    /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
@@ -96,6 +98,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         Ok((slice, block))
     }
 
+    /// Checks the constraints applicable to this value.
     fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
         let captured_len = u32::try_from(self.data.len()).map_err(|_| BlockValidationError::BlockTooLarge {
             actual: self.data.len() as u64,
@@ -127,6 +130,8 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         validate_opts(&self.options, state, Some(self.interface_id as u32)).map_err(BlockValidationError::Option)
     }
 
+    /// Writes this block body using the supplied section state.
+    /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
     fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -160,6 +165,7 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         Ok(20 + self.data.len() + pad_len + opt_len)
     }
 
+    /// Returns the matching typed block variant.
     fn into_block(self) -> Block<'a> {
         Block::Packet(self)
     }
@@ -181,11 +187,14 @@ pub enum PacketOption<'a> {
 }
 
 impl PacketOption<'_> {
+    /// Encoded option code for `FLAGS`.
     const FLAGS: u16 = 2;
+    /// Encoded option code for `HASH`.
     const HASH: u16 = 3;
 }
 
 impl<'a> PcapNgOption<'a> for PacketOption<'a> {
+    /// Decodes an option value for the supplied option code.
     fn from_content<B: ByteOrder>(
         _state: &PcapNgState,
         _interface_id: Option<u32>,
@@ -204,6 +213,7 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         Ok(opt)
     }
 
+    /// Writes this value using the selected byte order.
     fn write_to<B: ByteOrder, W: Write>(
         &self,
         _state: &PcapNgState,
@@ -217,10 +227,12 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         }
     }
 
+    /// Checks the constraints applicable to this value.
     fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
         Ok(())
     }
 
+    /// Returns the encoded option code.
     fn code(&self) -> u16 {
         match self {
             Self::Flags(_) => Self::FLAGS,
@@ -229,6 +241,7 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
         }
     }
 
+    /// Returns the option name for its code.
     fn name(code: u16) -> &'static str {
         match code {
             Self::FLAGS => "Flags",

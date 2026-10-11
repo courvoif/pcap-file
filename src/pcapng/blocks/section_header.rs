@@ -37,7 +37,8 @@ pub struct SectionHeaderBlock<'a> {
     /// Length in bytes of the following section excluding this block.
     ///
     /// This block can be used to skip the section for faster navigation in
-    /// large files. Length of -1i64 means that the length is unspecified.
+    /// large files.
+    /// Length of -1i64 means that the length is unspecified.
     pub section_length: i64,
 
     /// Options
@@ -45,9 +46,11 @@ pub struct SectionHeaderBlock<'a> {
 }
 
 impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
+    /// Numeric type code of this block.
     const TYPE: u32 = 0x0A0D0D0A;
+    /// Human-readable name of this block.
     const NAME: &'static str = "Section Header Block";
-
+    /// Checks the constraints applicable to this value.
     fn validate(&self, state: &PcapNgState) -> Result<(), BlockValidationError> {
         validate_unique_opts(&self.options, |option| {
             !matches!(option, SectionHeaderOption::Common(_))
@@ -57,10 +60,12 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
     }
 
+    /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
         mut slice: &'a [u8],
     ) -> Result<(&'a [u8], Self), BlockValidationError> {
+        /// Decodes the selected typed block body.
         fn parse_body<'a, B: ByteOrder>(
             state: &PcapNgState,
             endianness: Endianness,
@@ -98,6 +103,8 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         }
     }
 
+    /// Writes this block body using the supplied section state.
+    /// See [`PcapNgBlock::write_body_to`] for byte order and error handling.
     fn write_body_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -118,13 +125,19 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         Ok(16 + opt_len)
     }
 
+    /// Returns the matching typed block variant.
     fn into_block(self) -> Block<'a> {
         Block::SectionHeader(self)
     }
 }
 
+/* ----- Tests ----- */
+
+/// Checks this module's capture behavior.
 #[cfg(test)]
 mod tests {
+    /* ----- Imports ----- */
+
     use byteorder_slice::BigEndian;
 
     use super::{SectionHeaderBlock, SectionHeaderOption};
@@ -132,6 +145,9 @@ mod tests {
     use crate::pcapng::PcapNgState;
     use crate::pcapng::blocks::PcapNgBlock;
 
+    /* ----- Section byte order ----- */
+
+    /// Checks that section magic determines the option byte order.
     #[test]
     fn parses_little_endian_options_using_magic_number() {
         let body = [
@@ -154,6 +170,7 @@ mod tests {
 }
 
 impl Default for SectionHeaderBlock<'static> {
+    /// Returns the default capture settings.
     fn default() -> Self {
         Self {
             endianness: Endianness::Big,
@@ -184,12 +201,16 @@ pub enum SectionHeaderOption<'a> {
 }
 
 impl SectionHeaderOption<'_> {
+    /// Encoded option code for `HARDWARE`.
     const HARDWARE: u16 = 2;
+    /// Encoded option code for `OS_`.
     const OS_: u16 = 3;
+    /// Encoded option code for `USER_APPLICATION`.
     const USER_APPLICATION: u16 = 4;
 }
 
 impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
+    /// Decodes an option value for the supplied option code.
     fn from_content<B: ByteOrder>(
         _state: &PcapNgState,
         _interface_id: Option<u32>,
@@ -207,6 +228,7 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
         Ok(opt)
     }
 
+    /// Writes this value using the selected byte order.
     fn write_to<B: ByteOrder, W: Write>(
         &self,
         _state: &PcapNgState,
@@ -223,10 +245,12 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
         }
     }
 
+    /// Checks the constraints applicable to this value.
     fn validate(&self, _state: &PcapNgState, _interface_id: Option<u32>) -> Result<(), OptionEntryError> {
         Ok(())
     }
 
+    /// Returns the encoded option code.
     fn code(&self) -> u16 {
         match self {
             Self::Hardware(_) => Self::HARDWARE,
@@ -236,6 +260,7 @@ impl<'a> PcapNgOption<'a> for SectionHeaderOption<'a> {
         }
     }
 
+    /// Returns the option name for its code.
     fn name(code: u16) -> &'static str {
         match code {
             Self::HARDWARE => "Hardware",

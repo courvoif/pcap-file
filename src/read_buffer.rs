@@ -45,9 +45,11 @@ impl<R: Read> ReadBuffer<R> {
 
     /// Parse data from the internal buffer
     ///
-    /// Safety
+    /// Returned values may borrow the buffer after successful parsing.
     ///
-    /// The parser must NOT keep a reference to the buffer in input.
+    /// # Safety
+    /// The parser must not retain input references across incomplete-input retries.
+    /// Refilling the buffer invalidates those references before the next attempt.
     pub fn parse_with<'a, 'b: 'a, 'c: 'a, F, O, E>(&'c mut self, mut parser: F) -> Result<O, E::ReadError>
     where
         F: FnMut(&'a [u8]) -> Result<(&'a [u8], O), E>,
@@ -167,18 +169,21 @@ pub(crate) trait ReadBufferParseError {
 }
 
 impl ReadBufferParseError for PcapParseError {
+    /// Read error cause for this capture format.
     type ReadError = PcapReadErrorKind;
-
+    /// Returns whether parsing requires more input bytes.
     #[inline]
     fn is_incomplete(&self) -> bool {
         matches!(self, Self::IncompleteBuffer(_, _))
     }
 
+    /// Wraps an I/O error as a capture read error cause.
     #[inline]
     fn from_io(error: Error) -> Self::ReadError {
         PcapReadErrorKind::Io(error)
     }
 
+    /// Converts a terminal parse error into a read error cause.
     #[inline]
     fn into_read_error(self) -> Self::ReadError {
         match self {
@@ -189,49 +194,23 @@ impl ReadBufferParseError for PcapParseError {
 }
 
 impl ReadBufferParseError for PcapNgParseError {
+    /// Read error cause for this capture format.
     type ReadError = PcapNgReadErrorKind;
-
+    /// Returns whether parsing requires more input bytes.
     #[inline]
     fn is_incomplete(&self) -> bool {
         matches!(self, Self::IncompleteBuffer(_, _))
     }
 
+    /// Wraps an I/O error as a capture read error cause.
     #[inline]
     fn from_io(error: Error) -> Self::ReadError {
         PcapNgReadErrorKind::Io(error)
     }
 
+    /// Converts a terminal parse error into a read error cause.
     #[inline]
     fn into_read_error(self) -> Self::ReadError {
         self.into()
     }
-}
-
-#[cfg(test)]
-mod test {
-    /*
-    // Shouldn't compile
-    #[test]
-    fn parse_with_safety() {
-        let a = &[0_u8; 10];
-        let b = &mut &a[..];
-
-        let input = vec![1_u8; 100];
-        let input_read = &mut &input[..];
-        let mut reader = super::ReadBuffer::new(input_read);
-
-        unsafe {
-            reader.parse_with(|buf| {
-                *b = buf;
-                Ok((buf, ()))
-            });
-        }
-
-        unsafe {
-            reader.has_data_left();
-        }
-
-        println!("{:?}", b);
-    }
-    */
 }

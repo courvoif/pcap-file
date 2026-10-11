@@ -1,5 +1,9 @@
 #![allow(clippy::unreadable_literal)]
 
+//! Capture format integration checks and timestamp resolution across interfaces.
+
+/* ----- Imports ----- */
+
 use std::fs::File;
 use std::time::Duration;
 
@@ -8,10 +12,14 @@ use pcap_file::pcapng::{
     blocks::interface_description::{InterfaceDescriptionOption, InterfaceTsResolution},
 };
 
+/* ----- Format-specific checks ----- */
+
 mod pcap;
 mod pcapng;
 
-/// Test that the timestamp resolution is correctly read and set in the packets.
+/* ----- Interface timestamp resolution ----- */
+
+/// Checks that packet timestamps use the resolution of their referenced interface.
 #[test]
 fn timestamp_resolution() {
     let file = File::open("tests/test_multiple_interfaces.pcapng").unwrap();

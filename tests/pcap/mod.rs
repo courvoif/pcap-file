@@ -1,3 +1,7 @@
+//! Classic pcap fixture roundtrips, validation, and reader recovery checks.
+
+/* ----- Imports ----- */
+
 extern crate pcap_file;
 
 use std::borrow::Cow;
@@ -8,8 +12,14 @@ use pcap_file::pcap::{
     PcapHeader, PcapPacket, PcapReader, PcapTsResolution, PcapValidationError, PcapWriter, RawPcapPacket,
 };
 
+/* ----- Fixture ----- */
+
+/// Little endian capture used by the reading and copying checks.
 static DATA: &[u8; 1455] = include_bytes!("little_endian.pcap");
 
+/* ----- Capture reading and copying ----- */
+
+/// Checks that borrowed packet reading consumes the complete fixture.
 #[test]
 fn read() {
     let mut pcap_reader = PcapReader::new(&DATA[..]).unwrap();
@@ -27,6 +37,7 @@ fn read() {
     assert_eq!(data_len as usize, DATA.len());
 }
 
+/// Checks that owned packet iteration consumes the complete fixture.
 #[test]
 fn read_with_iterator() {
     let pcap_reader = PcapReader::new(&DATA[..]).unwrap();
@@ -44,6 +55,7 @@ fn read_with_iterator() {
     assert_eq!(data_len as usize, DATA.len());
 }
 
+/// Checks that typed packet copying preserves the fixture bytes.
 #[test]
 fn read_write() {
     let mut pcap_reader = PcapReader::new(&DATA[..]).unwrap();
@@ -61,6 +73,7 @@ fn read_write() {
     assert_eq!(&DATA[..], &out[..]);
 }
 
+/// Checks that copying owned iterator packets preserves the fixture bytes.
 #[test]
 fn read_write_with_iterator() {
     let pcap_reader = PcapReader::new(&DATA[..]).unwrap();
@@ -78,6 +91,7 @@ fn read_write_with_iterator() {
     assert_eq!(&DATA[..], &out[..]);
 }
 
+/// Checks that iteration skips an invalid packet and reads the following packet.
 #[test]
 fn iterator_continues_after_non_fatal_error() {
     let invalid_packet = RawPcapPacket {
@@ -101,6 +115,7 @@ fn iterator_continues_after_non_fatal_error() {
     assert!(packets.next().is_none());
 }
 
+/// Checks that raw packet copying preserves all fixture bytes.
 #[test]
 fn read_write_raw() {
     let mut pcap_reader = PcapReader::new(&DATA[..]).unwrap();
@@ -118,6 +133,9 @@ fn read_write_raw() {
     assert_eq!(&DATA[..], &out[..]);
 }
 
+/* ----- Byte order ----- */
+
+/// Checks the global header and first packet of the big endian fixture.
 #[test]
 fn big_endian() {
     let data = include_bytes!("big_endian.pcap");
@@ -154,6 +172,7 @@ fn big_endian() {
     assert_eq!(pkt.data(), pkt_truth.data());
 }
 
+/// Checks the global header and first packet of the little endian fixture.
 #[test]
 fn little_endian() {
     let data = include_bytes!("little_endian.pcap");
@@ -187,7 +206,9 @@ fn little_endian() {
     assert_eq!(pkt.data(), pkt_truth.data());
 }
 
-/// Test that parsing an invalid packet doesn't trigger an infinite loop
+/* ----- Validation and capacity ----- */
+
+/// Checks that invalid input does not prevent the reader loop from terminating.
 #[test]
 fn infinite_loop() {
     let data = include_bytes!("infinite_loop.pcap");
@@ -207,6 +228,7 @@ fn infinite_loop() {
     }
 }
 
+/// Checks that a custom buffer capacity supports packets larger than the default buffer.
 #[test]
 fn reader_with_capacity_handles_large_packets() {
     let data = vec![0xA5; 8_000_001];
@@ -228,6 +250,7 @@ fn reader_with_capacity_handles_large_packets() {
     assert!(reader.next_packet().is_none());
 }
 
+/// Checks the error position and subsequent packet after a validation failure.
 #[test]
 fn typed_reader_continues_after_packet_validation_error() {
     let invalid_packet = RawPcapPacket {
@@ -257,17 +280,23 @@ fn typed_reader_continues_after_packet_validation_error() {
     assert!(reader.next_packet().is_none());
 }
 
-/* ----- Reader I/O behavior tests ----- */
+/* ----- I/O test helpers ----- */
 
+/// Fixture reader that injects one I/O error at a selected byte boundary.
 #[derive(Debug)]
 struct ReadErrorOnce {
+    /// Capture bytes supplied to the reader.
     data: Vec<u8>,
+    /// Next unread byte in the capture.
     pos: usize,
+    /// Boundary at which the next read returns the configured error.
     split: usize,
+    /// Error to inject, cleared after it is returned once.
     error: Option<std::io::ErrorKind>,
 }
 
 impl ReadErrorOnce {
+    /// Creates a fixture reader that fails once at the requested byte boundary.
     fn new(data: Vec<u8>, split: usize, error: std::io::ErrorKind) -> Self {
         Self {
             data,
@@ -279,6 +308,7 @@ impl ReadErrorOnce {
 }
 
 impl Read for ReadErrorOnce {
+    /// Reads fixture bytes and injects the configured I/O error once at the split point.
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if self.pos == self.split {
             if let Some(error) = self.error.take() {
@@ -298,6 +328,7 @@ impl Read for ReadErrorOnce {
     }
 }
 
+/// Returns a capture and a split point inside its packet header for I/O retry checks.
 fn pcap_with_partially_buffered_packet() -> (Vec<u8>, usize) {
     let packet = PcapPacket::new(Duration::new(1, 0), 2, &[1, 2]).unwrap();
     let mut writer = PcapWriter::new(Vec::new()).unwrap();
@@ -306,6 +337,9 @@ fn pcap_with_partially_buffered_packet() -> (Vec<u8>, usize) {
     (writer.into_inner(), split)
 }
 
+/* ----- Reader I/O behavior tests ----- */
+
+/// Checks that retrying a temporary I/O failure preserves buffered bytes and error positions.
 #[test]
 fn reader_retries_retryable_io_error_without_losing_buffered_data() {
     let (mut pcap, split) = pcap_with_partially_buffered_packet();
@@ -326,6 +360,7 @@ fn reader_retries_retryable_io_error_without_losing_buffered_data() {
     assert!(reader.next_packet().is_none());
 }
 
+/// Checks that a fatal I/O failure stops typed and raw reads.
 #[test]
 fn reader_is_poisoned_after_fatal_io_error() {
     let (pcap, split) = pcap_with_partially_buffered_packet();
@@ -339,4 +374,71 @@ fn reader_is_poisoned_after_fatal_io_error() {
     );
     assert!(reader.next_packet().is_none());
     assert!(reader.next_raw_packet().is_none());
+}
+
+/* ----- Raw packet conversion tests ----- */
+
+/// Checks that both conversion APIs reject declared lengths that differ from the data length.
+#[test]
+fn raw_packet_conversion_rejects_mismatched_lengths() {
+    for (incl_len, data) in [(0, &[1][..]), (1, &[][..]), (1, &[1, 2][..]), (3, &[1, 2][..])] {
+        let raw = RawPcapPacket {
+            ts_sec: 1,
+            ts_frac: 0,
+            incl_len,
+            orig_len: 3,
+            data: Cow::Borrowed(data),
+        };
+
+        let error = PcapPacket::try_from_raw_packet(raw.clone(), PcapTsResolution::MicroSecond, u32::MAX).unwrap_err();
+        assert!(matches!(
+            error,
+            PcapValidationError::IncludedLenMismatch(declared, actual)
+                if declared == incl_len && actual == data.len()
+        ));
+
+        let error = raw
+            .try_into_pcap_packet(PcapTsResolution::MicroSecond, u32::MAX)
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            PcapValidationError::IncludedLenMismatch(declared, actual)
+                if declared == incl_len && actual == data.len()
+        ));
+    }
+}
+
+/// Checks that an understated captured length cannot bypass the capture limit.
+#[test]
+fn raw_packet_conversion_rejects_understated_length_at_snap_len() {
+    let raw = RawPcapPacket {
+        ts_sec: 1,
+        ts_frac: 0,
+        incl_len: 1,
+        orig_len: 2,
+        data: Cow::Owned(vec![1, 2]),
+    };
+
+    let error = PcapPacket::try_from_raw_packet(raw, PcapTsResolution::NanoSecond, 1).unwrap_err();
+    assert!(matches!(error, PcapValidationError::IncludedLenMismatch(1, 2)));
+}
+
+/// Checks that matching captured lengths accept both empty and nonempty payloads.
+#[test]
+fn raw_packet_conversion_accepts_matching_lengths() {
+    for data in [&[][..], &[1, 2][..]] {
+        let raw = RawPcapPacket {
+            ts_sec: 1,
+            ts_frac: 2,
+            incl_len: data.len() as u32,
+            orig_len: 3,
+            data: Cow::Borrowed(data),
+        };
+
+        let packet = PcapPacket::try_from_raw_packet(raw, PcapTsResolution::MicroSecond, data.len() as u32).unwrap();
+        assert_eq!(packet.data(), data);
+        assert_eq!(packet.len() as usize, data.len());
+        assert_eq!(packet.orig_len(), 3);
+        assert_eq!(packet.timestamp(), Duration::new(1, 2_000));
+    }
 }

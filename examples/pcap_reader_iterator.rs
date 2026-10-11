@@ -13,6 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open("tests/pcap/little_endian.pcap")?;
     let reader = PcapReader::new(file)?;
 
+    // Iterator packets own their data and can be retained after the next poll.
     for result in reader.packets() {
         match result {
             Ok(packet) => println!("{} bytes", packet.len()),

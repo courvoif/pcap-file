@@ -1,39 +1,48 @@
+//! Classic pcap header and packet writing.
+
+/* ----- Imports ----- */
+
 use std::io::Write;
 
 use byteorder_slice::{BigEndian, LittleEndian};
 
 use super::RawPcapPacket;
 use crate::Endianness;
-use crate::pcap::{PcapHeader, PcapPacket, PcapValidationError, PcapWriteError, PcapTsResolution};
+use crate::pcap::{PcapHeader, PcapPacket, PcapTsResolution, PcapValidationError, PcapWriteError};
+
+/* ----- Writer ----- */
 
 /// Writes a pcap to a writer.
 ///
 /// # Example
 /// ```rust,no_run
 /// use std::fs::File;
-///
 /// use pcap_file::pcap::{PcapReader, PcapWriter};
 ///
-/// let file_in = File::open("test.pcap").expect("Error opening file");
-/// let mut pcap_reader = PcapReader::new(file_in).unwrap();
+/// fn main() -> Result<(), Box<dyn std::error::Error>> {
+///     let file = File::open("tests/pcap/little_endian.pcap")?;
+///     let mut reader = PcapReader::new(file)?;
 ///
-/// let file_out = File::create("out.pcap").expect("Error creating file out");
-/// let mut pcap_writer = PcapWriter::new(file_out).expect("Error writing file");
+///     // Preserve the input datalink, capture limit, and timestamp resolution.
+///     let mut writer = PcapWriter::with_header(Vec::new(), reader.header())?;
+///     while let Some(result) = reader.next_packet() {
+///         // Stop if a packet cannot be read or validated.
+///         writer.write_packet(&result?)?;
+///     }
 ///
-/// // Read test.pcap
-/// while let Some(pkt) = pcap_reader.next_packet() {
-///     //Check if there is no error
-///     let pkt = pkt.unwrap();
-///
-///     //Write each packet of test.pcap in out.pcap
-///     pcap_writer.write_packet(&pkt).unwrap();
+///     println!("copied {} bytes", writer.into_inner().len());
+///     Ok(())
 /// }
 /// ```
 #[derive(Debug)]
 pub struct PcapWriter<W: Write> {
+    /// Byte order used for encoded header fields.
     endianness: Endianness,
+    /// Maximum captured packet length for this file.
     snaplen: u32,
+    /// Timestamp resolution written to packet headers.
     ts_resolution: PcapTsResolution,
+    /// Destination for encoded capture bytes.
     writer: W,
 }
 
@@ -58,7 +67,7 @@ impl<W: Write> PcapWriter<W> {
     /// ```
     ///
     /// # Errors
-    /// The writer can't be written to.
+    /// An I/O failure can leave a partial global header in the output.
     pub fn new(writer: W) -> Result<PcapWriter<W>, PcapWriteError> {
         let header = PcapHeader {
             endianness: Endianness::native(),
@@ -73,7 +82,7 @@ impl<W: Write> PcapWriter<W> {
     /// It also writes the pcap header to the file.
     ///
     /// # Errors
-    /// The writer can't be written to.
+    /// An I/O failure can leave a partial global header in the output.
     pub fn with_header(mut writer: W, header: PcapHeader) -> Result<PcapWriter<W>, PcapWriteError> {
         header.write_to(&mut writer)?;
 
@@ -90,10 +99,13 @@ impl<W: Write> PcapWriter<W> {
         self.writer
     }
 
-    /// Writes a [`PcapPacket`].
+    /// Writes a validated packet using the capture header's byte order and timestamp resolution.
+    /// Microsecond output truncates submicrosecond precision.
+    /// An I/O error can leave a partial packet in the output.
     ///
     /// # Errors
-    /// The included length of the packet must not be bigger than the snaplen of the file, otherwise an error is returned.
+    /// Use a capture header whose snaplen is at least the packet's captured length.
+    /// If writing fails, assume the output may contain a partial packet.
     pub fn write_packet(&mut self, packet: &PcapPacket) -> Result<usize, PcapWriteError> {
         // Check that the included length of the packet is not bigger than the snaplen of the file
         if packet.len() > self.snaplen {
@@ -107,8 +119,11 @@ impl<W: Write> PcapWriter<W> {
     /// Writes a [`RawPcapPacket`].
     ///
     /// # Notes
-    /// The fields of the packet are not validated, it is the responsibility of the user to check that they are correct.
-    /// The resulting pcap file may not be readable by some parsers if the fields are not correct.
+    /// Fields are written without validation.
+    /// Match `incl_len` to the data length and use the capture's timestamp resolution.
+    ///
+    /// # Errors
+    /// An I/O failure can leave a partial packet in the output.
     pub fn write_raw_packet(&mut self, packet: &RawPcapPacket) -> Result<usize, PcapWriteError> {
         match self.endianness {
             Endianness::Big => packet.write_to::<_, BigEndian>(&mut self.writer),
@@ -116,7 +131,10 @@ impl<W: Write> PcapWriter<W> {
         }
     }
 
-    /// Flush data
+    /// Flushes buffered data to the underlying writer.
+    ///
+    /// # Errors
+    /// Handle the underlying writer's flush failure before treating the capture as saved.
     pub fn flush(&mut self) -> Result<(), PcapWriteError> {
         self.writer.flush().map_err(PcapWriteError::Io)
     }
