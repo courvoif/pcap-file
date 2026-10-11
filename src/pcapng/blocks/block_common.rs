@@ -175,7 +175,7 @@ impl<'a> RawBlock<'a> {
 
     /// Decodes the raw block body without checking its length fields.
     /// Call [`Self::validate`] first for manually constructed raw blocks.
-    /// Typed decoding checks representations and individual options.
+    /// Typed decoding checks option framing and representations.
     /// Call [`Block::validate`] for the remaining block semantic constraints.
     /// Uses the state's byte order, except that Section Header Blocks detect their own.
     ///
@@ -191,7 +191,7 @@ impl<'a> RawBlock<'a> {
 
     /// Decodes the raw block body without checking its length fields.
     /// Call [`Self::validate`] first for manually constructed raw blocks.
-    /// Typed decoding checks representations and individual options.
+    /// Typed decoding checks option framing and representations.
     /// Call [`Block::validate`] for the remaining block semantic constraints.
     /// Uses `B`, except that Section Header Blocks detect their own byte order.
     ///
@@ -251,7 +251,7 @@ impl<'a> Block<'a> {
     /// If `raw_block` owns its body, the block content is parsed and then
     /// converted into an owned [`Block`] before being returned.
     /// Call [`RawBlock::validate`] first for manually constructed raw blocks.
-    /// Typed decoding checks representations and individual options.
+    /// Typed decoding checks option framing and representations.
     /// Block semantic validation is left to [`Self::validate`].
     /// Choose `B` for the block's section; Section Header Blocks detect their own byte order.
     pub fn try_from_raw_block<B: ByteOrder>(
@@ -308,7 +308,7 @@ impl<'a> Block<'a> {
 
     /// Encodes a framed block without semantic validation.
     /// Call [`Self::validate`] explicitly, or use a strict [`crate::pcapng::PcapNgWriter`].
-    /// Encoding conversions, size limits, and individual options are checked in either case.
+    /// Encoding conversions and size limits are checked in either case.
     /// Choose `B` for the destination section, matching `endianness` for a Section Header Block.
     /// Use [`crate::pcapng::PcapNgWriter`] to select byte order and maintain state automatically.
     ///
@@ -444,14 +444,14 @@ pub trait PcapNgBlock<'a> {
     fn validate(&self, _state: &PcapNgState) -> Result<(), BlockValidationError>;
 
     /// Decodes a block body using the supplied state, without semantic validation.
-    /// Bounds, representation checks, and individual option validation still apply.
+    /// Bounds, option framing, and representation checks still apply.
     /// Choose `B` for the source section; Section Header Blocks detect their own byte order.
     fn from_body<B: ByteOrder>(state: &PcapNgState, slice: &'a [u8]) -> Result<(&'a [u8], Self), BlockValidationError>
     where
         Self: std::marker::Sized;
 
     /// Encodes a block body without semantic validation.
-    /// Required conversions and individual option validation still apply.
+    /// Required conversions and encoding size limits still apply.
     /// When writing a Section Header Block, choose `B` to match its `endianness`.
     ///
     /// # Errors

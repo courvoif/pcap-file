@@ -29,3 +29,4 @@
 [block-validate]: pcapng/blocks/block_common/enum.Block.html#method.validate
 [pcapng-writer-new]: pcapng/struct.PcapNgWriter.html#method.new
 [pcapng-parse-error-block]: pcapng/errors/enum.PcapNgParseError.html#variant.Block
+[interface-ts-resolution]: pcapng/blocks/interface_description/struct.InterfaceTsResolution.html

@@ -48,7 +48,8 @@ pub(crate) fn check_opt_len(slice: &[u8], expected: usize) -> Result<(), OptionE
 
 /* ----- Option lists ----- */
 
-/// Parses all framed options in a block body.
+/// Decodes all framed options in a block body without semantic validation.
+/// Framing and representation checks still apply.
 pub(crate) fn opts_from_slice<'a, B: ByteOrder, O: PcapNgOption<'a>>(
     state: &PcapNgState,
     interface_id: Option<u32>,
@@ -78,18 +79,11 @@ pub(crate) fn opts_from_slice<'a, B: ByteOrder, O: PcapNgOption<'a>>(
         let value = raw_option.value;
 
         if code == 0 {
-            raw_option
-                .validate()
-                .map_err(|source| OptionError::new(code, "End of Options", source))?;
             return Ok((rem, options));
         }
 
         let option = O::from_content::<B>(state, interface_id, code, value)
             .map_err(|source| OptionError::new(code, O::name(code), source))?;
-        option
-            .validate(state, interface_id)
-            .map_err(|source| OptionError::new(code, O::name(code), source))?;
-
         options.push(option);
         slice = rem;
     }
@@ -97,7 +91,7 @@ pub(crate) fn opts_from_slice<'a, B: ByteOrder, O: PcapNgOption<'a>>(
     Ok((slice, options))
 }
 
-/// Validates and writes a nonempty option list followed by its end-of-options entry.
+/// Writes an option list without semantic validation, adding an end-of-options entry when nonempty.
 /// An empty list writes no bytes, including no terminator.
 pub(crate) fn write_opts_to<'a, B: ByteOrder, O: PcapNgOption<'a>, W: Write>(
     options: &[O],
@@ -105,8 +99,6 @@ pub(crate) fn write_opts_to<'a, B: ByteOrder, O: PcapNgOption<'a>, W: Write>(
     interface_id: Option<u32>,
     writer: &mut W,
 ) -> Result<usize, WriteError<OptionError>> {
-    validate_opts(options, state, interface_id).map_err(WriteError::Other)?;
-
     let mut written = 0;
 
     for option in options {
@@ -282,7 +274,7 @@ impl<'a> RawOption<'a> {
     ///
     /// # Errors
     ///
-    /// Returns an error if the slice does not contain the complete option frame.
+    /// Correct incomplete framing or an end marker with a nonempty value.
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), OptionEntryError> {
         if slice.len() < 4 {
             return Err(OptionEntryError::ContentTooSmall {
@@ -306,7 +298,10 @@ impl<'a> RawOption<'a> {
         let value = &slice[..value_len];
         let rem = &slice[value_len + pad_len..];
 
-        Ok((rem, Self { code, value }))
+        let option = Self { code, value };
+        option.validate()?;
+
+        Ok((rem, option))
     }
 
     /// Validates constraints imposed by the option framing itself.
@@ -421,8 +416,7 @@ fn write_custom_option<B: ByteOrder, W: Write>(
 /// Common behavior for pcapng options.
 pub(crate) trait PcapNgOption<'a> {
     /// Parses an option from a byte slice without semantic validation.
-    /// [`opts_from_slice`] validates the returned option immediately after
-    /// this call.
+    /// Framing and representation checks still apply.
     fn from_content<B: ByteOrder>(
         state: &PcapNgState,
         interface_id: Option<u32>,
@@ -432,8 +426,8 @@ pub(crate) trait PcapNgOption<'a> {
     where
         Self: std::marker::Sized;
 
-    /// Writes an already validated option to a writer.
-    /// [`write_opts_to`] validates the option list before calling this method.
+    /// Writes an option to a writer without semantic validation.
+    /// Required encoding conversions and size limits still apply.
     fn write_to<B: ByteOrder, W: Write>(
         &self,
         state: &PcapNgState,
@@ -573,8 +567,8 @@ mod tests {
     use byteorder_slice::BigEndian;
 
     use crate::pcapng::PcapNgState;
-    use crate::pcapng::blocks::opt_common::{PcapNgOption, RawOption, opts_from_slice, write_opts_to};
-    use crate::pcapng::errors::{OptionEntryError, OptionError, WriteError};
+    use crate::pcapng::blocks::opt_common::{PcapNgOption, RawOption, opts_from_slice, validate_opts, write_opts_to};
+    use crate::pcapng::errors::{OptionEntryError, WriteError};
 
     /// Minimal option type for list parsing.
     #[derive(Debug, PartialEq)]
@@ -729,21 +723,17 @@ mod tests {
         assert_eq!(encoded, [0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
     }
 
-    /// Checks that validation finishes before any option is written.
+    /// Keeps explicit option validation separate from list writing.
     #[test]
-    fn validates_all_options_before_writing_any() {
+    fn option_validation_is_separate_from_writing() {
         let options = [ValidatedOption { valid: true }, ValidatedOption { valid: false }];
         let mut encoded = Vec::new();
 
-        let error =
-            write_opts_to::<BigEndian, ValidatedOption, _>(&options, &PcapNgState::default(), None, &mut encoded)
-                .unwrap_err();
+        let state = PcapNgState::default();
+        assert!(validate_opts(&options, &state, None).is_err());
 
-        assert!(encoded.is_empty());
-        assert!(matches!(
-            error,
-            WriteError::Other(OptionError { source, .. })
-                if matches!(*source, OptionEntryError::ContentTooSmall { needed: 1, actual: 0 })
-        ));
+        let written = write_opts_to::<BigEndian, ValidatedOption, _>(&options, &state, None, &mut encoded).unwrap();
+        assert_eq!(written, encoded.len());
+        assert_eq!(encoded, [0, 1, 0, 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
     }
 }

@@ -52,7 +52,7 @@ impl<W: Write> PcapNgWriter<W> {
     ///
     /// Writes a default Section Header Block using native byte order.
     /// When `strict` is true, typed blocks are validated before writing.
-    /// Encoding always checks representations and individual options.
+    /// Encoding always checks representations and size limits.
     /// See [`Self::write_raw_block`] for the validation rules of raw operations.
     ///
     /// Writes this section header to the file:
@@ -78,7 +78,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// Creates a writer with the given byte order.
     /// Writes a default Section Header Block in that byte order.
     /// When `strict` is true, typed blocks are validated before writing.
-    /// Representations and individual options are checked in either mode.
+    /// Representations and size limits are checked in either mode.
     ///
     /// # Errors
     /// An I/O failure can leave a partial initial header in the output.
@@ -94,7 +94,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// Creates a writer with the given section header.
     /// Writes the initial Section Header Block immediately.
     /// `strict` controls block validation, including for the initial header.
-    /// Representations and individual options are checked in either mode.
+    /// Representations and size limits are checked in either mode.
     ///
     /// # Errors
     /// Correct an invalid section header before retrying.
@@ -236,7 +236,7 @@ impl<W: Write> PcapNgWriter<W> {
     /// Decode and validate explicitly when block semantic checks are needed.
     ///
     /// Section Header and Interface Description raw blocks are decoded before writing.
-    /// Their representations and individual options must be valid in either mode.
+    /// Their option framing and representations must be decodable in either mode.
     /// If decoding fails, nothing is written and the writer state is unchanged.
     /// The state is updated after a successful write.
     ///

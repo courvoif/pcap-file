@@ -74,7 +74,8 @@ Run any [example][examples-directory] linked below with
 
 - **Strict mode:** Pass `true` to [`PcapNgParser::new`][pcapng-parser-new],
   [`PcapNgReader::new`][pcapng-reader-new], or [`PcapNgWriter::new`][pcapng-writer-new] for semantic validation of the initial section header and typed blocks.
-  With `false`, typed decoding and encoding still check representations and individual options.
+  With `false`, typed decoding and encoding still check framing, representations, and encoding limits.
+  Option semantics are checked by [`Block::validate`][block-validate].
 - **State checks:** Section and interface blocks are decoded before state changes.
   Strict typed reads also validate their semantics; failures poison the reader.
 - **Raw reads:** Check framing and state-changing block decoding, regardless of strict mode.
@@ -83,6 +84,8 @@ Run any [example][examples-directory] linked below with
   then [`Block::validate`][block-validate] with the current state for semantic checks.
 - **Parser recovery:** On [`PcapNgParseError::Block`][pcapng-parse-error-block],
   call [`PcapNgParser::next_raw_block()`][pcapng-parser-next-raw-block] with the same slice to skip the block.
+- **Timestamp resolution:** [`InterfaceTsResolution`][interface-ts-resolution] supports decimal exponents `0..=9` and binary exponents `0..=29`.
+  Finer resolutions cannot be decoded, including on raw reads, and cause a fatal state error.
 
 ### Custom payloads
 
@@ -172,3 +175,4 @@ PcapNg tests use [hadrielk's testing suite][pcapng-test-generator].
 [block-validate]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/blocks/block_common.rs#L383-L387
 [pcapng-writer-new]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/writer.rs#L51-L73
 [pcapng-parse-error-block]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/errors.rs#L25
+[interface-ts-resolution]: https://docs.rs/pcap-file/3.0.0-rc.3/pcap_file/pcapng/blocks/interface_description/struct.InterfaceTsResolution.html

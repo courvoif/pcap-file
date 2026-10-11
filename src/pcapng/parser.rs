@@ -60,7 +60,7 @@ impl PcapNgParser {
     ///
     /// Set `strict` to `true` to validate the initial section header and typed blocks.
     /// With `false`, only decoding checks needed to maintain the state are applied.
-    /// Typed decoding checks representations and individual options even when `strict` is false.
+    /// Typed decoding checks framing and representations even when `strict` is false.
     ///
     /// # Errors
     /// - On [`PcapNgParseError::IncompleteBuffer`], provide the rest of the
@@ -144,7 +144,7 @@ impl PcapNgParser {
     ///
     /// The `strict` setting does not affect this method.
     /// Checks framing and decodes state-changing blocks without semantic validation.
-    /// Decoding still checks representations and individual options.
+    /// Decoding still checks option framing and representations.
     /// Other block bodies remain undecoded.
     ///
     /// # Errors

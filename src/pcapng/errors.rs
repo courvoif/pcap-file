@@ -260,6 +260,9 @@ pub enum BlockValidationError {
     /// The link type does not fit in its encoded field.
     #[error("Invalid link type: {0:?}")]
     InvalidLinkType(DataLink),
+    /// Equal transmit and receive speeds must use the shared interface speed option.
+    #[error("Equal interface transmit and receive speeds ({0}bps); use if_speed instead")]
+    EqualInterfaceSpeeds(u64),
     /// The encoded block is too large.
     #[error("Block length {actual}B exceeds the maximum {maximum}B")]
     BlockTooLarge {
@@ -351,7 +354,7 @@ pub enum TimestampError {
     /// The interface ID does not exist in the current section state.
     #[error("Invalid interface ID: {0}")]
     InvalidInterfaceId(u32),
-    /// The timestamp resolution encoding is invalid.
+    /// The timestamp resolution is unsupported.
     #[error("Invalid timestamp resolution: {encoded:#X} (is_bin: {is_binary}, resol: {exponent})")]
     InvalidResolution {
         /// Encoded resolution byte.

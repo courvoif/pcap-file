@@ -120,6 +120,22 @@ impl<'a> PcapNgBlock<'a> for InterfaceDescriptionBlock<'a> {
         })
         .map_err(BlockValidationError::Option)?;
 
+        let mut tx_speed = None;
+        let mut rx_speed = None;
+        for option in &self.options {
+            match option {
+                InterfaceDescriptionOption::IfTxSpeed(speed) => tx_speed = Some(*speed),
+                InterfaceDescriptionOption::IfRxSpeed(speed) => rx_speed = Some(*speed),
+                _ => {}
+            }
+        }
+
+        if let (Some(tx_speed), Some(rx_speed)) = (tx_speed, rx_speed) {
+            if tx_speed == rx_speed {
+                return Err(BlockValidationError::EqualInterfaceSpeeds(tx_speed));
+            }
+        }
+
         validate_opts(&self.options, state, None).map_err(BlockValidationError::Option)
     }
 
@@ -196,6 +212,7 @@ pub enum InterfaceDescriptionOption<'a> {
     IfTsResol(InterfaceTsResolution),
 
     /// The if_tzone option identifies the time zone for GMT support.
+    /// Prefer [`Self::IfIanaTzName`] because the meaning of this legacy option is unspecified.
     IfTzone(u32),
 
     /// The if_filter option identifies the filter (e.g. "capture only TCP traffic") used to capture traffic.
@@ -216,6 +233,18 @@ pub enum InterfaceDescriptionOption<'a> {
 
     /// The if_hardware option is a UTF-8 string containing the description of the interface hardware.
     IfHardware(Cow<'a, str>),
+
+    /// Interface transmit speed in bits per second.
+    /// Use [`Self::IfSpeed`] when transmit and receive speeds are equal.
+    IfTxSpeed(u64),
+
+    /// Interface receive speed in bits per second.
+    /// Use [`Self::IfSpeed`] when transmit and receive speeds are equal.
+    IfRxSpeed(u64),
+
+    /// IANA time zone database name for the interface, such as `Europe/Paris`.
+    /// This metadata does not change packet timestamps.
+    IfIanaTzName(Cow<'a, str>),
 
     /// A common option applicable to any block type.
     Common(CommonOption<'a>),
@@ -250,6 +279,12 @@ impl InterfaceDescriptionOption<'_> {
     const IF_TS_OFFSET: u16 = 14;
     /// Encoded option code for `IF_HARDWARE`.
     const IF_HARDWARE: u16 = 15;
+    /// Encoded option code for `IF_TX_SPEED`.
+    const IF_TX_SPEED: u16 = 16;
+    /// Encoded option code for `IF_RX_SPEED`.
+    const IF_RX_SPEED: u16 = 17;
+    /// Encoded option code for `IF_IANA_TZ_NAME`.
+    const IF_IANA_TZ_NAME: u16 = 18;
 }
 
 impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
@@ -303,6 +338,17 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
                 InterfaceDescriptionOption::IfTsOffset(slice.read_i64::<B>().unwrap())
             }
             Self::IF_HARDWARE => InterfaceDescriptionOption::IfHardware(Cow::Borrowed(std::str::from_utf8(slice)?)),
+            Self::IF_TX_SPEED => {
+                check_opt_len(slice, 8)?;
+                InterfaceDescriptionOption::IfTxSpeed(slice.read_u64::<B>().unwrap())
+            }
+            Self::IF_RX_SPEED => {
+                check_opt_len(slice, 8)?;
+                InterfaceDescriptionOption::IfRxSpeed(slice.read_u64::<B>().unwrap())
+            }
+            Self::IF_IANA_TZ_NAME => {
+                InterfaceDescriptionOption::IfIanaTzName(Cow::Borrowed(std::str::from_utf8(slice)?))
+            }
 
             _ => InterfaceDescriptionOption::Common(CommonOption::from_content::<B>(code, slice)?),
         };
@@ -352,6 +398,11 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             InterfaceDescriptionOption::IfHardware(a) => {
                 write_bytes_option::<B, W>(writer, Self::IF_HARDWARE, a.as_bytes())
             }
+            InterfaceDescriptionOption::IfTxSpeed(a) => write_u64_option::<B, W>(writer, Self::IF_TX_SPEED, *a),
+            InterfaceDescriptionOption::IfRxSpeed(a) => write_u64_option::<B, W>(writer, Self::IF_RX_SPEED, *a),
+            InterfaceDescriptionOption::IfIanaTzName(a) => {
+                write_bytes_option::<B, W>(writer, Self::IF_IANA_TZ_NAME, a.as_bytes())
+            }
             InterfaceDescriptionOption::Common(a) => a.write_to::<B, W>(writer),
         }
     }
@@ -384,6 +435,9 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             Self::IfFcsLen(_) => Self::IF_FCS_LEN,
             Self::IfTsOffset(_) => Self::IF_TS_OFFSET,
             Self::IfHardware(_) => Self::IF_HARDWARE,
+            Self::IfTxSpeed(_) => Self::IF_TX_SPEED,
+            Self::IfRxSpeed(_) => Self::IF_RX_SPEED,
+            Self::IfIanaTzName(_) => Self::IF_IANA_TZ_NAME,
             Self::Common(option) => option.code(),
         }
     }
@@ -405,6 +459,9 @@ impl<'a> PcapNgOption<'a> for InterfaceDescriptionOption<'a> {
             Self::IF_FCS_LEN => "IfFcsLen",
             Self::IF_TS_OFFSET => "IfTsOffset",
             Self::IF_HARDWARE => "IfHardware",
+            Self::IF_TX_SPEED => "IfTxSpeed",
+            Self::IF_RX_SPEED => "IfRxSpeed",
+            Self::IF_IANA_TZ_NAME => "IfIanaTzName",
             _ => CommonOption::code_name(code),
         }
     }
@@ -493,6 +550,8 @@ static TS_RESOL_DEC_TO_DURATION: Lazy<Vec<u128>> = Lazy::new(|| (0..10).map(|i| 
 /// Timestamp resolution of an interface.
 ///
 /// Can be either binary (2^-resol)s or decimal (10^-resol)s.
+/// Supports decimal exponents `0..=9` and binary exponents `0..=29`.
+/// Finer resolutions are unsupported and prevent decoding an interface, including on raw reads.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct InterfaceTsResolution {
     /// Whether the resolution is binary or decimal.

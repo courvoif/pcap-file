@@ -57,7 +57,7 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// Set `strict` to `true` to validate the initial section header and typed blocks.
     /// With `false`, only decoding checks needed to maintain the state are applied.
-    /// Typed decoding checks representations and individual options even when `strict` is false.
+    /// Typed decoding checks framing and representations even when `strict` is false.
     ///
     /// # Errors
     /// - The initial Section Header Block cannot be decoded or fails strict validation.
@@ -108,7 +108,7 @@ impl<R: Read> PcapNgReader<R> {
     ///
     /// The `strict` setting controls validation of blocks.
     /// State-changing blocks are checked before updating the state.
-    /// Typed decoding checks representations and individual options even when `strict` is false.
+    /// Typed decoding checks framing and representations even when `strict` is false.
     ///
     /// # Errors
     /// - Includes the block number and its starting byte offset.
@@ -172,7 +172,7 @@ impl<R: Read> PcapNgReader<R> {
     /// block, then with [`Block::validate`] to check it semantically.
     /// The `strict` setting does not affect this method.
     /// Checks framing and decodes state-changing blocks without semantic validation.
-    /// Decoding still checks representations and individual options.
+    /// Decoding still checks option framing and representations.
     /// Other block bodies remain undecoded.
     ///
     /// # Errors

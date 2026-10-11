@@ -63,7 +63,7 @@ impl PcapNgState {
     /// Decodes raw blocks containing section or interface state.
     ///
     /// Returns [`None`] for blocks that don't affect the state.
-    /// Representations and individual options are checked during decoding.
+    /// Option framing and representations are checked during decoding.
     /// With `strict`, also validates block semantics before returning the block.
     /// Otherwise, only decoding checks needed to maintain the state are applied.
     /// Validate manually constructed raw framing before calling this method.

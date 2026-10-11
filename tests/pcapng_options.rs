@@ -100,6 +100,9 @@ fn singleton_options_are_rejected_when_repeated() {
         (13, InterfaceDescriptionOption::IfFcsLen(32)),
         (14, InterfaceDescriptionOption::IfTsOffset(0)),
         (15, InterfaceDescriptionOption::IfHardware("hardware".into())),
+        (16, InterfaceDescriptionOption::IfTxSpeed(1000)),
+        (17, InterfaceDescriptionOption::IfRxSpeed(2000)),
+        (18, InterfaceDescriptionOption::IfIanaTzName("Europe/Paris".into())),
     ] {
         assert_duplicate_option(
             Block::InterfaceDescription(InterfaceDescriptionBlock {
@@ -393,6 +396,9 @@ fn address_options_roundtrip() {
                 InterfaceDescriptionOption::IfMacAddr(MacAddr6::from([0, 1, 2, 3, 4, 5])),
                 InterfaceDescriptionOption::IfEuIAddr(MacAddr8::from([2, 0x34, 0x56, 0xff, 0xfe, 0x78, 0x9a, 0xbc])),
                 InterfaceDescriptionOption::IfFilter((&[0, b't', b'c', b'p'][..]).into()),
+                InterfaceDescriptionOption::IfTxSpeed(1000),
+                InterfaceDescriptionOption::IfRxSpeed(2000),
+                InterfaceDescriptionOption::IfIanaTzName("Europe/Paris".into()),
             ],
         });
         let names = Block::NameResolution(NameResolutionBlock {
@@ -454,7 +460,7 @@ fn hardware_address_options_preserve_wire_order() {
     }
 }
 
-/// Rejects truncated and oversized address values before constructing typed options.
+/// Rejects truncated and oversized fixed-size option values before constructing typed options.
 #[test]
 fn address_options_reject_wrong_wire_lengths() {
     let state = PcapNgState::default();
@@ -464,6 +470,8 @@ fn address_options_reject_wrong_wire_lengths() {
         (true, 5, 17),
         (true, 6, 6),
         (true, 7, 8),
+        (true, 16, 8),
+        (true, 17, 8),
         (false, 3, 4),
         (false, 4, 16),
     ] {
@@ -705,9 +713,9 @@ fn packet_hash_options_reject_invalid_wire_values() {
 
 /* ----- Variable-length option validation ----- */
 
-/// Rejects an empty filter without writing bytes or adding an interface to the state.
+/// Rejects an empty filter only when writing in strict mode.
 #[test]
-fn empty_filter_is_rejected_before_writing() {
+fn empty_filter_is_validated_only_in_strict_mode() {
     for strict in [false, true] {
         let mut writer = PcapNgWriter::new(Vec::new(), strict).unwrap();
         let previous_bytes = writer.get_ref().clone();
@@ -717,17 +725,46 @@ fn empty_filter_is_rejected_before_writing() {
             options: vec![InterfaceDescriptionOption::IfFilter((&[][..]).into())],
         };
 
-        assert!(writer.write_pcapng_block(interface).is_err());
-        assert_eq!(writer.get_ref(), &previous_bytes);
-        assert!(writer.state().interfaces().is_empty());
+        if strict {
+            assert!(writer.write_pcapng_block(interface).is_err());
+            assert_eq!(writer.get_ref(), &previous_bytes);
+            assert!(writer.state().interfaces().is_empty());
+        } else {
+            writer.write_pcapng_block(interface.clone()).unwrap();
+            assert_eq!(writer.state().interfaces(), &[interface]);
+
+            let bytes = writer.into_inner();
+            for read_strict in [false, true] {
+                let mut reader = PcapNgReader::new(bytes.as_slice(), read_strict).unwrap();
+                assert!(reader.next_raw_block().unwrap().is_ok());
+                assert_eq!(reader.state().interfaces().len(), 1);
+                assert!(!reader.poisoned());
+
+                let mut reader = PcapNgReader::new(bytes.as_slice(), read_strict).unwrap();
+                if read_strict {
+                    let error = reader.next_block().unwrap().unwrap_err();
+                    assert!(matches!(error.kind, PcapNgReadErrorKind::StateUpdate(_)));
+                    assert!(reader.poisoned());
+                    assert!(reader.state().interfaces().is_empty());
+                } else {
+                    assert!(reader.next_block().unwrap().is_ok());
+                    assert_eq!(reader.state().interfaces().len(), 1);
+                }
+            }
+        }
     }
 }
 
-/// Reports the missing filter type byte when reading an empty filter.
+/// Decodes an empty filter and reports its missing type byte during explicit validation.
 #[test]
-fn empty_filter_is_rejected_when_parsing() {
+fn empty_filter_decodes_without_semantic_validation() {
     let body = [0, 0, 0, 0, 0, 0, 0, 0, 0, 11, 0, 0];
-    let error = InterfaceDescriptionBlock::from_body::<BigEndian>(&PcapNgState::default(), &body).unwrap_err();
+    let state = PcapNgState::default();
+    let (remaining, interface) = InterfaceDescriptionBlock::from_body::<BigEndian>(&state, &body).unwrap();
+    assert!(remaining.is_empty());
+    assert!(matches!(&interface.options[..], [InterfaceDescriptionOption::IfFilter(value)] if value.is_empty()));
+
+    let error = interface.validate(&state).unwrap_err();
     let BlockValidationError::Option(error) = error else {
         panic!("expected an option error");
     };
