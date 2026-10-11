@@ -13,8 +13,8 @@ use derive_into_owned::IntoOwned;
 
 use super::block_common::{Block, PcapNgBlock};
 use super::opt_common::{
-    CommonOption, PacketHash, PcapNgOption, check_opt_len, opts_from_slice, validate_opts, validate_unique_opts,
-    write_opts_to, write_u32_option, write_u64_option,
+    CommonOption, PacketHash, PcapNgOption, RawOption, check_opt_len, opts_from_slice, validate_opts,
+    validate_unique_opts, write_opts_to, write_u32_option, write_u64_option,
 };
 use crate::pcapng::PcapNgState;
 use crate::pcapng::errors::{BlockValidationError, OptionEntryError, WriteError};
@@ -72,7 +72,12 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         let original_len = slice.read_u32::<B>().expect("slice length checked above");
 
         let pad_len = (4 - (captured_len as usize % 4)) % 4;
-        let tot_len = captured_len as usize + pad_len;
+        let tot_len =
+            (captured_len as usize)
+                .checked_add(pad_len)
+                .ok_or(BlockValidationError::SizeTooLargeForTarget {
+                    actual: captured_len as u64 + pad_len as u64,
+                })?;
 
         if slice.len() < tot_len {
             return Err(BlockValidationError::ContentTooSmall {
@@ -125,7 +130,11 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         validate_unique_opts(&self.options, |option| {
             matches!(
                 option,
-                EnhancedPacketOption::Flags(_) | EnhancedPacketOption::DropCount(_)
+                EnhancedPacketOption::Flags(_)
+                    | EnhancedPacketOption::DropCount(_)
+                    | EnhancedPacketOption::PacketId(_)
+                    | EnhancedPacketOption::Queue(_)
+                    | EnhancedPacketOption::ProcessIdThreadId { .. }
             )
         })
         .map_err(BlockValidationError::Option)?;
@@ -190,6 +199,24 @@ pub enum EnhancedPacketOption<'a> {
     /// and the start of the capture process.
     DropCount(u64),
 
+    /// Identifier used to correlate the same packet captured on multiple interfaces.
+    PacketId(u64),
+
+    /// Interface queue on which the packet was received.
+    Queue(u32),
+
+    /// Action taken on the packet by a hardware or software component.
+    /// Multiple verdicts may occur in one block.
+    Verdict(PacketVerdict<'a>),
+
+    /// Identifiers of the process and thread that originated the packet.
+    ProcessIdThreadId {
+        /// Process identifier, or zero when unknown or not applicable.
+        process_id: u32,
+        /// Thread identifier, or zero when unknown or not applicable.
+        thread_id: u32,
+    },
+
     /// A common option applicable to any block type.
     Common(CommonOption<'a>),
 }
@@ -201,6 +228,14 @@ impl EnhancedPacketOption<'_> {
     const HASH: u16 = 3;
     /// Encoded option code for `DROP_COUNT`.
     const DROP_COUNT: u16 = 4;
+    /// Encoded option code for `PACKET_ID`.
+    const PACKET_ID: u16 = 5;
+    /// Encoded option code for `QUEUE`.
+    const QUEUE: u16 = 6;
+    /// Encoded option code for `VERDICT`.
+    const VERDICT: u16 = 7;
+    /// Encoded option code for `PROCESS_ID_THREAD_ID`.
+    const PROCESS_ID_THREAD_ID: u16 = 8;
 }
 
 impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
@@ -221,6 +256,22 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
                 check_opt_len(slice, 8)?;
                 EnhancedPacketOption::DropCount(slice.read_u64::<B>().expect("slice length checked above"))
             }
+            Self::PACKET_ID => {
+                check_opt_len(slice, 8)?;
+                EnhancedPacketOption::PacketId(slice.read_u64::<B>().expect("slice length checked above"))
+            }
+            Self::QUEUE => {
+                check_opt_len(slice, 4)?;
+                EnhancedPacketOption::Queue(slice.read_u32::<B>().expect("slice length checked above"))
+            }
+            Self::VERDICT => EnhancedPacketOption::Verdict(PacketVerdict::from_slice::<B>(slice)?),
+            Self::PROCESS_ID_THREAD_ID => {
+                check_opt_len(slice, 8)?;
+                EnhancedPacketOption::ProcessIdThreadId {
+                    process_id: slice.read_u32::<B>().expect("slice length checked above"),
+                    thread_id: slice.read_u32::<B>().expect("slice length checked above"),
+                }
+            }
             _ => EnhancedPacketOption::Common(CommonOption::from_content::<B>(code, slice)?),
         };
 
@@ -238,6 +289,15 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
             EnhancedPacketOption::Flags(a) => write_u32_option::<B, W>(writer, Self::FLAGS, *a),
             EnhancedPacketOption::Hash(a) => a.write_to::<B, W>(writer, Self::HASH),
             EnhancedPacketOption::DropCount(a) => write_u64_option::<B, W>(writer, Self::DROP_COUNT, *a),
+            EnhancedPacketOption::PacketId(a) => write_u64_option::<B, W>(writer, Self::PACKET_ID, *a),
+            EnhancedPacketOption::Queue(a) => write_u32_option::<B, W>(writer, Self::QUEUE, *a),
+            EnhancedPacketOption::Verdict(a) => a.write_to::<B, W>(writer, Self::VERDICT),
+            EnhancedPacketOption::ProcessIdThreadId { process_id, thread_id } => {
+                RawOption::write_framed_to::<B, _, _>(writer, Self::PROCESS_ID_THREAD_ID, 8, |writer| {
+                    writer.write_u32::<B>(*process_id)?;
+                    writer.write_u32::<B>(*thread_id)
+                })
+            }
             EnhancedPacketOption::Common(a) => a.write_to::<B, W>(writer),
         }
     }
@@ -253,6 +313,10 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
             Self::Flags(_) => Self::FLAGS,
             Self::Hash(_) => Self::HASH,
             Self::DropCount(_) => Self::DROP_COUNT,
+            Self::PacketId(_) => Self::PACKET_ID,
+            Self::Queue(_) => Self::QUEUE,
+            Self::Verdict(_) => Self::VERDICT,
+            Self::ProcessIdThreadId { .. } => Self::PROCESS_ID_THREAD_ID,
             Self::Common(option) => option.code(),
         }
     }
@@ -263,7 +327,89 @@ impl<'a> PcapNgOption<'a> for EnhancedPacketOption<'a> {
             Self::FLAGS => "Flags",
             Self::HASH => "Hash",
             Self::DROP_COUNT => "Drop Count",
+            Self::PACKET_ID => "Packet ID",
+            Self::QUEUE => "Queue",
+            Self::VERDICT => "Verdict",
+            Self::PROCESS_ID_THREAD_ID => "Process and Thread IDs",
             _ => CommonOption::code_name(code),
         }
+    }
+}
+
+/* ----- Packet verdicts ----- */
+
+/// Packet verdict carried by an [`EnhancedPacketOption::Verdict`].
+/// Numeric verdicts use the section's byte order; hardware and unknown payloads retain their bytes.
+#[derive(Clone, Debug, IntoOwned, Eq, PartialEq)]
+pub enum PacketVerdict<'a> {
+    /// Hardware-specific verdict bytes (type `0`).
+    Hardware(Cow<'a, [u8]>),
+    /// Linux eBPF traffic-control action (`TC_ACT_*`, type `1`).
+    LinuxEbpfTc(u64),
+    /// Linux eBPF XDP action (`xdp_action`, type `2`).
+    LinuxEbpfXdp(u64),
+    /// Preserved verdict for an unsupported type.
+    /// Type codes and payload lengths are not validated for this variant.
+    Unknown {
+        /// Verdict type from the first byte of the option value.
+        verdict_type: u8,
+        /// Payload bytes following the verdict type.
+        value: Cow<'a, [u8]>,
+    },
+}
+
+impl<'a> PacketVerdict<'a> {
+    /// Decodes a verdict type and its payload using the selected section byte order.
+    /// Hardware and unsupported types retain their payload as a borrowed slice.
+    ///
+    /// # Errors
+    /// Supply a type byte and exactly eight payload bytes for a Linux TC or XDP verdict.
+    pub fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<Self, OptionEntryError> {
+        let (&verdict_type, mut value) = slice
+            .split_first()
+            .ok_or(OptionEntryError::ContentTooSmall { needed: 1, actual: 0 })?;
+
+        Ok(match verdict_type {
+            0 => Self::Hardware(Cow::Borrowed(value)),
+            1 | 2 => {
+                check_opt_len(slice, 9)?;
+                let verdict = value.read_u64::<B>().expect("verdict length checked above");
+                if verdict_type == 1 {
+                    Self::LinuxEbpfTc(verdict)
+                } else {
+                    Self::LinuxEbpfXdp(verdict)
+                }
+            }
+            _ => Self::Unknown {
+                verdict_type,
+                value: Cow::Borrowed(value),
+            },
+        })
+    }
+
+    /// Writes the type byte and payload as a framed verdict option.
+    fn write_to<B: ByteOrder, W: Write>(
+        &self,
+        writer: &mut W,
+        code: u16,
+    ) -> Result<usize, WriteError<OptionEntryError>> {
+        let mut encoded = [0; 8];
+        let (verdict_type, value): (u8, &[u8]) = match self {
+            Self::Hardware(value) => (0, value),
+            Self::LinuxEbpfTc(value) => {
+                B::write_u64(&mut encoded, *value);
+                (1, &encoded)
+            }
+            Self::LinuxEbpfXdp(value) => {
+                B::write_u64(&mut encoded, *value);
+                (2, &encoded)
+            }
+            Self::Unknown { verdict_type, value } => (*verdict_type, value),
+        };
+
+        RawOption::write_framed_to::<B, _, _>(writer, code, value.len() + 1, |writer| {
+            writer.write_u8(verdict_type)?;
+            writer.write_all(value)
+        })
     }
 }

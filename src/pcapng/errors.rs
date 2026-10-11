@@ -243,6 +243,12 @@ pub enum BlockValidationError {
         /// Actual content size.
         actual: usize,
     },
+    /// The block content size cannot be represented by `usize` on the current target.
+    #[error("Block content size {actual}B is too large to be represented on the current target")]
+    SizeTooLargeForTarget {
+        /// Requested content size, including padding.
+        actual: u64,
+    },
     /// The Section Header Block magic number is invalid.
     #[error("Invalid magic number: {0:#X}")]
     InvalidMagicNumber(u32),
