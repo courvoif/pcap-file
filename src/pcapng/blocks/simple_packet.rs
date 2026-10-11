@@ -35,6 +35,7 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
     const TYPE: u32 = 0x00000003;
     /// Human-readable name of this block.
     const NAME: &'static str = "Simple Packet Block";
+
     /// Decodes this block body using the supplied section state.
     fn from_body<B: ByteOrder>(
         state: &PcapNgState,
@@ -63,7 +64,11 @@ impl<'a> PcapNgBlock<'a> for SimplePacketBlock<'a> {
         };
 
         let pad_len = (4 - (pkt_len % 4)) % 4;
-        let tot_len = pkt_len + pad_len;
+        let tot_len = pkt_len
+            .checked_add(pad_len)
+            .ok_or(BlockValidationError::SizeTooLargeForTarget {
+                actual: pkt_len as u64 + pad_len as u64,
+            })?;
 
         if slice.len() < tot_len {
             return Err(BlockValidationError::ContentTooSmall {
