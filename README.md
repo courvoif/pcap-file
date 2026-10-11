@@ -1,6 +1,6 @@
 # pcap-file
 
-Parse, read, and write Pcap and PcapNg capture files in Rust.
+Parse, read, and write [Pcap][pcap-module] and [PcapNg][pcapng-module] capture files in Rust.
 
 [![Crates.io][badge-version]][crates-io]
 [![rustdoc][badge-rustdoc]][docs-home]

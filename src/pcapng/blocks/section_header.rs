@@ -1,4 +1,4 @@
-//! Section Header Block.
+//! [`Section Header Block`](SectionHeaderBlock).
 
 /* ----- Imports ----- */
 

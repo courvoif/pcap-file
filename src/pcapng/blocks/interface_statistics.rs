@@ -1,4 +1,4 @@
-//! Interface Statistics Block.
+//! [`Interface Statistics Block`](InterfaceStatisticsBlock).
 
 /* ----- Imports ----- */
 

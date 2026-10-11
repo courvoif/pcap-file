@@ -1,4 +1,4 @@
-//! Name Resolution Block (NRB).
+//! [`Name Resolution Block`](NameResolutionBlock).
 
 /* ----- Imports ----- */
 

@@ -1,4 +1,4 @@
-//! Simple Packet Block (SPB).
+//! [`Simple Packet Block`](SimplePacketBlock).
 
 /* ----- Imports ----- */
 

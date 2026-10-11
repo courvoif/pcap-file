@@ -1,4 +1,4 @@
-//! Packet Block.
+//! [`Packet Block`](PacketBlock).
 
 /* ----- Imports ----- */
 

@@ -1,4 +1,4 @@
-//! Systemd Journal Export Block.
+//! [`Systemd Journal Export Block`](SystemdJournalExportBlock).
 
 /* ----- Imports ----- */
 

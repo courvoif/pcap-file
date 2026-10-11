@@ -1,6 +1,6 @@
 #![allow(clippy::cast_lossless)]
 
-//! Interface Description Block (IDB).
+//! [`Interface Description Block`](InterfaceDescriptionBlock).
 
 /* ----- Imports ----- */
 

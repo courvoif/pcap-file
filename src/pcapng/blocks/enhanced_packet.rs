@@ -1,4 +1,4 @@
-//! Enhanced Packet Block (EPB).
+//! [`Enhanced Packet Block`](EnhancedPacketBlock).
 
 /* ----- Imports ----- */
 
