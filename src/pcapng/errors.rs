@@ -320,6 +320,9 @@ pub enum BlockValidationError {
     /// A record name is empty or contains an embedded NUL byte.
     #[error("Record names must be nonempty and must not contain NUL bytes")]
     RecordNameInvalid,
+    /// The final name in a record lacks its NUL terminator.
+    #[error("Record names must be NUL-terminated")]
+    RecordNameUnterminated,
     /// A Name Resolution record entry has the wrong size.
     #[error("Wrong record size: expected {expected}B, got {actual}B")]
     RecordWrongSize {
@@ -463,6 +466,12 @@ pub enum OptionEntryError {
         actual: usize,
         /// Maximum encoded size.
         maximum: usize,
+    },
+    /// The encoded option list cannot be represented by `usize` on the current target.
+    #[error("Option list size {actual}B is too large to be represented on the current target")]
+    SizeTooLargeForTarget {
+        /// Requested list size, including headers and padding.
+        actual: u64,
     },
     /// The option requires an interface ID that was not supplied.
     #[error("Missing interface ID for option")]

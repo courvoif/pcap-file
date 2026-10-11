@@ -10,7 +10,7 @@ use byteorder_slice::result::ReadSlice;
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 use derive_into_owned::IntoOwned;
 
-use super::block_common::{Block, PcapNgBlock};
+use super::block_common::{Block, PcapNgBlock, checked_body_len};
 use super::opt_common::{
     CommonOption, PcapNgOption, opts_from_slice, validate_opts, validate_unique_opts, write_bytes_option, write_opts_to,
 };
@@ -110,7 +110,7 @@ impl<'a> PcapNgBlock<'a> for SectionHeaderBlock<'a> {
         let opt_len = write_opts_to::<B, _, W>(&self.options, state, None, writer)
             .map_err(|error| error.map_other(BlockValidationError::Option))?;
 
-        Ok(16 + opt_len)
+        checked_body_len(opt_len, 16).map_err(WriteError::Other)
     }
 
     /// Checks the section version, length, and options.

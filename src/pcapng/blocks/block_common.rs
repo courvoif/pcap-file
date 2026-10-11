@@ -351,21 +351,19 @@ impl<'a> Block<'a> {
             let data_len = block.write_body_to::<B, _>(state, &mut std::io::sink())?;
             let pad_len = (4 - (data_len % 4)) % 4;
 
-            // Block length calculation
-            let block_len = data_len + pad_len + 12;
-
-            // Check that there wasn't an overflow
-            if block_len < data_len {
-                return Err(WriteError::Other(BlockValidationError::BlockTooLarge {
-                    actual: data_len as u64,
+            // Calculate in u64 so 32-bit targets can report lengths beyond usize::MAX.
+            let block_len = (data_len as u64)
+                .checked_add(pad_len as u64)
+                .and_then(|len| len.checked_add(12))
+                .ok_or(WriteError::Other(BlockValidationError::BlockTooLarge {
+                    actual: u64::MAX,
                     maximum: u32::MAX as u64,
-                }));
-            }
+                }))?;
 
             // Check that the block length fits within the u32 limit
             let block_len: u32 = block_len.try_into().map_err(|_| {
                 WriteError::Other(BlockValidationError::BlockTooLarge {
-                    actual: block_len as u64,
+                    actual: block_len,
                     maximum: u32::MAX as u64,
                 })
             })?;
@@ -465,6 +463,16 @@ pub trait PcapNgBlock<'a> {
 
     /// Convert a block into the [`Block`] enumeration
     fn into_block(self) -> Block<'a>;
+}
+
+/* ----- Block length checks ----- */
+
+/// Returns the accumulated body length without overflowing the current target.
+pub(crate) fn checked_body_len(len: usize, additional: usize) -> Result<usize, BlockValidationError> {
+    len.checked_add(additional)
+        .ok_or(BlockValidationError::SizeTooLargeForTarget {
+            actual: (len as u64).saturating_add(additional as u64),
+        })
 }
 
 /* ----- Block names ----- */

@@ -102,20 +102,33 @@ pub(crate) fn write_opts_to<'a, B: ByteOrder, O: PcapNgOption<'a>, W: Write>(
     let mut written = 0;
 
     for option in options {
-        written += option.write_to::<B, W>(state, interface_id, writer).map_err(|error| {
+        let len = option.write_to::<B, W>(state, interface_id, writer).map_err(|error| {
             error.map_other(|source| {
                 let code = option.code();
                 OptionError::new(code, O::name(code), source)
             })
         })?;
+        written = checked_option_list_len(written, len)
+            .map_err(|source| WriteError::Other(OptionError::new(option.code(), O::name(option.code()), source)))?;
     }
 
     if !options.is_empty() {
-        written += RawOption::write_framed_to::<B, _, _>(writer, 0, 0, |_| Ok(()))
+        let len = RawOption::write_framed_to::<B, _, _>(writer, 0, 0, |_| Ok(()))
             .map_err(|error| error.map_other(|source| OptionError::new(0, "End of Options", source)))?;
+        written = checked_option_list_len(written, len)
+            .map_err(|source| WriteError::Other(OptionError::new(0, "End of Options", source)))?;
     }
 
     Ok(written)
+}
+
+/// Returns the accumulated option list length without overflowing the current target.
+fn checked_option_list_len(written: usize, additional: usize) -> Result<usize, OptionEntryError> {
+    written
+        .checked_add(additional)
+        .ok_or(OptionEntryError::SizeTooLargeForTarget {
+            actual: (written as u64).saturating_add(additional as u64),
+        })
 }
 
 /* ----- Option validation ----- */

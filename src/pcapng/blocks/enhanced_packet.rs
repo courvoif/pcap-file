@@ -11,7 +11,7 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use super::block_common::{Block, PcapNgBlock};
+use super::block_common::{Block, PcapNgBlock, checked_body_len};
 use super::opt_common::{
     CommonOption, PacketHash, PcapNgOption, RawOption, check_opt_len, opts_from_slice, validate_opts,
     validate_unique_opts, write_opts_to, write_u32_option, write_u64_option,
@@ -160,7 +160,8 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
             .encode_timestamp(self.interface_id, self.timestamp)
             .map_err(|error| WriteError::Other(BlockValidationError::Timestamp(error)))?;
 
-        let pad_len = (4 - (&self.data.len() % 4)) % 4;
+        let pad_len = (4 - (self.data.len() % 4)) % 4;
+        let body_len = checked_body_len(self.data.len(), 20 + pad_len).map_err(WriteError::Other)?;
 
         writer.write_u32::<B>(self.interface_id)?;
         writer.write_u32::<B>(timestamp_high)?;
@@ -173,7 +174,7 @@ impl<'a> PcapNgBlock<'a> for EnhancedPacketBlock<'a> {
         let opt_len = write_opts_to::<B, _, W>(&self.options, state, Some(self.interface_id), writer)
             .map_err(|error| error.map_other(BlockValidationError::Option))?;
 
-        Ok(20 + &self.data.len() + pad_len + opt_len)
+        checked_body_len(body_len, opt_len).map_err(WriteError::Other)
     }
 
     /// Returns the matching typed block variant.

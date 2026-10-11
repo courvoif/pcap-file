@@ -14,7 +14,7 @@ use byteorder_slice::ByteOrder;
 use byteorder_slice::byteorder::{ReadBytesExt, WriteBytesExt};
 use thiserror::Error;
 
-use super::block_common::{Block, PcapNgBlock};
+use super::block_common::{Block, PcapNgBlock, checked_body_len};
 use crate::pcapng::PcapNgState;
 use crate::pcapng::blocks::opt_common::CommonOption;
 use crate::pcapng::errors::OptionEntryError;
@@ -311,9 +311,11 @@ impl<'a, const COPIABLE: bool> PcapNgBlock<'a> for CustomBlock<'a, COPIABLE> {
         _state: &PcapNgState,
         writer: &mut W,
     ) -> Result<usize, WriteError<BlockValidationError>> {
+        let body_len = checked_body_len(self.payload.len(), 4).map_err(WriteError::Other)?;
+
         writer.write_u32::<B>(self.pen)?;
         writer.write_all(&self.payload)?;
-        Ok(4 + self.payload.len())
+        Ok(body_len)
     }
 
     /// Returns the matching typed block variant.

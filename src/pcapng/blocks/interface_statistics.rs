@@ -10,7 +10,7 @@ use byteorder_slice::byteorder::WriteBytesExt;
 use byteorder_slice::result::ReadSlice;
 use derive_into_owned::IntoOwned;
 
-use super::block_common::{Block, PcapNgBlock};
+use super::block_common::{Block, PcapNgBlock, checked_body_len};
 use super::opt_common::{
     CommonOption, PcapNgOption, RawOption, check_opt_len, opts_from_slice, validate_opts, validate_unique_opts,
     write_opts_to, write_u64_option,
@@ -101,7 +101,7 @@ impl<'a> PcapNgBlock<'a> for InterfaceStatisticsBlock<'a> {
         let opt_len = write_opts_to::<B, _, _>(&self.options, state, Some(self.interface_id), writer)
             .map_err(|error| error.map_other(BlockValidationError::Option))?;
 
-        Ok(12 + opt_len)
+        checked_body_len(opt_len, 12).map_err(WriteError::Other)
     }
 
     /// Returns the matching typed block variant.

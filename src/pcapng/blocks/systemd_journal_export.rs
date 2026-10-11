@@ -8,7 +8,7 @@ use std::io::Write;
 use byteorder_slice::ByteOrder;
 use derive_into_owned::IntoOwned;
 
-use super::block_common::{Block, PcapNgBlock};
+use super::block_common::{Block, PcapNgBlock, checked_body_len};
 use crate::pcapng::{
     PcapNgState,
     errors::{BlockValidationError, WriteError},
@@ -52,12 +52,14 @@ impl<'a> PcapNgBlock<'a> for SystemdJournalExportBlock<'a> {
         _state: &PcapNgState,
         writer: &mut W,
     ) -> Result<usize, WriteError<BlockValidationError>> {
+        let pad_len = (4 - (self.journal_entry.len() % 4)) % 4;
+        let body_len = checked_body_len(self.journal_entry.len(), pad_len).map_err(WriteError::Other)?;
+
         writer.write_all(&self.journal_entry)?;
 
-        let pad_len = (4 - (self.journal_entry.len() % 4)) % 4;
         writer.write_all(&[0_u8; 3][..pad_len])?;
 
-        Ok(self.journal_entry.len() + pad_len)
+        Ok(body_len)
     }
 
     /// Returns the matching typed block variant.
