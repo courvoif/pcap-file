@@ -175,6 +175,12 @@ impl<R: Read> PcapReader<R> {
         Some(res)
     }
 
+    /// Returns whether a fatal error has poisoned the reader.
+    /// While poisoned, subsequent reads return [`None`].
+    pub fn poisoned(&self) -> bool {
+        self.poisoned
+    }
+
     /// Allows reading again after a fatal error.
     /// This keeps the buffered bytes and pcap header unchanged.
     ///

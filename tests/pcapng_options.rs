@@ -264,14 +264,16 @@ fn repeatable_options_roundtrip() {
             pen: 32473,
             value: Cow::Borrowed(&[2]),
         }),
-        CommonOption::CustomUtf8Copiable(CustomUtf8Option {
+        CustomUtf8Option::<true> {
             pen: 32473,
             value: "copiable".into(),
-        }),
-        CommonOption::CustomUtf8NonCopiable(CustomUtf8Option {
+        }
+        .into_common_option(),
+        CustomUtf8Option::<false> {
             pen: 32473,
             value: "non-copiable".into(),
-        }),
+        }
+        .into_common_option(),
         CommonOption::Unknown(UnknownOption::new(u16::MAX, &[3]).unwrap()),
     ];
     let common: Vec<_> = common.into_iter().flat_map(|option| [option.clone(), option]).collect();

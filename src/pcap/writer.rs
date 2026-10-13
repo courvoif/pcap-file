@@ -61,6 +61,7 @@ impl<W: Write> PcapWriter<W> {
     ///     ts_accuracy: 0,
     ///     snaplen: 65535,
     ///     datalink: DataLink::ETHERNET,
+    ///     additional_info: 0,
     ///     ts_resolution: PcapTsResolution::MicroSecond,
     ///     endianness: Endianness::native()
     /// };
@@ -82,6 +83,7 @@ impl<W: Write> PcapWriter<W> {
     /// It also writes the pcap header to the file.
     ///
     /// # Errors
+    /// Use a LINKTYPE code that fits in 16 bits; otherwise no bytes are written.
     /// An I/O failure can leave a partial global header in the output.
     pub fn with_header(mut writer: W, header: PcapHeader) -> Result<PcapWriter<W>, PcapWriteError> {
         header.write_to(&mut writer)?;
@@ -97,6 +99,17 @@ impl<W: Write> PcapWriter<W> {
     /// Consumes [`PcapWriter`], returning the wrapped writer.
     pub fn into_inner(self) -> W {
         self.writer
+    }
+
+    /// Returns a reference to the underlying writer.
+    pub fn get_ref(&self) -> &W {
+        &self.writer
+    }
+
+    /// Returns a mutable reference to the underlying writer.
+    /// Bytes written directly must preserve packet framing and the capture header settings.
+    pub fn get_mut(&mut self) -> &mut W {
+        &mut self.writer
     }
 
     /// Writes a validated packet using the capture header's byte order and timestamp resolution.
@@ -126,8 +139,8 @@ impl<W: Write> PcapWriter<W> {
     /// An I/O failure can leave a partial packet in the output.
     pub fn write_raw_packet(&mut self, packet: &RawPcapPacket) -> Result<usize, PcapWriteError> {
         match self.endianness {
-            Endianness::Big => packet.write_to::<_, BigEndian>(&mut self.writer),
-            Endianness::Little => packet.write_to::<_, LittleEndian>(&mut self.writer),
+            Endianness::Big => packet.write_to::<BigEndian, _>(&mut self.writer),
+            Endianness::Little => packet.write_to::<LittleEndian, _>(&mut self.writer),
         }
     }
 

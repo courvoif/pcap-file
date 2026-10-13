@@ -95,14 +95,9 @@ impl<'a> PcapPacket<'a> {
         self.data
     }
 
-    /// Returns an owned version of the packet.
-    /// Slower than `into_owned` if the payload is already owned.
-    pub fn to_owned(&self) -> PcapPacket<'static> {
-        self.clone().into_owned()
-    }
-
-    /// Returns an owned version of the packet.
-    /// Faster than `to_owned` if the payload is already owned.
+    /// Consumes the packet and returns one with owned captured bytes.
+    /// Borrowed bytes are copied; an owned buffer is reused.
+    /// Use `clone().into_owned()` to keep the original packet.
     pub fn into_owned(self) -> PcapPacket<'static> {
         PcapPacket {
             timestamp: self.timestamp,
@@ -271,7 +266,7 @@ impl<'a> RawPcapPacket<'a> {
     ///
     /// # Errors
     /// An I/O failure can leave a partial packet in the output.
-    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
+    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> Result<usize, PcapWriteError> {
         writer
             .write_u32::<B>(self.ts_sec)
             .map_err(|e| PcapWriteError::FieldWriteFailed("ts_sec", e))?;
@@ -299,5 +294,47 @@ impl<'a> RawPcapPacket<'a> {
         snap_len: u32,
     ) -> Result<PcapPacket<'a>, PcapValidationError> {
         PcapPacket::try_from_raw_packet(self, ts_resolution, snap_len)
+    }
+}
+
+/* ----- Tests ----- */
+
+/// Checks packet ownership conversion without changing packet metadata.
+#[cfg(test)]
+mod tests {
+    /* ----- Imports ----- */
+
+    use super::*;
+
+    /* ----- Ownership conversion ----- */
+
+    /// Checks that borrowed bytes remain available after their input buffer is dropped.
+    #[test]
+    fn into_owned_detaches_borrowed_data() {
+        let packet: PcapPacket<'static> = {
+            let input = vec![1, 2, 3];
+            PcapPacket::new(Duration::new(1, 234), 4, input.as_slice())
+                .unwrap()
+                .into_owned()
+        };
+
+        assert_eq!(packet.timestamp(), Duration::new(1, 234));
+        assert_eq!(packet.orig_len(), 4);
+        assert_eq!(packet.data(), &[1, 2, 3]);
+        assert!(matches!(packet.into_data(), Cow::Owned(_)));
+    }
+
+    /// Checks that converting an owned packet reuses its captured byte buffer.
+    #[test]
+    fn into_owned_reuses_owned_data() {
+        let input = vec![1, 2, 3];
+        let pointer = input.as_ptr();
+        let packet = PcapPacket::new(Duration::new(1, 234), 4, input).unwrap().into_owned();
+
+        assert_eq!(packet.timestamp(), Duration::new(1, 234));
+        assert_eq!(packet.orig_len(), 4);
+        assert_eq!(packet.data(), &[1, 2, 3]);
+        assert_eq!(packet.data().as_ptr(), pointer);
+        assert!(matches!(packet.into_data(), Cow::Owned(_)));
     }
 }

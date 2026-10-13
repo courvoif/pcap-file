@@ -27,6 +27,7 @@ Run any [example][examples-directory] linked below with
 - **Parser progress:** Pass the returned remaining slice to the next call.
   For incomplete input, supply more bytes and retry with the unconsumed input.
 - **Borrowed data:** Finish using a reader's packet or block before the next read.
+  Call `into_owned()` to retain it independently of the input buffer.
 - **Owned packets:** Consume the reader with [`PcapReader::packets()`][pcap-reader-packets]
   or [`PcapNgReader::packets()`][pcapng-reader-packets] to retain packets after advancing.
 

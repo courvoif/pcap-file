@@ -148,6 +148,7 @@ fn big_endian() {
         ts_accuracy: 0,
         snaplen: 0xFFFF,
         datalink: pcap_file::DataLink::ETHERNET,
+        additional_info: 0,
         ts_resolution: PcapTsResolution::MicroSecond,
         endianness: pcap_file::Endianness::Big,
     };
@@ -185,6 +186,7 @@ fn little_endian() {
         ts_accuracy: 0,
         snaplen: 4096,
         datalink: pcap_file::DataLink::ETHERNET,
+        additional_info: 0,
         ts_resolution: PcapTsResolution::MicroSecond,
         endianness: pcap_file::Endianness::Little,
     };
@@ -207,6 +209,29 @@ fn little_endian() {
 }
 
 /* ----- Validation and capacity ----- */
+
+/// Checks that copying a capture retains FCS metadata and recognizes Ethernet packets.
+#[test]
+fn copy_capture_with_fcs_metadata() {
+    for (fixture, word) in [
+        (&include_bytes!("big_endian.pcap")[..], 0x2400_0001u32.to_be_bytes()),
+        (&include_bytes!("little_endian.pcap")[..], 0x2400_0001u32.to_le_bytes()),
+    ] {
+        let mut input = fixture.to_vec();
+        input[20..24].copy_from_slice(&word);
+
+        let mut reader = PcapReader::new(input.as_slice()).unwrap();
+        assert_eq!(reader.header().datalink, pcap_file::DataLink::ETHERNET);
+        assert_eq!(reader.header().additional_info, 0x2400);
+
+        let mut writer = PcapWriter::with_header(Vec::new(), reader.header()).unwrap();
+        while let Some(packet) = reader.next_packet() {
+            writer.write_packet(&packet.unwrap()).unwrap();
+        }
+
+        assert_eq!(writer.into_inner(), input);
+    }
+}
 
 /// Checks that invalid input does not prevent the reader loop from terminating.
 #[test]
@@ -347,16 +372,19 @@ fn reader_retries_retryable_io_error_without_losing_buffered_data() {
     pcap.push(0);
     let source = ReadErrorOnce::new(pcap, split, std::io::ErrorKind::WouldBlock);
     let mut reader = PcapReader::new(source).unwrap();
+    assert!(!reader.poisoned());
 
     let error = reader.next_packet().unwrap().unwrap_err();
     assert_eq!((error.packet_number, error.offset), (0, 24));
     assert!(
         matches!(error.kind, pcap_file::pcap::PcapReadErrorKind::Io(error) if error.kind() == std::io::ErrorKind::WouldBlock)
     );
+    assert!(!reader.poisoned());
     assert_eq!(reader.next_packet().unwrap().unwrap().data(), [1, 2]);
 
     let error = reader.next_packet().unwrap().unwrap_err();
     assert_eq!((error.packet_number, error.offset), (1, next_offset));
+    assert!(reader.poisoned());
     assert!(reader.next_packet().is_none());
 }
 
@@ -366,12 +394,14 @@ fn reader_is_poisoned_after_fatal_io_error() {
     let (pcap, split) = pcap_with_partially_buffered_packet();
     let source = ReadErrorOnce::new(pcap, split, std::io::ErrorKind::ConnectionReset);
     let mut reader = PcapReader::new(source).unwrap();
+    assert!(!reader.poisoned());
 
     let error = reader.next_packet().unwrap().unwrap_err();
     assert_eq!((error.packet_number, error.offset), (0, 24));
     assert!(
         matches!(error.kind, pcap_file::pcap::PcapReadErrorKind::Io(error) if error.kind() == std::io::ErrorKind::ConnectionReset)
     );
+    assert!(reader.poisoned());
     assert!(reader.next_packet().is_none());
     assert!(reader.next_raw_packet().is_none());
 }

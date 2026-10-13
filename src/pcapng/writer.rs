@@ -264,20 +264,27 @@ impl<W: Write> PcapNgWriter<W> {
         Ok(nb_written)
     }
 
+    /// Flushes buffered data to the underlying writer.
+    ///
+    /// # Errors
+    /// Handle the underlying writer's flush failure before treating the capture as saved.
+    pub fn flush(&mut self) -> Result<(), PcapNgWriteError> {
+        self.writer.flush().map_err(PcapNgWriteError::Io)
+    }
+
     /// Consumes the writer, returning the wrapped writer.
     pub fn into_inner(self) -> W {
         self.writer
     }
 
-    /// Get a reference to the underlying writer.
+    /// Returns a reference to the underlying writer.
     pub fn get_ref(&self) -> &W {
         &self.writer
     }
 
-    /// Get a mutable reference to the underlying writer.
+    /// Returns a mutable reference to the underlying writer.
     ///
     /// Bytes written directly must preserve block framing and the current section state.
-    /// Flush buffered output through this reference when needed.
     pub fn get_mut(&mut self) -> &mut W {
         &mut self.writer
     }

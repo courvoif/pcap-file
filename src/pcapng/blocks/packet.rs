@@ -74,7 +74,12 @@ impl<'a> PcapNgBlock<'a> for PacketBlock<'a> {
         let original_len = slice.read_u32::<B>().unwrap();
 
         let pad_len = (4 - (captured_len as usize % 4)) % 4;
-        let tot_len = captured_len as usize + pad_len;
+        let tot_len =
+            (captured_len as usize)
+                .checked_add(pad_len)
+                .ok_or(BlockValidationError::SizeTooLargeForTarget {
+                    actual: captured_len as u64 + pad_len as u64,
+                })?;
 
         if slice.len() < tot_len {
             return Err(BlockValidationError::ContentTooSmall {
@@ -250,6 +255,58 @@ impl<'a> PcapNgOption<'a> for PacketOption<'a> {
             Self::FLAGS => "Flags",
             Self::HASH => "Hash",
             _ => CommonOption::code_name(code),
+        }
+    }
+}
+
+/* ----- Tests ----- */
+
+/// Checks malformed Packet Block lengths without allocating their declared payloads.
+#[cfg(test)]
+mod tests {
+    /* ----- Imports ----- */
+
+    use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
+
+    use super::PacketBlock;
+    use crate::DataLink;
+    use crate::pcapng::blocks::interface_description::InterfaceDescriptionBlock;
+    use crate::pcapng::errors::BlockValidationError;
+    use crate::pcapng::{PcapNgBlock, PcapNgState};
+
+    /* ----- Length checks ----- */
+
+    /// Rejects captured lengths whose padding would overflow a 32-bit target.
+    #[test]
+    fn padded_captured_length_does_not_overflow() {
+        assert_padded_length_error::<BigEndian>();
+        assert_padded_length_error::<LittleEndian>();
+    }
+
+    /// Checks that oversized declared packet lengths return errors in the selected byte order.
+    fn assert_padded_length_error<B: ByteOrder>() {
+        let mut state = PcapNgState::default();
+        state.update_from_block(&InterfaceDescriptionBlock::new(DataLink::ETHERNET, 0).into_block());
+
+        for captured_len in [u32::MAX - 2, u32::MAX - 1, u32::MAX] {
+            let mut body = [0_u8; 20];
+            B::write_u32(&mut body[12..16], captured_len);
+            let error = PacketBlock::from_body::<B>(&state, &body).unwrap_err();
+
+            #[cfg(target_pointer_width = "32")]
+            assert!(matches!(
+                error,
+                BlockValidationError::SizeTooLargeForTarget { actual: 4_294_967_296 }
+            ));
+
+            #[cfg(target_pointer_width = "64")]
+            assert!(matches!(
+                error,
+                BlockValidationError::ContentTooSmall {
+                    needed: 4_294_967_296,
+                    actual: 0
+                }
+            ));
         }
     }
 }

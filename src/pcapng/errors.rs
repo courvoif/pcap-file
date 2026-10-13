@@ -229,7 +229,8 @@ pub enum StateUpdateError {
 
 /* ----- BlockValidationError ----- */
 
-/// Semantic errors in decoded pcapng block content.
+/// Errors from decoding, validating, or encoding typed pcapng block content.
+/// Representation and encoding-limit failures can occur even with strict validation disabled.
 #[derive(Debug, Error)]
 pub enum BlockValidationError {
     /// This block has no typed representation.
@@ -402,17 +403,17 @@ pub enum TimestampError {
 
 /* ----- OptionError ----- */
 
-/// Errors that can occur while decoding or encoding a block's option list.
+/// Errors from decoding, validating, or encoding a block's option list.
 #[derive(Debug, Error)]
 #[error("Invalid option entry. Code: {code}, Name: {name}: {source}")]
 pub struct OptionError {
     /// Numeric option code.
-    pub(crate) code: u16,
+    pub code: u16,
     /// Human-readable option name.
-    pub(crate) name: &'static str,
+    pub name: &'static str,
     /// Underlying option entry error.
     #[source]
-    pub(crate) source: Box<OptionEntryError>,
+    pub source: Box<OptionEntryError>,
 }
 
 impl OptionError {
@@ -428,7 +429,7 @@ impl OptionError {
 
 /* ----- OptionEntryError ----- */
 
-/// Errors that can occur while decoding or encoding one option entry.
+/// Errors from decoding, validating, or encoding one option entry.
 #[derive(Debug, Error)]
 pub enum OptionEntryError {
     /// A singleton option occurs more than once in a block.
@@ -486,13 +487,13 @@ pub enum OptionEntryError {
 
 /* ----- WriteError ----- */
 
-/// Errors that can occur while writing a typed pcapng block.
+/// Errors from writing pcapng blocks, records, or options.
 #[derive(Debug, Error)]
 pub enum WriteError<E: std::error::Error> {
-    /// An I/O error occurred while writing block or option bytes.
-    #[error("I/O error while writing the option list")]
+    /// An I/O error occurred while writing pcapng data.
+    #[error("I/O error while writing pcapng data")]
     Io(#[from] std::io::Error),
-    /// A typed block encoding error occurred.
+    /// An encoding error specific to the written value occurred.
     #[error(transparent)]
     Other(E),
 }

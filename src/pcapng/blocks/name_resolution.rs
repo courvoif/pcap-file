@@ -3,7 +3,7 @@
 /* ----- Imports ----- */
 
 use std::borrow::Cow;
-use std::io::{Error as IoError, ErrorKind, Result as IoResult, Write};
+use std::io::Write;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use byteorder_slice::ByteOrder;
@@ -229,16 +229,16 @@ impl<'a> Record<'a> {
         writer.write_u16::<B>(encoded_len)?;
         match self {
             Self::Ipv4(record) => {
-                record.write_to::<B, _>(writer)?;
+                record.write_to(writer)?;
             }
             Self::Ipv6(record) => {
-                record.write_to::<B, _>(writer)?;
+                record.write_to(writer)?;
             }
             Self::Eui48(record) => {
-                record.write_to::<B, _>(writer)?;
+                record.write_to(writer)?;
             }
             Self::Eui64(record) => {
-                record.write_to::<B, _>(writer)?;
+                record.write_to(writer)?;
             }
             Self::Unknown(record) => writer.write_all(&record.value)?,
         }
@@ -298,9 +298,9 @@ impl<'a> Ipv4Record<'a> {
     /// Call [`Self::validate`] before writing manually constructed names.
     ///
     /// # Errors
-    /// Keep the encoded value within `u16::MAX` bytes.
+    /// Reduce oversized record values before retrying; encoding failures leave the output unchanged.
     /// An I/O failure can leave a partial record in the output.
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<usize, WriteError<BlockValidationError>> {
         write_record_value(writer, &self.ip_addr.octets(), &self.names)
     }
 }
@@ -355,9 +355,9 @@ impl<'a> Ipv6Record<'a> {
     /// Call [`Self::validate`] before writing manually constructed names.
     ///
     /// # Errors
-    /// Keep the encoded value within `u16::MAX` bytes.
+    /// Reduce oversized record values before retrying; encoding failures leave the output unchanged.
     /// An I/O failure can leave a partial record in the output.
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<usize, WriteError<BlockValidationError>> {
         write_record_value(writer, &self.ip_addr.octets(), &self.names)
     }
 }
@@ -412,9 +412,9 @@ impl<'a> Eui48Record<'a> {
     /// Call [`Self::validate`] before writing manually constructed names.
     ///
     /// # Errors
-    /// Keep the encoded value within `u16::MAX` bytes.
+    /// Reduce oversized record values before retrying; encoding failures leave the output unchanged.
     /// An I/O failure can leave a partial record in the output.
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<usize, WriteError<BlockValidationError>> {
         write_record_value(writer, self.eui_addr.as_bytes(), &self.names)
     }
 }
@@ -469,9 +469,9 @@ impl<'a> Eui64Record<'a> {
     /// Call [`Self::validate`] before writing manually constructed names.
     ///
     /// # Errors
-    /// Keep the encoded value within `u16::MAX` bytes.
+    /// Reduce oversized record values before retrying; encoding failures leave the output unchanged.
     /// An I/O failure can leave a partial record in the output.
-    pub fn write_to<B: ByteOrder, W: Write>(&self, writer: &mut W) -> IoResult<usize> {
+    pub fn write_to<W: Write>(&self, writer: &mut W) -> Result<usize, WriteError<BlockValidationError>> {
         write_record_value(writer, self.eui_addr.as_bytes(), &self.names)
     }
 }
@@ -532,8 +532,12 @@ fn record_value_len(address_len: usize, names: &[Cow<'_, str>]) -> Result<usize,
 }
 
 /// Writes address octets and terminated names after checking their encoded size.
-fn write_record_value<W: Write>(writer: &mut W, address: &[u8], names: &[Cow<'_, str>]) -> IoResult<usize> {
-    let len = record_value_len(address.len(), names).map_err(|error| IoError::new(ErrorKind::InvalidInput, error))?;
+fn write_record_value<W: Write>(
+    writer: &mut W,
+    address: &[u8],
+    names: &[Cow<'_, str>],
+) -> Result<usize, WriteError<BlockValidationError>> {
+    let len = record_value_len(address.len(), names).map_err(WriteError::Other)?;
     writer.write_all(address)?;
     for name in names {
         writer.write_all(name.as_bytes())?;
@@ -669,12 +673,57 @@ mod tests {
     /* ----- Imports ----- */
 
     use std::borrow::Cow;
+    use std::io::ErrorKind;
+    use std::net::{Ipv4Addr, Ipv6Addr};
 
     use byteorder_slice::BigEndian;
 
-    use super::{NameResolutionBlock, NameResolutionOption, PcapNgBlock};
+    use super::{Ipv4Record, Ipv6Record, NameResolutionBlock, NameResolutionOption, PcapNgBlock};
     use crate::pcapng::PcapNgState;
     use crate::pcapng::errors::{BlockValidationError, OptionEntryError, OptionError, WriteError};
+
+    /* ----- Record encoding ----- */
+
+    /// Checks the maximum unframed value size and preserves a typed error for oversized values.
+    #[test]
+    fn unframed_record_size_limit() {
+        let mut record = Ipv4Record {
+            ip_addr: Ipv4Addr::new(192, 0, 2, 1),
+            names: vec![Cow::Owned("a".repeat(u16::MAX as usize - 5))],
+        };
+        let mut output = Vec::new();
+
+        assert_eq!(record.write_to(&mut output).unwrap(), u16::MAX as usize);
+        assert_eq!(&output[..4], &[192, 0, 2, 1]);
+        assert_eq!(&output[4..output.len() - 1], record.names[0].as_bytes());
+        assert_eq!(output.last(), Some(&0));
+
+        record.names[0].to_mut().push('a');
+        let mut output = vec![0xAA, 0xBB];
+        assert!(matches!(
+            record.write_to(&mut output),
+            Err(WriteError::Other(BlockValidationError::RecordTooLarge { actual, maximum }))
+                if actual == u16::MAX as usize + 1 && maximum == u16::MAX as usize
+        ));
+        assert_eq!(output, [0xAA, 0xBB]);
+    }
+
+    /// Checks that an unframed record preserves an I/O failure after a partial write.
+    #[test]
+    fn unframed_record_io_error() {
+        let record = Ipv6Record {
+            ip_addr: Ipv6Addr::new(0x2001, 0xDB8, 0, 0, 0, 0, 0, 1),
+            names: vec![Cow::Borrowed("host")],
+        };
+        let mut output = [0u8; 2];
+
+        assert!(matches!(
+            record.write_to(&mut output.as_mut_slice()),
+            Err(WriteError::Io(error)) if error.kind() == ErrorKind::WriteZero
+        ));
+        assert_eq!(output, [0x20, 0x01]);
+    }
+
     /* ----- Option validation ----- */
 
     /// Checks that oversized Name Resolution option values return errors.

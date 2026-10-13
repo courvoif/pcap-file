@@ -6,6 +6,8 @@ use std::time::Duration;
 
 use thiserror::Error;
 
+use crate::DataLink;
+
 /* ----- PcapError ----- */
 
 /// Convenience error type that wraps all errors that can occur while parsing,
@@ -130,6 +132,9 @@ pub enum PcapValidationError {
     /// The magic number of the pcap header is invalid.
     #[error("Invalid magic number: {0:#X}")]
     InvalidMagicNumber(u32),
+    /// The link-layer type cannot fit in the 16-bit LINKTYPE field.
+    #[error("Link type {0:?} is not representable in 16 bits")]
+    InvalidLinkType(DataLink),
     /// The fractional timestamp part is too large for microsecond resolution.
     #[error("Ts_frac micro too big: {0} >= 1_000_000 us")]
     TsFracMicroTooBig(u32),

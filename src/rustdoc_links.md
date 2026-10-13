@@ -1,6 +1,8 @@
 <!-- Local API targets take precedence when this README is included by rustdoc. -->
 
 [pcap-module]: pcap/index.html
+[pcap-header]: pcap/struct.PcapHeader.html
+[pcap-packet-into-owned]: pcap/struct.PcapPacket.html#method.into_owned
 [pcap-parser]: pcap/struct.PcapParser.html
 [pcap-reader-next-packet]: pcap/struct.PcapReader.html#method.next_packet
 [pcap-reader-next-raw-packet]: pcap/struct.PcapReader.html#method.next_raw_packet
