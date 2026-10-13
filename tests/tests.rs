@@ -50,7 +50,7 @@ fn timestamp_resolution() {
                     .expect("Block 8 should be an EnhancedPacketBlock");
                 assert_eq!(
                     pkt_0.timestamp,
-                    Duration::from_nanos_u128(1704187433103553000),
+                    Duration::from_nanos(1704187433103553000),
                     "Invalid timestamp for pkt0"
                 );
             }
@@ -60,7 +60,7 @@ fn timestamp_resolution() {
                     .expect("Block 10 should be an EnhancedPacketBlock");
                 assert_eq!(
                     pkt_2.timestamp,
-                    Duration::from_nanos_u128(1704187433132051),
+                    Duration::from_nanos(1704187433132051),
                     "Invalid timestamp for pkt2"
                 );
             }
