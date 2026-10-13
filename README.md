@@ -9,6 +9,7 @@ For PcapNg files see the `pcapng` module.
 [![Crates.io](https://img.shields.io/crates/v/pcap-file.svg)](https://crates.io/crates/pcap-file)
 [![rustdoc](https://img.shields.io/badge/Doc-pcap--file-green.svg)](https://docs.rs/pcap-file/)
 [![Crates.io](https://img.shields.io/crates/l/pcap-file.svg)](https://github.com/courvoif/pcap-file/blob/master/LICENSE)
+[![MSRV](https://img.shields.io/badge/MSRV-1.85-blue.svg)](https://github.com/courvoif/pcap-file)
 
 ## Documentation
 

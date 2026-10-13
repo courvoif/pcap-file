@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install Rust 1.85
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # master
+        with:
+          toolchain: "1.85.0"
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@3ee86d3aaea3f9b2fb78473e1d8c50660f42a1f9 # v2.9.1
+        with:
+          key: msrv
+
+      - name: Check
+        run: cargo check --all-targets
+
+      - name: Test
+        run: cargo test --all-targets
+
+  stable:
+    name: Stable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # master
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@3ee86d3aaea3f9b2fb78473e1d8c50660f42a1f9 # v2.9.1
+        with:
+          key: stable
+
+      - name: Test
+        run: cargo test --all-targets
+
+      - name: Build documentation
+        run: cargo doc --no-deps
+
+  # Needs a broader Clippy refactor before enabling:
+  # expect_used, unwrap_used, arithmetic_side_effects, missing_panics_doc, etc.
+  # lint:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v7
+  #     - name: Install Rust ${{ env.rust_stable }}
+  #       uses: dtolnay/rust-toolchain@stable
+  #       with:
+  #         toolchain: ${{ env.rust_stable }}
+  #         components: clippy
+  #     - name: Check lint
+  #       run: |
+  #         cargo clippy --workspace --all-features --all-targets -- \
+  #           -D warnings \
+  #           -D clippy::expect_used \
+  #           -D clippy::unreachable \
+  #           -D clippy::arithmetic_side_effects \
+  #           -D clippy::unwrap_used \
+  #           -D clippy::todo \
+  #           -D clippy::redundant_clone \
+  #           -D clippy::unimplemented \
+  #           -D clippy::missing_panics_doc \
+  #           -D clippy::redundant_field_names

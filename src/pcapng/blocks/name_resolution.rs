@@ -217,7 +217,7 @@ impl<'a> Ipv4Record<'a> {
         }
 
         let ip_addr_oct: [u8; 4] = slice.read_slice(4).unwrap().try_into().unwrap();
-        let ip_addr = Ipv4Addr::from_octets(ip_addr_oct);
+        let ip_addr = Ipv4Addr::from(ip_addr_oct);
 
         let mut names = vec![];
         for name in slice.split(|&b| b == 0) {
@@ -277,7 +277,7 @@ impl<'a> Ipv6Record<'a> {
         }
 
         let ip_addr_oct: [u8; 16] = slice.read_slice(16).unwrap().try_into().unwrap();
-        let ip_addr = Ipv6Addr::from_octets(ip_addr_oct);
+        let ip_addr = Ipv6Addr::from(ip_addr_oct);
 
         let mut names = vec![];
         for name in slice.split(|&b| b == 0) {
