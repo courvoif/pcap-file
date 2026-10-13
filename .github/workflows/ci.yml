@@ -22,11 +22,6 @@ jobs:
         with:
           toolchain: "1.85.0"
 
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@3ee86d3aaea3f9b2fb78473e1d8c50660f42a1f9 # v2.9.1
-        with:
-          key: msrv
-
       - name: Check
         run: cargo check --all-targets
 
@@ -44,11 +39,6 @@ jobs:
         uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # master
         with:
           toolchain: stable
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@3ee86d3aaea3f9b2fb78473e1d8c50660f42a1f9 # v2.9.1
-        with:
-          key: stable
 
       - name: Test
         run: cargo test --all-targets
