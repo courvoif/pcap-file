@@ -10,12 +10,13 @@ use derive_into_owned::IntoOwned;
 use super::PcapNgState;
 use super::blocks::Block;
 use crate::DataLink;
-use crate::pcapng::errors::PacketConversionError;
+use crate::pcapng::errors::{BlockError, BlockValidationError};
 
 /* ----- Packet view ----- */
 
 /// Common packet data from an Enhanced Packet, Simple Packet, or obsolete Packet Block.
 ///
+/// Read borrowed packets with [`super::PcapNgReader::next_packet`] or [`super::PcapNgParser::next_packet`].
 /// Interface IDs, options, and other block-specific metadata are not retained.
 /// Use [`super::PcapNgReader::next_block`] when that metadata is needed.
 #[derive(Clone, Debug, Eq, PartialEq, IntoOwned)]
@@ -32,17 +33,16 @@ pub struct PcapNgPacket<'a> {
 
 impl<'a> PcapNgPacket<'a> {
     /// Converts a packet block using the current section's interface state.
+    /// Returns `None` for non-packet blocks.
     ///
     /// Simple Packet Blocks use interface 0.
     /// Packet data retains its ownership without copying.
     /// This resolves the datalink but does not perform semantic validation.
     ///
     /// # Errors
-    ///
-    /// Returns [`PacketConversionError::NotPacket`] with the original block for
-    /// non-packet blocks, or [`PacketConversionError::InvalidInterfaceId`] if
-    /// the packet's interface is missing.
-    pub fn from_block(block: Block<'a>, state: &PcapNgState) -> Result<Self, PacketConversionError<'a>> {
+    /// Supply an interface present in the current section before converting its packets.
+    pub fn from_block(block: Block<'a>, state: &PcapNgState) -> Result<Option<Self>, BlockError> {
+        let type_ = block.type_code();
         let (interface_id, timestamp, original_len, data) = match block {
             Block::EnhancedPacket(packet) => (
                 packet.interface_id,
@@ -57,20 +57,23 @@ impl<'a> PcapNgPacket<'a> {
                 packet.original_len,
                 packet.data,
             ),
-            block => return Err(PacketConversionError::NotPacket(block)),
+            _ => return Ok(None),
         };
 
         let interface = state
             .interfaces()
             .get(interface_id as usize)
-            .ok_or(PacketConversionError::InvalidInterfaceId(interface_id))?;
+            .ok_or_else(|| BlockError {
+                type_,
+                source: Box::new(BlockValidationError::InvalidInterfaceId(interface_id)),
+            })?;
 
-        Ok(Self {
+        Ok(Some(Self {
             datalink: interface.linktype,
             timestamp,
             original_len,
             data,
-        })
+        }))
     }
 }
 
@@ -134,7 +137,7 @@ mod tests {
         ];
 
         for (block, (datalink, timestamp, original_len, data)) in blocks.into_iter().zip(expected) {
-            let packet = PcapNgPacket::from_block(block, &state()).unwrap();
+            let packet = PcapNgPacket::from_block(block, &state()).unwrap().unwrap();
             assert_eq!(
                 packet,
                 PcapNgPacket {
@@ -154,15 +157,19 @@ mod tests {
         }
     }
 
-    /// Checks that failed packet conversion returns the original non-packet block.
+    /// Checks that non-packet blocks return no packet without requiring interface state.
     #[test]
-    fn non_packet_conversion_preserves_original_block() {
-        let block = Block::SectionHeader(SectionHeaderBlock::default());
-        for result in [
-            PcapNgPacket::from_block(block.clone(), &PcapNgState::default()),
-            block.clone().into_pcapng_packet(&PcapNgState::default()),
+    fn non_packet_conversion_returns_none() {
+        for block in [
+            Block::SectionHeader(SectionHeaderBlock::default()),
+            Block::InterfaceDescription(InterfaceDescriptionBlock::new(DataLink::ETHERNET, 0)),
         ] {
-            assert!(matches!(result, Err(PacketConversionError::NotPacket(original)) if original == block));
+            assert!(
+                PcapNgPacket::from_block(block.clone(), &PcapNgState::default())
+                    .unwrap()
+                    .is_none()
+            );
+            assert!(block.into_pcapng_packet(&PcapNgState::default()).unwrap().is_none());
         }
     }
 
@@ -185,20 +192,18 @@ mod tests {
             }),
         ];
         for block in blocks {
-            assert!(matches!(
-                PcapNgPacket::from_block(block, &PcapNgState::default()),
-                Err(PacketConversionError::InvalidInterfaceId(0))
-            ));
+            let type_ = block.type_code();
+            let error = PcapNgPacket::from_block(block, &PcapNgState::default()).unwrap_err();
+            assert_eq!(error.type_, type_);
+            assert!(matches!(*error.source, BlockValidationError::InvalidInterfaceId(0)));
         }
 
         let block = Block::EnhancedPacket(EnhancedPacketBlock {
             interface_id: 3,
             ..Default::default()
         });
-        assert!(matches!(
-            block.into_pcapng_packet(&state()),
-            Err(PacketConversionError::InvalidInterfaceId(3))
-        ));
+        let error = block.into_pcapng_packet(&state()).unwrap_err();
+        assert!(matches!(*error.source, BlockValidationError::InvalidInterfaceId(3)));
     }
 
     /// Checks that packet conversion retains an owned data allocation.
@@ -211,6 +216,7 @@ mod tests {
             data: Cow::Owned(data),
         })
         .into_pcapng_packet(&state())
+        .unwrap()
         .unwrap();
 
         match packet.data {

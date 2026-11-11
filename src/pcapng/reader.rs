@@ -6,9 +6,7 @@ use std::io::Read;
 
 use super::blocks::block_common::{Block, RawBlock};
 use super::{PcapNgPacket, PcapNgParser, PcapNgState};
-use crate::pcapng::errors::{
-    BlockError, BlockValidationError, PacketConversionError, PcapNgReadError, PcapNgReadErrorKind,
-};
+use crate::pcapng::errors::{PcapNgReadError, PcapNgReadErrorKind};
 use crate::read_buffer::ReadBuffer;
 
 /* ----- Reader ----- */
@@ -158,6 +156,39 @@ impl<R: Read> PcapNgReader<R> {
         });
 
         Some(res)
+    }
+
+    /// Returns the next borrowed [`PcapNgPacket`], skipping non-packet blocks.
+    /// Returns `None` at end of input or after a previous fatal error.
+    /// The packet borrows the reader buffer until the next read.
+    /// The `strict` setting controls semantic validation as in [`Self::next_block`].
+    ///
+    /// # Errors
+    /// - Errors include the block number and its starting byte offset.
+    /// - Rejected packet blocks are skipped, allowing another call after a non-fatal error.
+    /// - Retry non-fatal I/O errors by calling this method again.
+    /// - A fatal error poisons the reader, and later calls return `None`.
+    #[must_use = "the result contains either the next packet or a read error"]
+    pub fn next_packet<'a>(&'a mut self) -> Option<Result<PcapNgPacket<'a>, PcapNgReadError>> {
+        loop {
+            let block_number = self.blocks_read;
+            let offset = self.bytes_parsed();
+            let (block, state) = match self.next_block()? {
+                Ok(value) => value,
+                Err(error) => return Some(Err(error)),
+            };
+
+            match PcapNgPacket::from_block(block, state) {
+                Ok(Some(packet)) => {
+                    // SAFETY: The packet borrows only the reader's internal buffer.
+                    // Returning immediately keeps it unchanged, and the lifetime tied to `&'a mut self` prevents another read.
+                    let packet = unsafe { std::mem::transmute::<PcapNgPacket<'_>, PcapNgPacket<'a>>(packet) };
+                    return Some(Ok(packet));
+                }
+                Ok(None) => continue,
+                Err(error) => return Some(Err(PcapNgReadError::new(block_number, offset, error.into()))),
+            }
+        }
     }
 
     /// Returns the next [`RawBlock`] and the [`PcapNgState`].
@@ -329,29 +360,8 @@ impl<R: Read> Iterator for PcapNgPacketIterator<R> {
     type Item = Result<PcapNgPacket<'static>, PcapNgReadError>;
     /// Returns the next owned packet or read error.
     fn next(&mut self) -> Option<Self::Item> {
-        loop {
-            let block_number = self.reader.blocks_read;
-            let offset = self.reader.bytes_parsed();
-
-            match self.reader.next_block() {
-                Some(Ok((block, state))) => {
-                    let type_ = block.type_code();
-                    match PcapNgPacket::from_block(block, state) {
-                        Ok(packet) => return Some(Ok(packet.into_owned())),
-                        Err(PacketConversionError::NotPacket(_)) => continue,
-                        Err(PacketConversionError::InvalidInterfaceId(id)) => {
-                            let kind = BlockError {
-                                type_,
-                                source: Box::new(BlockValidationError::InvalidInterfaceId(id)),
-                            }
-                            .into();
-                            return Some(Err(PcapNgReadError::new(block_number, offset, kind)));
-                        }
-                    }
-                }
-                Some(Err(error)) => return Some(Err(error)),
-                None => return None,
-            }
-        }
+        self.reader
+            .next_packet()
+            .map(|packet| packet.map(PcapNgPacket::into_owned))
     }
 }

@@ -64,6 +64,8 @@ Run any [example][examples-directory] linked below with
 | API | Use it to | Example |
 | --- | --- | --- |
 | [`PcapNgParser`][pcapng-parser] | Parse blocks borrowing a byte slice and track section/interface state. | [`pcapng_parser_block`][ex-pcapng-parser-block] |
+| [`PcapNgParser::next_packet()`][pcapng-parser-next-packet] | Parse one block into an optional borrowed packet. | [`pcapng_parser_packet`][ex-pcapng-parser-packet] |
+| [`PcapNgReader::next_packet()`][pcapng-reader-next-packet] | Process borrowed packets, skipping non-packet blocks. | [`pcapng_reader_packet`][ex-pcapng-reader-packet] |
 | [`PcapNgReader::next_block()`][pcapng-reader-next-block] | Process borrowed, typed blocks and their metadata. | [`pcapng_reader_block`][ex-pcapng-reader-block] |
 | [`PcapNgReader::next_raw_block()`][pcapng-reader-next-raw-block] | Inspect encoded fields or unsupported block types before typed decoding. | [`pcapng_reader_raw_block`][ex-pcapng-reader-raw-block] |
 | [`PcapNgPacketIterator`][pcapng-packet-iterator] | Iterate over owned packets, skipping non-packet blocks. | [`pcapng_reader_iterator`][ex-pcapng-reader-iterator] |
@@ -71,8 +73,21 @@ Run any [example][examples-directory] linked below with
 | [`CustomBlockPayload`][custom-block-payload] | Interpret custom block data. | [`pcapng_custom_block`][ex-pcapng-custom-block] |
 | [`CustomOptionPayload`][custom-option-payload] | Interpret custom option data. | [`pcapng_custom_options`][ex-pcapng-custom-options] |
 
+### Packet conversion
+
+**Breaking change:** `PcapNgPacket::from_block()` and `Block::into_pcapng_packet()`
+now return `Result<Option<PcapNgPacket>, BlockError>`.
+Match `Ok(Some(packet))` for packets and `Ok(None)` for non-packet blocks.
+Replace `PacketConversionError` handling with `BlockError`; the former type has been removed.
+
 ### Validation and raw blocks
 
+- **Packet parsing:** [`PcapNgParser::next_packet()`][pcapng-parser-next-packet]
+  returns the remaining slice and an optional packet.
+  `None` means a non-packet block was consumed.
+  Continue with the remaining slice until it is empty.
+  Errors leave parser state unchanged, so incomplete input can be extended and retried.
+  Incomplete-buffer sizes describe the incomplete block, including its framing.
 - **Strict mode:** Pass `true` to [`PcapNgParser::new`][pcapng-parser-new],
   [`PcapNgReader::new`][pcapng-reader-new], or [`PcapNgWriter::new`][pcapng-writer-new] for semantic validation of the initial section header and typed blocks.
   With `false`, typed decoding and encoding still check framing, representations, and encoding limits.
@@ -83,7 +98,8 @@ Run any [example][examples-directory] linked below with
   Other block bodies remain undecoded.
 - **Manual decoding:** Call [`RawBlock::try_into_block`][raw-block-try-into-block],
   then [`Block::validate`][block-validate] with the current state for semantic checks.
-- **Parser recovery:** On [`PcapNgParseError::Block`][pcapng-parse-error-block],
+- **Parser recovery:** When `PcapNgParser::next_block()` or `next_packet()` returns
+  [`PcapNgParseError::Block`][pcapng-parse-error-block],
   call [`PcapNgParser::next_raw_block()`][pcapng-parser-next-raw-block] with the same slice to skip the block.
 - **Timestamp resolution:** [`InterfaceTsResolution`][interface-ts-resolution] supports decimal exponents `0..=9` and binary exponents `0..=29`.
   Finer resolutions cannot be decoded, including on raw reads, and cause a fatal state error.
@@ -128,10 +144,12 @@ PcapNg tests use [hadrielk's testing suite][pcapng-test-generator].
 [pcap-packet-iterator]: https://github.com/courvoif/pcap-file/blob/master/src/pcap/reader.rs#L225-L256
 [pcap-writer]: https://github.com/courvoif/pcap-file/blob/master/src/pcap/writer.rs#L15-L36
 [pcapng-module]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/mod.rs#L1
-[pcapng-parser]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/parser.rs#L14-L47
-[pcapng-reader-next-block]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L104-L121
-[pcapng-reader-next-raw-block]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L163-L180
-[pcapng-packet-iterator]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L269-L302
+[pcapng-parser]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/parser.rs#L49
+[pcapng-parser-next-packet]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/parser.rs#L138
+[pcapng-reader-next-packet]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L172
+[pcapng-reader-next-block]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L119
+[pcapng-reader-next-raw-block]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L215
+[pcapng-packet-iterator]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L341
 [pcapng-writer]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/writer.rs#L17-L40
 [custom-block-payload]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/blocks/custom.rs#L108-L111
 [custom-option-payload]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/blocks/custom.rs#L146-L149
@@ -144,6 +162,8 @@ PcapNg tests use [hadrielk's testing suite][pcapng-test-generator].
 [ex-pcap-reader-iterator]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_reader_iterator.rs
 [ex-pcap-writer-packet]: https://github.com/courvoif/pcap-file/blob/master/examples/pcap_writer_packet.rs
 [ex-pcapng-parser-block]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_parser_block.rs
+[ex-pcapng-parser-packet]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_parser_packet.rs
+[ex-pcapng-reader-packet]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_reader_packet.rs
 [ex-pcapng-reader-block]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_reader_block.rs
 [ex-pcapng-reader-raw-block]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_reader_raw_block.rs
 [ex-pcapng-reader-iterator]: https://github.com/courvoif/pcap-file/blob/master/examples/pcapng_reader_iterator.rs
@@ -166,11 +186,11 @@ PcapNg tests use [hadrielk's testing suite][pcapng-test-generator].
 [pcap-reader-packets]: https://github.com/courvoif/pcap-file/blob/master/src/pcap/reader.rs#L194-L198
 [pcap-reader-with-capacity]: https://github.com/courvoif/pcap-file/blob/master/src/pcap/reader.rs#L73-L81
 [pcap-read-error-is-fatal]: https://github.com/courvoif/pcap-file/blob/master/src/pcap/errors.rs#L73
-[pcapng-parser-new]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/parser.rs#L57-L72
-[pcapng-parser-next-raw-block]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/parser.rs#L141-L156
-[pcapng-reader-new]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L54-L66
-[pcapng-reader-packets]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L237-L242
-[pcapng-reader-with-capacity]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L80-L90
+[pcapng-parser-new]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/parser.rs#L70
+[pcapng-parser-next-raw-block]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/parser.rs#L160
+[pcapng-reader-new]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L63
+[pcapng-reader-packets]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L280
+[pcapng-reader-with-capacity]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/reader.rs#L87
 [pcapng-read-error-is-fatal]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/errors.rs#L79
 [raw-block-try-into-block]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/blocks/block_common.rs#L176-L184
 [block-validate]: https://github.com/courvoif/pcap-file/blob/master/src/pcapng/blocks/block_common.rs#L383-L387

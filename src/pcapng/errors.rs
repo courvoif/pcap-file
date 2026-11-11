@@ -8,7 +8,7 @@ use thiserror::Error;
 
 use crate::{
     DataLink,
-    pcapng::blocks::{Block, block_name, interface_description::InterfaceTsResolution},
+    pcapng::blocks::{block_name, interface_description::InterfaceTsResolution},
 };
 
 /* ----- PcapNgParseError ----- */
@@ -184,6 +184,7 @@ pub enum PcapNgFormatError {
 #[derive(Debug, Error)]
 pub enum RawBlockParseError {
     /// The buffer is too small to parse the expected data.
+    /// Required and available sizes include the complete block framing.
     #[error("The buffer is too small: need {0}B, got {1}B")]
     IncompleteBuffer(usize, usize),
     /// The raw block format is invalid.
@@ -202,19 +203,6 @@ pub struct BlockError {
     /// Underlying block error.
     #[source]
     pub source: Box<BlockValidationError>,
-}
-
-/* ----- PacketConversionError ----- */
-
-/// Errors that can occur while converting a typed block into a packet view.
-#[derive(Debug, Error)]
-pub enum PacketConversionError<'a> {
-    /// The original block, which does not contain a packet.
-    #[error("The block does not contain a packet")]
-    NotPacket(Block<'a>),
-    /// The packet's interface does not exist in the supplied section state.
-    #[error("Invalid interface ID: {0}")]
-    InvalidInterfaceId(u32),
 }
 
 /* ----- StateUpdateError ----- */

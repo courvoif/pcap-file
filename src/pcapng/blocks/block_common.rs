@@ -99,8 +99,8 @@ impl<'a> RawBlock<'a> {
             // Check if there is enough data in the slice for the body and the trailer_len
             if slice.len() < initial_len as usize - 8 {
                 return Err(RawBlockParseError::IncompleteBuffer(
-                    initial_len as usize - 8,
-                    slice.len(),
+                    initial_len as usize,
+                    slice.len() + 8,
                 ));
             }
 
@@ -411,12 +411,13 @@ impl<'a> Block<'a> {
     }
 
     /// Converts this block into a packet view using the current interface state.
+    /// Returns `None` for non-packet blocks.
     ///
     /// See [`crate::pcapng::PcapNgPacket::from_block`] for ownership and errors.
     pub fn into_pcapng_packet(
         self,
         state: &PcapNgState,
-    ) -> Result<crate::pcapng::PcapNgPacket<'a>, crate::pcapng::errors::PacketConversionError<'a>> {
+    ) -> Result<Option<crate::pcapng::PcapNgPacket<'a>>, BlockError> {
         crate::pcapng::PcapNgPacket::from_block(self, state)
     }
 
@@ -557,6 +558,35 @@ mod tests {
     }
 
     /* ----- Raw block conversion and validation ----- */
+
+    /// Checks that incomplete block sizes include framing in both byte orders.
+    #[test]
+    fn incomplete_block_sizes_include_framing() {
+        for endianness in [Endianness::Big, Endianness::Little] {
+            let mut data = [0; 20];
+            let length = match endianness {
+                Endianness::Big => 20u32.to_be_bytes(),
+                Endianness::Little => 20u32.to_le_bytes(),
+            };
+            data[4..8].copy_from_slice(&length);
+            data[16..20].copy_from_slice(&length);
+
+            for available in 0..data.len() {
+                let input = &data[..available];
+                let error = match endianness {
+                    Endianness::Big => RawBlock::from_slice::<BigEndian>(input),
+                    Endianness::Little => RawBlock::from_slice::<LittleEndian>(input),
+                }
+                .unwrap_err();
+                let required = if available < 12 { 12 } else { data.len() };
+                assert!(matches!(
+                    error,
+                    RawBlockParseError::IncompleteBuffer(needed, got)
+                        if needed == required && got == available
+                ));
+            }
+        }
+    }
 
     /// Checks that owned raw bodies yield owned typed blocks.
     #[test]

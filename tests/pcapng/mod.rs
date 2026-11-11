@@ -124,21 +124,18 @@ fn writer() {
 
 /* ----- Packet conversion and recovery ----- */
 
-/// Checks that packet iteration matches packet views collected from typed block reading.
+/// Checks that borrowed packets and packet iteration match typed block traversal on all fixtures.
 #[test]
-fn packet_iterator_matches_typed_packet_traversal() {
+fn packet_reading_matches_typed_packet_traversal() {
     use pcap_file::pcapng::PcapNgPacket;
-    use pcap_file::pcapng::errors::PacketConversionError;
     for entry in glob("tests/pcapng/**/**/*.pcapng").unwrap() {
         let data = std::fs::read(entry.unwrap()).unwrap();
         let mut reader = PcapNgReader::new(&data[..], true).unwrap();
         let mut expected = Vec::new();
         while let Some(result) = reader.next_block() {
             let (block, state) = result.unwrap();
-            match PcapNgPacket::from_block(block, state) {
-                Ok(packet) => expected.push(packet.into_owned()),
-                Err(PacketConversionError::NotPacket(_)) => {}
-                Err(error) => panic!("{error}"),
+            if let Some(packet) = PcapNgPacket::from_block(block, state).unwrap() {
+                expected.push(packet.into_owned());
             }
         }
         let actual = PcapNgReader::new(&data[..], true)
@@ -147,6 +144,49 @@ fn packet_iterator_matches_typed_packet_traversal() {
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
         assert_eq!(actual, expected);
+
+        let mut reader = PcapNgReader::new(&data[..], true).unwrap();
+        let mut actual = Vec::new();
+        while let Some(packet) = reader.next_packet() {
+            actual.push(packet.unwrap().into_owned());
+        }
+        assert_eq!(actual, expected);
+
+        let (mut remaining, mut parser) = PcapNgParser::new(&data, true).unwrap();
+        let mut actual = Vec::new();
+        while !remaining.is_empty() {
+            let (rest, packet) = parser.next_packet(remaining).unwrap();
+            remaining = rest;
+            if let Some(packet) = packet {
+                actual.push(packet.into_owned());
+            }
+        }
+        assert_eq!(actual, expected);
+    }
+}
+
+/// Checks that metadata progress lets incomplete packet input be retried without duplicating interfaces.
+#[test]
+fn packet_parser_preserves_progress_for_incomplete_input() {
+    use pcap_file::pcapng::errors::PcapNgParseError;
+
+    let data = pcapng_with_invalid_and_valid_packet_blocks();
+    for strict in [false, true] {
+        let (remaining, mut parser) = PcapNgParser::new(&data, strict).unwrap();
+        let (remaining, packet) = parser.next_packet(remaining).unwrap();
+        assert!(packet.is_none());
+        assert_eq!(parser.state().interfaces().len(), 1);
+
+        let error = parser.next_packet(&remaining[..31]).unwrap_err();
+        assert!(matches!(error, PcapNgParseError::IncompleteBuffer(32, 31)));
+        assert_eq!(parser.state().interfaces().len(), 1);
+
+        assert!(matches!(parser.next_packet(remaining), Err(PcapNgParseError::Block(_))));
+        let (remaining, _) = parser.next_raw_block(remaining).unwrap();
+        let (remaining, packet) = parser.next_packet(remaining).unwrap();
+        assert_eq!(packet.unwrap().data.as_ref(), [1, 2]);
+        assert!(remaining.is_empty());
+        assert_eq!(parser.state().interfaces().len(), 1);
     }
 }
 
@@ -297,6 +337,22 @@ fn pcapng_with_partially_buffered_interface() -> (Vec<u8>, usize) {
 }
 
 /* ----- Reader error behavior tests ----- */
+
+/// Checks packet reading retries temporary I/O failures without duplicating skipped interfaces.
+#[test]
+fn packet_reader_retries_retryable_io_errors() {
+    let (pcapng, split) = pcapng_with_partially_buffered_interface();
+    let len = pcapng.len() as u64;
+    let source = ReadErrorOnce::new(pcapng, split, std::io::ErrorKind::WouldBlock);
+    let mut reader = PcapNgReader::new(source, true).unwrap();
+    let error = reader.next_packet().unwrap().unwrap_err();
+    assert_eq!((error.block_number, error.offset), (1, 28));
+    assert!(!error.is_fatal());
+    assert!(reader.next_packet().is_none());
+    assert_eq!(reader.state().interfaces().len(), 1);
+    assert_eq!(reader.bytes_parsed(), len);
+    assert!(!reader.poisoned());
+}
 
 /// Checks that strict reading rejects an invalid packet length and then reads the following packet.
 #[test]

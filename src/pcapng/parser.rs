@@ -4,8 +4,8 @@
 
 use byteorder_slice::{BigEndian, ByteOrder, LittleEndian};
 
-use super::PcapNgState;
 use super::blocks::block_common::{Block, RawBlock};
+use super::{PcapNgPacket, PcapNgState};
 use crate::Endianness;
 use crate::pcapng::errors::{PcapNgFormatError, PcapNgParseError, StateUpdateError};
 
@@ -104,36 +104,41 @@ impl PcapNgParser {
     /// - On an invalid format or state error, stop or correct the input before
     ///   continuing.
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
-        // This function doesn't call `self::next_raw_block()` because converting the Block before updating the state is faster and better for error handling.
+        let (rem, raw_block) = match self.state.endianness() {
+            Endianness::Big => RawBlock::from_slice::<BigEndian>(src),
+            Endianness::Little => RawBlock::from_slice::<LittleEndian>(src),
+        }?;
 
-        // Read next Block
-        return match self.state.section.endianness {
-            Endianness::Big => next_block_inner::<BigEndian>(self, src),
-            Endianness::Little => next_block_inner::<LittleEndian>(self, src),
+        // State-changing blocks must report preparation failures as state-update errors.
+        let block = if let Some(block) = self.state.decode_block_if_needed(&raw_block, self.strict)? {
+            self.state.update_from_block(&block);
+            block
+        } else {
+            let block = raw_block.try_into_block(&self.state)?;
+            if self.strict {
+                block.validate(&self.state)?;
+            }
+            block
         };
 
-        /// Inner function to parse the next Block.
-        fn next_block_inner<'a, B: ByteOrder>(
-            parser: &mut PcapNgParser,
-            src: &'a [u8],
-        ) -> Result<(&'a [u8], Block<'a>), PcapNgParseError> {
-            let (rem, raw_block) = RawBlock::from_slice::<B>(src)?;
+        Ok((rem, block))
+    }
 
-            // State-changing blocks must be handled separately to keep the parser state valid.
-            // Failures during their state preparation must be returned as fatal state-update errors.
-            let block = if let Some(block) = parser.state.decode_block_if_needed(&raw_block, parser.strict)? {
-                parser.state.update_from_block(&block);
-                block
-            } else {
-                let block = raw_block.try_into_block(&parser.state)?;
-                if parser.strict {
-                    block.validate(&parser.state)?;
-                }
-                block
-            };
-
-            Ok((rem, block))
-        }
+    /// Parses one block and returns the remaining input and an optional borrowed [`PcapNgPacket`].
+    /// Returns `None` for non-packet blocks after updating the section and interface state.
+    /// Continue with the remaining input until it is empty.
+    /// The `strict` setting controls semantic validation as in [`Self::next_block`].
+    ///
+    /// # Errors
+    /// - Errors leave the section and interface state unchanged.
+    /// - On incomplete input, supply more bytes and retry with the same input.
+    ///   The reported sizes describe the incomplete block, including its framing.
+    /// - Use [`Self::next_raw_block`] with the same input to skip a rejected packet block.
+    /// - Stop or correct the input on a fatal error.
+    pub fn next_packet<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Option<PcapNgPacket<'a>>), PcapNgParseError> {
+        let (rem, block) = self.next_block(src)?;
+        let packet = PcapNgPacket::from_block(block, self.state())?;
+        Ok((rem, packet))
     }
 
     /// Returns the remaining input and the next [`RawBlock`].
@@ -164,7 +169,7 @@ impl PcapNgParser {
         strict: bool,
     ) -> Result<(&'a [u8], RawBlock<'a>), PcapNgParseError> {
         // Read next RawBlock
-        return match self.state.section.endianness {
+        return match self.state.endianness() {
             Endianness::Big => next_raw_block_inner::<BigEndian>(self, src, strict),
             Endianness::Little => next_raw_block_inner::<LittleEndian>(self, src, strict),
         };

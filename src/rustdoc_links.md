@@ -10,6 +10,8 @@
 [pcap-writer]: pcap/struct.PcapWriter.html
 [pcapng-module]: pcapng/index.html
 [pcapng-parser]: pcapng/struct.PcapNgParser.html
+[pcapng-parser-next-packet]: pcapng/struct.PcapNgParser.html#method.next_packet
+[pcapng-reader-next-packet]: pcapng/struct.PcapNgReader.html#method.next_packet
 [pcapng-reader-next-block]: pcapng/struct.PcapNgReader.html#method.next_block
 [pcapng-reader-next-raw-block]: pcapng/struct.PcapNgReader.html#method.next_raw_block
 [pcapng-packet-iterator]: pcapng/struct.PcapNgPacketIterator.html
