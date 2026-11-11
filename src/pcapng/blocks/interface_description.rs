@@ -443,7 +443,7 @@ impl InterfaceTsResolution {
             ts_raw as u128 * TS_RESOL_DEC_TO_DURATION[self.resol as usize]
         };
 
-        Duration::from_nanos_u128(timestamp_ns)
+        duration_from_nanos(timestamp_ns)
     }
 
     /// Encode a timestamp with the current resolution.
@@ -482,6 +482,18 @@ impl InterfaceTsResolution {
     pub fn resolution(&self) -> u8 {
         self.resol
     }
+}
+
+/// Builds a [`Duration`] from a nanosecond count.
+///
+/// `Duration::from_nanos_u128` requires Rust 1.93. Seconds always fit in `u64`
+/// because `decode_timestamp` starts from a `u64` tick count.
+fn duration_from_nanos(timestamp_ns: u128) -> Duration {
+    const NANOS_PER_SEC: u128 = 1_000_000_000;
+    Duration::new(
+        timestamp_ns.wrapping_div(NANOS_PER_SEC) as u64,
+        timestamp_ns.wrapping_rem(NANOS_PER_SEC) as u32,
+    )
 }
 
 impl Default for InterfaceTsResolution {

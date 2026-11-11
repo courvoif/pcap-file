@@ -56,6 +56,14 @@ pub const CUSTOM_BLOCK_NON_COPIABLE: u32 = 0x40000BAD;
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 //  |                      Block Total Length                       |
 //  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+/// PcapNg block lengths must be a multiple of 4 octets.
+///
+/// Equivalent to `u32::is_multiple_of(4)`, which is unstable on Rust 1.85.
+const fn is_aligned_to_4(len: u32) -> bool {
+    len & 3 == 0
+}
+
 /// PcapNg Block
 #[derive(Clone, Debug)]
 pub struct RawBlock<'a> {
@@ -103,7 +111,7 @@ impl<'a> RawBlock<'a> {
             type_: u32,
             initial_len: u32,
         ) -> Result<(&[u8], RawBlock<'_>), RawBlockParseError> {
-            if !initial_len.is_multiple_of(4) {
+            if !is_aligned_to_4(initial_len) {
                 return Err(PcapNgFormatError::BlockNotAligned(initial_len as usize).into());
             }
 
@@ -164,7 +172,7 @@ impl<'a> RawBlock<'a> {
             ));
         }
 
-        if !self.initial_len.is_multiple_of(4) {
+        if !is_aligned_to_4(self.initial_len) {
             return Err(PcapNgFormatError::BlockNotAligned(self.initial_len as usize));
         }
 
